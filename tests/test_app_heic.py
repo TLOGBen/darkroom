@@ -60,6 +60,17 @@ class TestHeicInApp(AppCase):
         r = await self.client.post("/api/open", json={"path": good})
         self.assertEqual(r.status, 200)
 
+    async def test_broken_icc_open_is_400_and_server_lives(self):  # F1: damaged profile, decodable pixels
+        for name, icc in _iccgen.broken_profiles().items():
+            path = _heicgen.write_heic(os.path.join(self.photos, name + ".heic"), _heicgen.pattern(32, 32), icc=icc)
+            r = await self.client.post("/api/open", json={"path": path})
+            self.assertEqual(r.status, 400, name)
+            err = (await r.json())["error"]
+            prefix = APP_OPEN_ERROR.format(file_name=name + ".heic", reason="HEIC 解碼失敗：內嵌色彩描述檔損壞（")
+            self.assertTrue(err.startswith(prefix), err)
+            self.assertNotIn("\n", err)
+            self.assertEqual((await self.client.get("/api/health")).status, 200)
+
     async def test_other_read_errors_use_the_same_sentence(self):  # H6 / constant
         bad = os.path.join(self.photos, "broken.jpg")
         with open(bad, "wb") as f:

@@ -82,7 +82,7 @@ async def api_open(request):
     try:
         info = await _run(request, request.app[ENGINE].open, path)
     except (OSError, ValueError) as e:
-        return _bad(OPEN_ERROR.format(file_name=os.path.basename(path), reason=" ".join(str(e).split())))
+        return _bad(OPEN_ERROR.format(file_name=os.path.basename(path), reason=str(e)))   # reason is single-line at the source (CONTRACT-heic H13)
     return web.json_response(info)
 
 
