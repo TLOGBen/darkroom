@@ -16,7 +16,7 @@
 - [ ] B4：`POST /api/open {"path": ...}` 讀照片並回傳 `image_id`、`width`、`height`、`preview_width`、`preview_height`；預覽圖長寬乘積 ≤ 1,500,000 且等比例；照片原檔只讀。
 - [ ] B5：`POST /api/preview {"image_id","preset_id"|null,"strength","overrides"}` 回傳 `image/jpeg`；最終值＝`clamp(preset 在該強度的值 + 微調)`（微調是加在強度之後的差值）；`preset_id` 為 null 時只套微調；回應標頭 `X-Render-Ms` 帶後端渲染毫秒數。
 - [ ] B6：預覽渲染在專用的高優先 CUDA stream 上、只同步自己那條 stream（不得呼叫 `torch.cuda.synchronize()`）；JPEG 用 cv2 在 CPU 編碼；GPU 工作在單一執行緒 executor，不阻塞事件迴圈。
-- [ ] B7：延遲驗收腳本（`tools/bench_preview.py`）對 24MP 測試圖以 60 Hz 模擬拖動 10 秒、最新一次優先：往返中位數 < 100 ms、p95 < 150 ms；量測前若 `nvidia-smi --query-compute-apps` 列出本程序以外的運算型程序，就跳過並印出程序名稱（核心 A17 的跳過判準一併改成這條，取代「已用記憶體扣本程序 > 1 GiB」）。
+- [ ] B7：延遲驗收腳本（`tools/bench_preview.py`）對 24MP 測試圖以 60 Hz 模擬拖動 10 秒、最新一次優先：往返中位數 < 100 ms、p95 < 150 ms；量測前判斷 GPU 是否忙碌，忙碌才跳過並印出原因（使用率數字或佇列長度）：(a) 約 1 秒內以 `nvidia-smi --query-gpu=utilization.gpu` 取樣 5 次，中位數 > 15% ＝忙碌；(b) `nvidia-smi --query-compute-apps` 有路徑含 `comfyui` 的程序時，查 `http://127.0.0.1:8188/queue`，`queue_running` 或 `queue_pending` 非空＝忙碌，連不到＝不忙；(c) nvidia-smi 無法執行＝無法判斷，也跳過並印出原因。ComfyUI 常駐但佇列空、使用率不高時照常量測（核心 A17 的跳過判準一併改成這條，取代「已用記憶體扣本程序 > 1 GiB」；2026-10-04 條文補丁 R1，見文末）。釘死測試 `tests/test_app_gpucheck.py`（忙、閒、佇列連不到、nvidia-smi 失敗、門檻邊界）。
 - [ ] B8：`GET /api/folder?image_id=` 回傳同資料夾、依檔名排序的 JPEG／PNG／TIFF 清單與目前位置；前端「上一張／下一張」照它切換，第一張按上一張、最後一張按下一張時不動作。
 - [ ] B9：前端三欄（`#preset-tree`、`#preview`、`#sliders`）；preset 依 `group` 的「 - 」切成兩層樹，可用名稱搜尋；點 preset 時強度回 100 且清空微調；強度滑桿 0～200 在預覽正下方。
 - [ ] B10：拖滑桿時前端只保留最新一筆待送參數（最新一次優先），不得累積佇列；微調過的滑桿加 `.adjusted` class，單項還原鈕把該鍵的微調歸零。
@@ -42,3 +42,7 @@
 啟動完成（stdout）：darkroom 已啟動：http://127.0.0.1:{port}/
 設定檔：config.local.json（鍵：localllms_root、preset_dir）；環境變數：LOCALLLMS_ROOT
 ```
+
+## 條文補丁（Patches）
+- R1（2026-10-04，指揮部判決）B7／A17 跳過判準：原文「`--query-compute-apps` 列出本程序以外的運算型程序就跳過」在 WDDM 下連桌面程式都列出，改成只看 Type C 後，使用者幾乎一直開著的 ComfyUI 仍讓量測永遠跳過，驗收形同虛設；改為「真的有人在用 GPU 才跳過」（使用率取樣中位數 > 15%，或 ComfyUI 佇列非空；佇列連不到當不忙），條文見 B7。
+- R2（2026-10-04，指揮部判決，依 R10 判為符合）B14 附帶：核心封緘測試 `test_no_private_imports_outside_tests` 的 regex 由 `from\s+darkroom\.?_\w*` 改為 `from\s+darkroom\._\w*`。證據：舊寫法把 `from darkroom_app import ...`（`tools/bench_preview.py`）誤判為私有 import；新寫法仍攔得住 `from darkroom._io`、`from darkroom import _io`、`import darkroom._render`。
