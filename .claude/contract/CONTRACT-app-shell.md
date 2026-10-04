@@ -37,7 +37,12 @@
 ## Verbatim Constants
 ```text
 預設埠號：8765
-略過提示列：這個 preset 有 {n} 項設定無法套用：{items_joined_by_、}
+略過提示列：這個 preset 有 {n} 項設定無法套用：{items_joined_by_、}（R4 起作廢，改用下兩行）
+略過提示列（觀感級，R4）：這個 preset 有 {n} 項會改變觀感的設定無法套用：{items_joined_by_、}
+略過附註（細節級，R4）：另有 {n} 項細節設定未套用：{items_joined_by_、}
+夾值標示（R3）：（原 {raw}）
+夾值 tooltip（R3）：preset × {strength}% = {raw}，已到{上限|下限} {bound}
+換照片提示（R5）：目前修改尚未儲存，切換照片會沿用
 預覽像素上限：1500000
 啟動完成（stdout）：darkroom 已啟動：http://127.0.0.1:{port}/
 設定檔：config.local.json（鍵：localllms_root、preset_dir）；環境變數：LOCALLLMS_ROOT
@@ -46,3 +51,26 @@
 ## 條文補丁（Patches）
 - R1（2026-10-04，指揮部判決）B7／A17 跳過判準：原文「`--query-compute-apps` 列出本程序以外的運算型程序就跳過」在 WDDM 下連桌面程式都列出，改成只看 Type C 後，使用者幾乎一直開著的 ComfyUI 仍讓量測永遠跳過，驗收形同虛設；改為「真的有人在用 GPU 才跳過」（使用率取樣中位數 > 15%，或 ComfyUI 佇列非空；佇列連不到當不忙），條文見 B7。
 - R2（2026-10-04，指揮部判決，依 R10 判為符合）B14 附帶：核心封緘測試 `test_no_private_imports_outside_tests` 的 regex 由 `from\s+darkroom\.?_\w*` 改為 `from\s+darkroom\._\w*`。證據：舊寫法把 `from darkroom_app import ...`（`tools/bench_preview.py`）誤判為私有 import；新寫法仍攔得住 `from darkroom._io`、`from darkroom import _io`、`import darkroom._render`。
+- R3（2026-10-04，介面審查第 4、11 點）微調語意改以畫面值為準（修訂 B5、B10）：
+  - 畫面值與後端最終值＝`clamp(clamp(preset 在該強度的值) + 微調)`（B5 原為 `clamp(preset 在該強度的值 + 微調)`）。
+  - 使用者把滑桿設到畫面值 v 時，微調＝`v − clamp(preset 在該強度的值)`；|微調| < 半個步長記為 0。例：對比 preset −75、強度 150% → preset×強度 −112.5、畫面 −100；拉到 −100＝微調 0（不得記成 +12.5），拉到 −90＝微調 +10。
+  - preset×強度超出範圍被夾住時，該列加 `.clamped`、數值旁顯示「夾值標示」、tooltip 用「夾值 tooltip」句型；tooltip 隨強度與微調即時更新。
+  - 微調仍是差值：改強度時畫面值＝`clamp(新的夾後 preset×強度 + 同一微調)`。
+  - 釘死測試：`test_overrides_added_after_clamped_strength`（後端）、`tests/js/test_logic.cjs` 的 slider 語意測試（前端）。
+- R4（2026-10-04，介面審查第 5 點）略過項分兩級（修訂 B11）：
+  - 細節級＝雜色減少（`ColorNoiseReduction*`、`LuminanceSmoothing`、`LuminanceNoiseReduction*`）、`SharpenDetail`、`SharpenEdgeMasking`、`GrainFrequency`、鏡頭校正（`AutoLateralCA`、`LensProfile*`、`Defringe*`、`VignetteAmount`、`VignetteMidpoint`）、`PostCropVignetteHighlightContrast`、`PostCropVignetteStyle`、負的 `PostCropVignetteRoundness`、讀檔時超出範圍被夾值的項目；其餘（白平衡絕對值、Look、CameraProfile、HDR、遮罩、點顏色、未知鍵）＝觀感級。
+  - preset 樹：有觀感級才標 ⚠（`.flag.major`）；只有細節級時標淡色小記號（`.flag.minor`）；分級由 `GET /api/preset_flags`（`{id: "major"|"minor"}`，沒有略過項的不列）提供，B3 的 5 個欄位不變。
+  - 提示列只列觀感級、用中文名稱（對照表 `darkroom_app/skips.py`），句型見常數；細節級以淡色附註列在後面；提示列固定在預覽工具列的一行，出現或消失都不改變預覽區的位置與大小。
+  - 釘死測試：`test_skip_banner_text`、`test_skip_levels`、`test_preset_flags`、`test_banner_does_not_move_preview`（瀏覽器量測，見截圖紀錄）。
+- R5（2026-10-04，介面審查第 1、2、12 點）換 preset 與復原（修訂 B9、B10）：
+  - 點 preset 時強度與微調都保留（取代 B9「強度回 100 且清空微調」）。
+  - 復原／重做：Ctrl+Z／Ctrl+Shift+Z（也接受 Ctrl+Y），至少 50 步，記錄 preset、強度、微調；一次拖動只記一步；換 preset、改強度、單項還原、還原全部、直接輸入數值各記一步；焦點在文字輸入框時不攔截。
+  - 未選 preset 時強度滑桿停用。換照片沿用目前設定（照片庫那一片再改），上方顯示「換照片提示」。
+  - 釘死測試：`tests/js/test_logic.cjs` 的 History 測試。
+- R6（2026-10-04，介面審查第 6、7、8 點與鍵盤、搜尋）：
+  - 鍵盤：preset 樹 `role=tree`、roving tabindex；↑↓ 移動焦點、Enter 套用 preset（資料夾則展開／收合）、→ 展開資料夾（已展開則移到第一個子項）、← 收合（已收合或是 preset 則移到上一層）；區塊標題是 `<button aria-expanded>`。
+  - 搜尋同時比對名稱與分類（group），空白分隔多個關鍵字，全部符合才列出（不分大小寫）；例如「電影」列出電影分類底下全部 preset。
+  - 視窗寬 820 時：強度滑桿可見且寬度 ≥ 200px、預覽區寬度 ≥ 400px（左欄自動收合，可用按鈕叫出；右欄縮窄）。
+  - 滑桿數值與強度數值可點兩下直接輸入（Enter 確認、Esc 取消，超出範圍夾值）；數值外觀是文字、重設強度的按鈕是「↺ 100%」按鈕外觀。
+  - 曲線區塊上方有唯讀小曲線圖，畫出 preset 套強度後的點曲線（RGB 與存在的各色版）；`GET /api/presets/{id}` 增加 `curves`。
+  - 釘死測試：`tests/js/test_logic.cjs`（樹鍵盤、搜尋、數值輸入、曲線強度）、`test_api_preset_detail_curves`、`test_layout_820`（瀏覽器量測，見截圖紀錄）。
