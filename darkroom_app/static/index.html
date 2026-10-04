@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>darkroom</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<header id="topbar">
+  <span class="brand">darkroom</span>
+  <form id="open-form" autocomplete="off">
+    <input type="text" id="photo-path" placeholder="照片路徑（JPEG／PNG／TIFF），例如 D:\Photos\IMG_0001.jpg" spellcheck="false">
+    <button type="submit" id="open-btn">開啟</button>
+  </form>
+  <button id="prev" title="上一張（←）" disabled>◀ 上一張</button>
+  <span id="position" class="mute">尚未開啟照片</span>
+  <button id="next" title="下一張（→）" disabled>下一張 ▶</button>
+  <span class="sp"></span>
+  <button id="reset-all" title="把所有微調歸零（回到 preset × 強度）">還原全部微調</button>
+  <span id="status" class="mute">預覽：待命</span>
+</header>
+
+<main id="editor">
+  <section class="col" id="col-lib">
+    <div class="libbar">
+      <input type="search" id="search" placeholder="搜尋 preset 名稱…" spellcheck="false">
+    </div>
+    <div class="sec-title" id="lib-count">preset 庫</div>
+    <div class="scroll tree" id="preset-tree" role="tree"></div>
+  </section>
+
+  <section class="col" id="col-pv">
+    <div class="pv-tools">
+      <button id="hold" title="按住看原圖（快捷鍵：按住 \）">按住看原圖</button>
+      <span class="sp"></span>
+      <span class="mute" id="photo-size"></span>
+    </div>
+    <div class="warnbar" id="skip-banner" hidden></div>
+    <div class="pv-wrap" id="preview">
+      <img id="preview-img" alt="預覽" hidden>
+      <div class="pv-empty" id="preview-empty">在上方輸入照片路徑後按「開啟」</div>
+      <span class="pv-label" id="pv-label" hidden>原圖</span>
+    </div>
+    <div class="strength">
+      <div class="row">
+        <span class="mute">目前 preset：</span><span class="pname" id="preset-name">（未選）</span>
+      </div>
+      <div class="row">
+        <label for="strength"><b>強度</b></label>
+        <input type="range" id="strength" min="0" max="200" step="1" value="100">
+        <span class="val" id="strength-value">100%</span>
+        <button id="strength-100" title="回到 100%">100%</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="col" id="col-sl">
+    <div class="scroll" id="sliders"></div>
+  </section>
+</main>
+
+<div id="toast" role="status"></div>
+<script src="/static/app.js"></script>
+</body>
+</html>

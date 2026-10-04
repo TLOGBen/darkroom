@@ -2,7 +2,6 @@
 write 16-bit PNG/TIFF or 8-bit JPEG. Unicode paths are fine (bytes go through numpy)."""
 import os
 
-import cv2
 import numpy as np
 
 READ_EXT = (".jpg", ".jpeg", ".png", ".tif", ".tiff")
@@ -10,6 +9,7 @@ WRITE_EXT = (".jpg", ".jpeg", ".png", ".tif", ".tiff")
 
 
 def read_image(path):
+    import cv2  # imported lazily so `import darkroom` stays light
     ext = os.path.splitext(path)[1].lower()
     if ext not in READ_EXT:
         raise ValueError(f"unsupported input format {ext!r} (JPEG/PNG/TIFF)")
@@ -37,6 +37,7 @@ def read_image(path):
 
 
 def write_image(path, img, jpeg_quality=95):
+    import cv2
     ext = os.path.splitext(path)[1].lower()
     if ext not in WRITE_EXT:
         raise ValueError(f"unsupported output format {ext!r} (PNG/TIFF 16-bit, JPEG 8-bit)")

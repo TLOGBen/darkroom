@@ -5,3 +5,5 @@ outputs/
 scratch/
 .playwright-mcp/
 .strategic-advance/
+config.local.json
+*.lnk

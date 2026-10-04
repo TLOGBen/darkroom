@@ -16,12 +16,12 @@ PHOTOS = os.path.join(REPO, ".claude", "wayfinder", "darkroom", "prototypes", "l
 
 
 def preset_dir():
-    """User's preset folder: DARKROOM_PRESET_DIR, else <LOCALLLMS_ROOT>/artifact/11_preset/xmp."""
+    """User's preset folder: DARKROOM_PRESET_DIR, else LOCALLLMS_ROOT / config.local.json (darkroom_app.config)."""
     d = os.environ.get("DARKROOM_PRESET_DIR")
     if d:
         return d
-    root = os.environ.get("LOCALLLMS_ROOT", "C:/Users/powde/workspace/LocalLLMs")
-    return os.path.join(root, "artifact", "11_preset", "xmp")
+    from darkroom_app import config
+    return config.preset_dir()
 
 
 def preset_files():

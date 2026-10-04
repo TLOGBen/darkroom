@@ -17,6 +17,7 @@ MSG_FORMAT = "不支援的輸出格式：{ext}（可用 .png、.tif、.tiff 16-b
 MSG_NODIR = "找不到資料夾：{preset_dir}"
 MSG_SCAN_FAIL = "解析失敗：{file_name}：{reason}"
 MSG_STRENGTH_CLAMP = "{key}（強度後超出範圍，已夾值）"
+NO_EXT = "（無副檔名）"  # shown as {ext} when the output path has no extension
 USAGE_APPLY = "python -m darkroom apply --preset <xmp> [--strength 0..200] [--overwrite] <input> <output>"
 USAGE_SCAN = "python -m darkroom scan <preset_dir>"
 
@@ -51,7 +52,7 @@ def cmd_apply(a):
         return 2
     ext = os.path.splitext(a.output)[1].lower()
     if ext not in _io.WRITE_EXT:
-        _err(MSG_FORMAT.format(ext=ext))
+        _err(MSG_FORMAT.format(ext=ext or NO_EXT))
         return 2
     try:
         params, name = _xmp.read_preset(a.preset)

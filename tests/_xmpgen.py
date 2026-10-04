@@ -8,7 +8,7 @@ HEAD = '''<x:xmpmeta xmlns:x="adobe:ns:meta/" x:xmptk="Adobe XMP Core 7.0">
 '''
 
 
-def xmp_text(attrs=None, name="Test Preset", curves=None, extra=""):
+def xmp_text(attrs=None, name="Test Preset", curves=None, extra="", group=None):
     attrs = dict({"ProcessVersion": "11.0", "Version": "15.3"}, **(attrs or {}))
     a = "".join(f'   crs:{k}="{v}"\n' for k, v in attrs.items())
     body = f'''   <crs:Name>
@@ -16,6 +16,13 @@ def xmp_text(attrs=None, name="Test Preset", curves=None, extra=""):
      <rdf:li xml:lang="x-default">{name}</rdf:li>
     </rdf:Alt>
    </crs:Name>
+'''
+    if group is not None:
+        body += f'''   <crs:Group>
+    <rdf:Alt>
+     <rdf:li xml:lang="x-default">{group}</rdf:li>
+    </rdf:Alt>
+   </crs:Group>
 '''
     for tag, pts in (curves or {}).items():
         lis = "".join(f"     <rdf:li>{x}, {y}</rdf:li>\n" for x, y in pts)

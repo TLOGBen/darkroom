@@ -193,6 +193,30 @@ class TestApply(unittest.TestCase):
             self.assertEqual(err.splitlines(), [MSG_STRENGTH.format(strength=bad)])
             self.assertFalse(os.path.exists(out_path))
 
+    def test_skip_line_exact_for_known_skipped(self):  # B14 (2): expected items written out, not read back
+        d = _util.tmpdir(self)
+        src = small_photo(d)
+        look = '   <crs:Look>\n    <rdf:Description crs:Name="Adobe Color"/>\n   </crs:Look>\n'
+        preset = _xmpgen.write(d, "skip.xmp", _xmpgen.xmp_text(
+            {"HDREditMode": "1", "Temperature": "5500", "Tint": "+10", "GrainAmount": "+20", "GrainFrequency": "70",
+             "Exposure2012": "+0.20"}, name="略過測試", extra=look))
+        out_path = os.path.join(d, "o.png")
+        rc, out, err = _util.run_cli("apply", "--preset", preset, src, out_path)
+        self.assertEqual(rc, 0, err)
+        self.assertEqual(out.splitlines(), [
+            MSG_OK.format(preset_name="略過測試", strength="100", output_path=out_path),
+            "略過：HDREditMode、Temperature、Tint、GrainFrequency、Look（Adobe Color）"])
+
+    def test_format_error_without_extension(self):  # B14 (3)
+        d = _util.tmpdir(self)
+        src = small_photo(d)
+        good = _xmpgen.write(d, "good.xmp", _xmpgen.xmp_text({"Exposure2012": "+1.00"}))
+        out_path = os.path.join(d, "noext")
+        rc, out, err = _util.run_cli("apply", "--preset", good, src, out_path)
+        self.assertEqual(rc, 2)
+        self.assertEqual(err.splitlines(), [MSG_FORMAT.format(ext="（無副檔名）")])
+        self.assertFalse(os.path.exists(out_path))
+
     def test_apply_error_lines(self):  # F8
         d = _util.tmpdir(self)
         src = small_photo(d)

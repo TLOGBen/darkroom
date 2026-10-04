@@ -255,20 +255,11 @@ class TestMasks(unittest.TestCase):  # A14
         self.assertLess(edge, 0.4)
 
 
-CUDA_CONTEXT_MIB = 512  # rough size of this process's CUDA context, which torch does not report
-
-
-def other_gpu_usage_mib():
-    """nvidia-smi used memory minus this process's share (torch reserved + context estimate), in MiB."""
-    import subprocess
-    try:
-        r = subprocess.run(["nvidia-smi", "--query-gpu=memory.used", "--format=csv,noheader,nounits",
-                            f"--id={torch.cuda.current_device()}"], capture_output=True, text=True, timeout=20)
-        used = float(r.stdout.strip().splitlines()[0])
-    except (OSError, ValueError, IndexError, subprocess.SubprocessError):
-        return None
-    own = torch.cuda.memory_reserved() / 2**20 + CUDA_CONTEXT_MIB
-    return used - own
+def other_compute_processes():
+    """A17 skip rule (amended with app-shell B7): compute processes other than this one, per nvidia-smi
+    --query-compute-apps (type C only; WDDM lists desktop programs as C+G). None if nvidia-smi fails."""
+    from darkroom_app import gpucheck
+    return gpucheck.other_compute_processes()
 
 
 RANGE_TABLE = """範圍表（未列者 -100～100）：Exposure2012 -5～5、LocalExposure2012 -4～4、SharpenRadius 0.5～3、Sharpness 0～150、
@@ -338,12 +329,12 @@ class TestSpeedAndDevice(unittest.TestCase):  # A17
         p = heavy_params()
         render(img, p)
         torch.cuda.synchronize()
-        others = other_gpu_usage_mib()
+        others = other_compute_processes()
         if others is None:
             self.skipTest("[A17] nvidia-smi unavailable: cannot check whether other processes use the GPU")
-        if others > 1024:
-            msg = (f"[A17] skipped: other processes hold about {others:.0f} MiB of GPU memory "
-                   f"(nvidia-smi used minus this process > 1 GiB); timing would not be representative")
+        if others:
+            from darkroom_app import gpucheck
+            msg = f"[A17] skipped: other compute processes on the GPU: {gpucheck.describe(others)}"
             print("\n" + msg)
             self.skipTest(msg)
         for _ in range(5):

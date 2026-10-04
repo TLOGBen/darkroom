@@ -196,7 +196,36 @@ PARENT = {"SharpenDetail": "Sharpness", "SharpenEdgeMasking": "Sharpness",
           "LocalToningHue": "LocalToningSaturation"}
 
 
+# B14 (1): the rendered keys written out independently of darkroom._coverage (one per renderer stage).
+_COLORS = ("Red", "Orange", "Yellow", "Green", "Aqua", "Blue", "Purple", "Magenta")
+RENDERED_KEYS = frozenset(
+    ["IncrementalTemperature", "IncrementalTint", "Exposure2012", "Contrast2012", "Highlights2012", "Shadows2012",
+     "Whites2012", "Blacks2012", "Clarity2012", "Texture", "Dehaze", "Vibrance", "Saturation",
+     "ParametricShadows", "ParametricDarks", "ParametricLights", "ParametricHighlights",
+     "ParametricShadowSplit", "ParametricMidtoneSplit", "ParametricHighlightSplit",
+     "SplitToningShadowHue", "SplitToningShadowSaturation", "SplitToningHighlightHue",
+     "SplitToningHighlightSaturation", "SplitToningBalance",
+     "ColorGradeMidtoneHue", "ColorGradeMidtoneSat", "ColorGradeGlobalHue", "ColorGradeGlobalSat",
+     "ColorGradeShadowLum", "ColorGradeMidtoneLum", "ColorGradeHighlightLum", "ColorGradeGlobalLum",
+     "ColorGradeBlending",
+     "RedHue", "RedSaturation", "GreenHue", "GreenSaturation", "BlueHue", "BlueSaturation", "ShadowTint",
+     "ConvertToGrayscale",
+     "PostCropVignetteAmount", "PostCropVignetteMidpoint", "PostCropVignetteFeather", "PostCropVignetteRoundness",
+     "GrainAmount", "GrainSize", "Sharpness", "SharpenRadius"]
+    + [f"{kind}Adjustment{c}" for kind in ("Hue", "Saturation", "Luminance") for c in _COLORS]
+    + [f"GrayMixer{c}" for c in _COLORS])
+LOCAL_RENDERED_KEYS = frozenset(
+    ["LocalExposure2012", "LocalContrast2012", "LocalHighlights2012", "LocalShadows2012", "LocalWhites2012",
+     "LocalBlacks2012", "LocalClarity2012", "LocalTexture", "LocalDehaze", "LocalTemperature", "LocalTint",
+     "LocalSaturation"])
+
+
 class TestCoverage(unittest.TestCase):  # A13 (full library)
+    def test_rendered_list_matches_coverage(self):  # B14 (1)
+        from darkroom import _coverage
+        self.assertEqual(RENDERED_KEYS, _coverage.RENDERED)
+        self.assertEqual(LOCAL_RENDERED_KEYS, _coverage.LOCAL_RENDERED)
+
     def test_every_effective_key_rendered_or_skipped(self):
         from darkroom import _coverage, _params
         no_effect = lambda k: NO_EFFECT.get(k, _params.DEFAULTS.get(k, 0.0))
@@ -223,14 +252,14 @@ class TestCoverage(unittest.TestCase):  # A13 (full library)
 
         for path in _util.preset_files():
             p = load_preset(path)
-            check(p.values, p.skipped, _coverage.RENDERED, path)
+            check(p.values, p.skipped, RENDERED_KEYS, path)
             for m in p.masks:
-                check(m["values"], p.skipped, _coverage.LOCAL_RENDERED, path)
+                check(m["values"], p.skipped, LOCAL_RENDERED_KEYS, path)
         # the three keys found unreported in seal round 1 (F3) are now reported wherever they have an effect
         self.assertEqual(counts, {"GrainFrequency": 173, "PostCropVignetteHighlightContrast": 20,
                                   "PostCropVignetteRoundness": 4})
         for k in ("GrainFrequency", "PostCropVignetteHighlightContrast", "PostCropVignetteStyle"):
-            self.assertNotIn(k, _coverage.RENDERED)
+            self.assertNotIn(k, RENDERED_KEYS)
 
 
 if __name__ == "__main__":
