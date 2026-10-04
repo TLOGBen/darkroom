@@ -1,4 +1,5 @@
 # CONTRACT — darkroom 核心函式庫（xmp → 參數 → GPU 渲染）
+> STATUS: sealed（2026-10-04）— 條文 A1～A21 符合；初次派遣 7 項 findings 已修（F4 依證據改合約、F5 依裁決記為已知限制）；複驗回歸全過、9 支新測試與 10 支探針（副本上執行）全數攔截；另記 3 項低嚴重度觀察併入 App 外殼切片
 
 ## 目標
 `python -m darkroom apply` 能把任一支援的 Lightroom preset 依強度套到 JPEG／PNG／TIFF 並輸出新檔；`scan` 能解析使用者全部 1466 個 xmp 並明確回報不支援的版本。App 與未來 ComfyUI 節點只靠公開 API 使用它。
