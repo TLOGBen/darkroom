@@ -55,22 +55,35 @@ class TestPageStructure(unittest.TestCase):
         for col, n in (("col-lib", 1), ("col-pv", 2), ("col-sl", 3)):
             self.assertRegex(css, r"#%s \{ grid-column: %d;" % (col, n))
 
-    def test_narrow_windows_keep_function_buttons(self):  # F1 / R6: never display:none in a media query
+    def test_narrow_windows_keep_function_buttons(self):  # F1 / R6 / N2 (H11): never hidden in a media query
         css = read("app.css")
         protected = ("#carry-hint", ".hint", "#reset-all", "#undo", "#redo", "#toggle-lib", "#toggle-sl",
                      "#prev", "#next", "#strength-100")
+        hiding = re.compile(r"display\s*:\s*none|visibility\s*:\s*hidden|(?<![\w-])(?:max-)?width\s*:\s*0(?:\.0*)?(?:px|%|em|rem)?\s*(?:;|!|$)"
+                            r"|(?<![\w-])(?:max-)?height\s*:\s*0(?:\.0*)?(?:px|%|em|rem)?\s*(?:;|!|$)|opacity\s*:\s*0(?:\.0*)?\s*(?:;|!|$)")
         for m in re.finditer(r"@media[^{]*\{((?:[^{}]*\{[^{}]*\})*)\s*\}", css):
             for sel, body in re.findall(r"([^{}]+)\{([^{}]*)\}", m.group(1)):
-                if re.search(r"display\s*:\s*none", body):
+                if hiding.search(body.strip()):
                     for p in protected:
-                        self.assertNotIn(p, sel, f"{p} hidden in a media query: {sel.strip()}")
+                        # the hint keeps its icon: only its long text child may be clipped
+                        if p in sel and not sel.strip().endswith((".hint-text", ".btn-text")):
+                            self.fail(f"{p} hidden in a media query: {sel.strip()} {{{body.strip()}}}")
         html = read("index.html")
+        for ident in ("reset-all", "undo", "redo", "toggle-lib", "toggle-sl", "prev", "next", "strength-100"):
+            tag = re.search(r'<[a-z]+ id="%s"[^>]*>' % ident, html).group(0)
+            self.assertNotRegex(tag, r"\shidden(?:[\s=>])", ident)
         self.assertRegex(html, r'<span id="carry-hint"[^>]*title="目前修改尚未儲存，切換照片會沿用"')
         self.assertRegex(html, r'<button id="reset-all"[^>]*title="[^"]+"')
 
     def test_app_changes_state_only_through_the_reducer(self):  # F2: the tested reducer is the only path
         js = read("app.js")
         self.assertEqual(len(re.findall(r"\bed = L\.reduce\(ed, ", js)), 1)
+        # N1 / H10: the only assignments to `ed` are its declaration and the reducer step (no rebinding)
+        assigns = [m.group(0).strip() for m in
+                   re.finditer(r"(?:let |var |const )?(?<![\w.$])ed\s*(?:=(?![=>])|\+=|\|\|=|&&=|\?\?=)[^;\n]*", js)]
+        self.assertEqual(assigns, ["let ed = L.initialEditor()", "ed = L.reduce(ed, action)"])
+        self.assertNotRegex(js, r"Object\.assign\(\s*ed\b")
+        self.assertNotRegex(js, r"(?<![\w.$])ed\s*\[[^\]]*\]\s*=[^=]")
         self.assertNotRegex(js, r"\bed\.(presetId|strength|tweaks|past|future)\s*=[^=]")
         self.assertNotRegex(js, r"\bed\.tweaks\[[^\]]+\]\s*=[^=]")
         self.assertNotRegex(js, r"delete\s+ed\.")
