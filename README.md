@@ -7,3 +7,10 @@
 - 核心：版本化的參數 schema（Lightroom crs 鍵名）＋torch GPU 渲染的函式庫
 - 介面：獨立本機 App（Python 後端＋Web 前端）
 - 模型：本機 llama-server（看圖給數值）；擴散模型透過 ComfyUI API（`C:/Users/powde/workspace/LocalLLMs`）
+
+## 執行環境
+
+- Python：LocalLLMs 的 darkroom 專用 Python（`runtimes/darkroom-python/py3.13.14-torch2.14.0-cu130/python.exe -s`），已有 torch（CUDA）、aiohttp、cv2、numpy、Pillow。
+- HEIC（iPhone 照片）：`python -s -m pip install --no-deps pillow-heif==1.8.0`（裝在上面的專用 Python；不要裝進 ComfyUI 的 python_embeded）。
+- 啟動 App：`pwsh -File tools/start.ps1`；桌面捷徑：`pwsh -File tools/make-shortcut.ps1`。
+- 測試：`python -s -m unittest discover -s tests`（前端邏輯測試需要 node）。

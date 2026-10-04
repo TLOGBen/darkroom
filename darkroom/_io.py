@@ -1,18 +1,23 @@
-"""Image IO: read JPEG/PNG/TIFF (8 or 16-bit, assumed sRGB) as HxWx3 float32 0..1;
+"""Image IO: read JPEG/PNG/TIFF (8 or 16-bit, assumed sRGB) and HEIC/HEIF (pillow-heif: colour profile,
+10-bit, orientation; see _heif) as HxWx3 float32 0..1 in sRGB encoding;
 write 16-bit PNG/TIFF or 8-bit JPEG. Unicode paths are fine (bytes go through numpy)."""
 import os
 
 import numpy as np
 
-READ_EXT = (".jpg", ".jpeg", ".png", ".tif", ".tiff")
+from . import _heif
+
+READ_EXT = (".jpg", ".jpeg", ".png", ".tif", ".tiff") + _heif.EXT
 WRITE_EXT = (".jpg", ".jpeg", ".png", ".tif", ".tiff")
 
 
 def read_image(path):
-    import cv2  # imported lazily so `import darkroom` stays light
     ext = os.path.splitext(path)[1].lower()
     if ext not in READ_EXT:
-        raise ValueError(f"unsupported input format {ext!r} (JPEG/PNG/TIFF)")
+        raise ValueError(f"unsupported input format {ext!r} (JPEG/PNG/TIFF/HEIC)")
+    if ext in _heif.EXT:
+        return _heif.read(path)
+    import cv2  # imported lazily so `import darkroom` stays light
     with open(path, "rb") as f:
         buf = np.frombuffer(f.read(), np.uint8)
     a = cv2.imdecode(buf, cv2.IMREAD_UNCHANGED | cv2.IMREAD_ANYDEPTH | cv2.IMREAD_IGNORE_ORIENTATION)

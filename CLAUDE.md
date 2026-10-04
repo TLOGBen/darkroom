@@ -12,6 +12,7 @@
 - 啟動：`tools/start.ps1`（專用 Python 跑 `python -s -m darkroom_app`，只綁 127.0.0.1、預設埠 8765，就緒後開瀏覽器）；桌面捷徑用 `tools/make-shortcut.ps1` 產生。LocalLLMs 路徑來自 `LOCALLLMS_ROOT` 或 `config.local.json`（不進 git，鍵：localllms_root、preset_dir）。
 - 延遲驗收：`python -s tools/bench_preview.py`（GPU 真的忙碌才跳過：使用率取樣中位數 > 15% 或 ComfyUI 佇列非空；`--force` 強制量測）。
 - 測試：`python -s -m unittest discover -s tests`。
+- HEIC：`read_image` 經 pillow-heif 讀 `.heic`／`.heif`（合約 `.claude/contract/CONTRACT-heic.md`）。安裝在 darkroom 專用 Python（**不要動 ComfyUI 的 python_embeded**）：`<LOCALLLMS_ROOT>/runtimes/darkroom-python/py3.13.14-torch2.14.0-cu130/python.exe -s -m pip install --no-deps pillow-heif==1.8.0`（2026-10-04 裝，帶 libheif 1.23.4；只新增這一個套件）。前端測試需要 node（`node --test`，不安裝套件）。
 
 - **先讀地圖**：`.claude/wayfinder/darkroom/map.md`（Destination、已定原則、Decisions so far、還看不清楚、不在範圍內）；每個決定的細節在 `issues/`，研究在 `research/`，實驗與原型在 `prototypes/`。用 `/common:wayfinder` 帶這個地圖路徑繼續；HTML 檢視：`map.html`（不要手改，改 markdown 後重跑 wayfinder 的 `render_map.py`）。
 - **計畫檔**：`.claude/think/comfyui-lightroom-preset-editor.md`（最初的 ① 調色引擎計畫；開頭註明載體已改，其餘仍有效）。
