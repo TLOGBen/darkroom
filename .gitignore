@@ -4,3 +4,4 @@ __pycache__/
 outputs/
 scratch/
 .playwright-mcp/
+.strategic-advance/
