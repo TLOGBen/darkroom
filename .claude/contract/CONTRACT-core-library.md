@@ -6,20 +6,21 @@
 ## 前提（Premises）
 - P1 已驗（2026-10-04 掃描 1466 個 xmp）：無 BOM；1464 個數值帶正號（`"+15"`）；PV 11.0×1277、15.4×101、10.0×31、6.7×57；每個檔都同時有 `SplitToning*` 與 `ColorGrade*`；21 個 `ConvertToGrayscale="True"`；1114 個 `WhiteBalance="Custom"`、約 300 個帶絕對 `Temperature`；曲線 `<rdf:li>x, y</rdf:li>`、2～16 點；漸層只有 `Mask/Gradient`（ZeroX/ZeroY/FullX/FullY）與 `Mask/CircularGradient`（Top/Left/Bottom/Right/Angle/Midpoint/Roundness/Feather/Flipped）；40 個 `HDREditMode`；80 個 `<crs:Look>`。
 - P2 已驗：執行環境 `runtimes/darkroom-python/py3.13.14-torch2.14.0-cu130/python.exe`，torch CUDA 可用（戰役 runtime 前線證據）。
-- P3 未驗、不入條文：渲染結果與 Lightroom 的接近程度（留給校正集）；「強度內插」與 Lightroom Amount 的實際行為是否一致。
+- P3 未驗、不入條文：渲染結果與 Lightroom 的接近程度（留給校正集）；「強度內插」與 Lightroom Amount 的實際行為是否一致；放射漸層 `Flipped` 的方向、`LocalExposure2012` 的 EV 對應（執行者暫定：Flipped=true＝效果在橢圓內、±1＝±4 EV，列為校正項目）。
+- P4 已驗（2026-10-04 修訂，主 session 重新掃描）：57 個 PV 6.7 的 preset 全部使用 `*2012` 鍵（Contrast2012、Highlights2012、Shadows2012、Whites2012、Blacks2012、Clarity2012 各 57、Exposure2012 39），是 PV2012 而非 PV2010 舊滑桿——**改為支援**。
 
 ## 可斷言條文
 - [ ] A1：`python -m unittest discover -s tests` 結束碼 0（不得依賴 pytest 等未安裝套件）。
 - [ ] A2：公開 API＝`darkroom/__init__.py` 的 `__all__` 恰為 `load_preset`、`Params`、`render`、`SCHEMA_VERSION`、`UnsupportedPresetError`；`tests/` 外不得 import `darkroom._*` 或子模組私有名稱。
-- [ ] A3：`scan` 對使用者 preset 資料夾輸出恰一行（見常數），值為 `1409／1466`、不支援 `57`、失敗 `0`。
-- [ ] A4：PV 6.7 的 xmp 由 `load_preset` 拋 `UnsupportedPresetError`；`apply` 印錯誤行（見常數）、結束碼 2、不得產生輸出檔。
+- [ ] A3：`scan` 對使用者 preset 資料夾輸出恰一行（見常數），值為 `1466／1466`、不支援 `0`、失敗 `0`。
+- [ ] A4：支援的 ProcessVersion＝`6.7`、`10.0`、`11.0`、`15.4`（以及同一主版號的其他小版號）；其他版本（例如不帶 `*2012` 鍵的 PV2010 以前）由 `load_preset` 拋 `UnsupportedPresetError`；`apply` 印錯誤行（見常數）、結束碼 2、不得產生輸出檔（用合成的舊版 xmp 測）。
 - [ ] A5：數值解析接受正號與小數（`"+15"`、`"-0.24"`、`"+0.80"`）；任何已知數值鍵解析失敗＝該 preset 解析失敗，不得默默當 0。
 - [ ] A6：參數格式＝`{"schema": SCHEMA_VERSION, "values": {...}, "curves": {...}, "masks": [...], "skipped": [...]}`；`values` 的鍵是去掉 `crs:` 的 Lightroom 名稱；`Params` 轉 JSON 再讀回與原物件相等。
 - [ ] A7：強度 s∈[0, 2]（CLI 的 0～200%）：數值滑桿＝`default + s × (v − default)`，預設值取自單一預設表（見常數，未列者預設 0）；色相角度鍵（`SplitToningShadowHue`、`SplitToningHighlightHue`、`ColorGrade*Hue`）不縮放；曲線點的 y＝`x + s × (y − x)` 再夾到 0～255；布林鍵（`ConvertToGrayscale`）在 s>0 時生效。
 - [ ] A8：s=0 時 `render` 的浮點輸出與輸入（sRGB 0～1）逐像素最大差 ≤ 1e-4。
 - [ ] A9：`Blacks2012` 正值使最暗的灰階變亮、負值變暗（測試用灰階梯，不得反向）。
 - [ ] A10：陰影／亮部色調只讀 `SplitToning*`，中間調／整體只讀 `ColorGrade*Midtone*`、`ColorGrade*Global*`；同一色調不得被套用兩次。
-- [ ] A11：`ConvertToGrayscale` 生效時輸出每個像素 R=G=B（差 ≤ 1e-4）。
+- [ ] A11：`ConvertToGrayscale` 生效時先轉黑白（套 `GrayMixer*` 權重）再套顏色分級／分離色調；沒有任何色調飽和度大於 0 時，輸出每個像素 R=G=B（差 ≤ 1e-4）；有色調時輸出不得是 R=G=B（調色黑白不得被吃掉）。
 - [ ] A12：非 RAW 輸入時絕對 `Temperature`／`Tint` 不套用、列入 `skipped`；只用 `IncrementalTemperature`／`IncrementalTint`。
 - [ ] A13：`<crs:Look>`、`HDREditMode`、不認得的遮罩種類都列入 `skipped`，`apply` 印略過行；不得默默丟棄。
 - [ ] A14：線性與放射狀漸層依 xmp 幾何（座標為 0～1 的相對值、`MaskInverted`、`Flipped`）產生 0～1 的遮罩，只在遮罩內套該組局部調整。
@@ -27,6 +28,9 @@
 - [ ] A16：`apply` 的輸出路徑等於輸入路徑、或已存在且沒帶 `--overwrite` 時，印錯誤行、結束碼 2、不寫檔。
 - [ ] A17：在 CUDA 上對 1.5MP 圖跑完整全域管線，熱機後 20 次的中位數 ≤ 25 ms；無 CUDA 時自動用 CPU 且結果與 CUDA 差 ≤ 1e-3。
 - [ ] A18：色彩管線：sRGB → 線性光工作空間 → sRGB 的往返，對色域內顏色最大差 ≤ 1e-4。
+- [ ] A19：所有數值參數在進入渲染前夾到範圍表（見常數；未列的 ±100）；超出範圍的值不得讓記憶體或時間失控（測試：把半徑、顆粒大小等設成 1e9 時 render 在 1.5MP 圖上 10 秒內完成且不配置超過 2GB 的張量），夾值的鍵列入 `skipped`。
+- [ ] A20：xmp 用不解析外部實體與 DTD 的 XML 解析器讀取（`xml.etree.ElementTree` 加上拒絕 DOCTYPE，或等效做法）；帶 `<!DOCTYPE` 或 `<!ENTITY` 的檔案＝解析失敗；不得再以正規表示式抽屬性作為唯一解析手段。
+- [ ] A21：用 darkroom 專用 Python 在任意目錄下執行 `python -m darkroom scan <preset_dir>` 可以跑（不需要先 cd 到 repo、不需要設 PYTHONPATH）。
 
 ## 錯不起表面（Surface Inventory）
 | 表面 | 格式 | 影響（資產 → 後果｜類別） | 釘死測試 |
@@ -43,7 +47,7 @@
 SCHEMA_VERSION = "darkroom-params/1"
 apply 成功：已套用：{preset_name}（強度 {strength}%）→ {output_path}
 apply 略過：略過：{skipped_items_joined_by_、}
-scan 摘要：已解析 {ok}／{total}，不支援 {unsupported}（ProcessVersion 6.7），失敗 {failed}
+scan 摘要：已解析 {ok}／{total}，不支援 {unsupported}，失敗 {failed}
 錯誤（版本）：不支援的 preset 版本：ProcessVersion {pv}（{file_name}）
 錯誤（覆寫）：輸出檔已存在或與輸入相同：{output_path}（要覆寫請加 --overwrite）
 CLI：python -m darkroom apply --preset <xmp> [--strength 0..200] [--overwrite] <input> <output>
@@ -53,4 +57,10 @@ CLI：python -m darkroom scan <preset_dir>
   GrainSize 25、GrainFrequency 50、PostCropVignetteMidpoint 50、PostCropVignetteFeather 50、PostCropVignetteRoundness 0、
   PostCropVignetteStyle 1、PostCropVignetteHighlightContrast 0、ParametricShadowSplit 25、ParametricMidtoneSplit 50、
   ParametricHighlightSplit 75、ColorGradeBlending 50、SplitToningBalance 0
+範圍表（未列者 -100～100）：Exposure2012 -5～5、LocalExposure2012 -4～4、SharpenRadius 0.5～3、Sharpness 0～150、
+  SharpenDetail/SharpenEdgeMasking/LuminanceSmoothing/LuminanceNoiseReductionDetail/LuminanceNoiseReductionContrast/
+  ColorNoiseReduction/ColorNoiseReductionDetail/ColorNoiseReductionSmoothness/GrainAmount/GrainSize/GrainFrequency/
+  PostCropVignetteMidpoint/PostCropVignetteFeather/ParametricShadowSplit/ParametricMidtoneSplit/ParametricHighlightSplit/
+  SplitToningShadowSaturation/SplitToningHighlightSaturation/ColorGradeMidtoneSat/ColorGradeGlobalSat/ColorGradeBlending 0～100、
+  SplitToningShadowHue/SplitToningHighlightHue/ColorGradeMidtoneHue/ColorGradeGlobalHue 0～360、曲線點 0～255
 ```
