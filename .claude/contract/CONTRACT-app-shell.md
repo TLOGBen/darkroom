@@ -76,7 +76,7 @@ tooltip 後綴（R3，依序接在上兩行之後）：有微調時「；微調 
   - 鍵盤：preset 樹 `role=tree`、roving tabindex；↑↓ 移動焦點、Enter 套用 preset（資料夾則展開／收合）、→ 展開資料夾（已展開則移到第一個子項）、← 收合（已收合或是 preset 則移到上一層）；區塊標題是 `<button aria-expanded>`。
   - 搜尋同時比對名稱與分類（group），空白分隔多個關鍵字，全部符合才列出（不分大小寫）；例如「電影」列出電影分類底下全部 preset。
   - 視窗寬 820 時：強度滑桿可見且寬度 ≥ 200px、預覽區寬度 ≥ 400px（左欄自動收合，可用按鈕叫出；右欄縮窄）。
-  - 窄視窗不得藏掉功能按鈕或提示（復原、重做、還原全部、上一張／下一張、欄位開關、↺ 100%、換照片提示）：可以縮成圖示，但要保留 tooltip；任何 media query 都不得對它們用 `display: none`、`visibility: hidden`、`width: 0`、`height: 0`（含 `max-` 版本）、`opacity: 0`，`index.html` 裡也不得帶 `hidden` 屬性（換照片提示除外：依 R5 條件由程式切換；縮成圖示時只准裁掉長文字子元素）（封緘第 1 輪 F1、F6；R8 擴充）。
+  - 窄視窗不得藏掉功能按鈕或提示（復原、重做、還原全部、上一張／下一張、欄位開關、↺ 100%、換照片提示）：可以縮成圖示，但要保留 tooltip；任何 media query 都不得對它們用 `display: none`、`visibility: hidden`、`width: 0`、`height: 0`（含 `max-` 版本）、`opacity: 0`，`index.html` 裡也不得帶 `hidden` 屬性（換照片提示除外：依 R5 條件由程式切換；縮成圖示時只准裁掉長文字子元素）（封緘第 1 輪 F1、F6；R8 擴充）。判斷方式與完整禁止清單（巢狀 `@media`／`@supports`、逗號逐項判斷、clip、1px、`transform: scale(0)` 等）見 `CONTRACT-heic.md` H11，兩份合約一致。
   - 滑桿數值與強度數值可點兩下直接輸入（Enter 確認、Esc 取消，超出範圍夾值）；數值外觀是文字、重設強度的按鈕是「↺ 100%」按鈕外觀。
   - 曲線區塊上方有唯讀小曲線圖，畫出 preset 套強度後的點曲線（RGB 與存在的各色版）；`GET /api/presets/{id}` 增加 `curves`。
   - 釘死測試：`tests/js/test_logic.cjs`（樹鍵盤、搜尋、數值輸入、曲線強度）、`test_api_preset_detail_curves`、`test_layout_820`（瀏覽器量測，見截圖紀錄）。
