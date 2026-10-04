@@ -17,6 +17,10 @@
 
 ## Decisions so far
 
+- [① App 的執行環境與啟動](issues/21-app-runtime.md) — 複製 ComfyUI 的 python_embeded 當專用（LocalLLMs runtimes/darkroom-python/），darkroom 自己的啟動捷徑；App 自己協調 llama-server／ComfyUI
+
+- [三塊的先後順序與交接點？](issues/11-sequencing.md) — ① alpha（函式庫＋App＋校正）→ RAW → ② AI 建議 → AI 遮罩 → ③（去雜物、美顏、身形、放大／重畫、光線調整）；交接用參數 JSON／遮罩圖＋參數／新圖層程式貼回
+
 - [① 載體：放在 ComfyUI，還是做成獨立的本機修圖 App？](issues/20-host-platform.md) — 核心函式庫＋獨立本機 App（Python 後端＋Web 前端、直呼 llama-server），ComfyUI 只當擴散模型後端；取代「單一節點＋9 相片編輯」
 
 - [別人的 AI 修圖都怎麼做？（研究）](issues/19-ai-photo-editing-landscape.md) — 商業產品 AI 以參數式為主、生成只用在移除；建議核心函式庫＋獨立本機 App、ComfyUI 只當擴散模型後端（前例 RapidRAW、Krita）；ComfyUI 讀寫 8-bit、無 ICC／EXIF
@@ -59,7 +63,6 @@
 
 - **57 個舊版處理流程（PV2010，ProcessVersion 6.7）的 preset**：用的是舊那套滑桿，不在現在的近似方法範圍內；要不要支援、怎麼換算到新版，等 ① 的新版流程定案後再問。（另：處理流程版本 11.0 有 1277 個、15.4 有 101 個、10.0 有 31 個。）
 
-- **App 的執行環境與啟動**：App 用哪個 Python（照 CLAUDE.md，Python 執行程式要裝進專用的 CPython、不用 venv）、放 projects/<名稱>/、操作台 profiles.json 的啟動項目、跟 ComfyUI 同時開時 GPU 怎麼分。
 
 ## Out of scope
 
