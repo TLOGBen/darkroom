@@ -17,6 +17,8 @@
 
 ## Decisions so far
 
+- **照片庫（最小版）移入 alpha**（使用者 2026-10-04，改為獨立 App 後）：資料夾縮圖格、每張照片自動記住修改（`darkroom-params/1` 參數檔，原圖不動）、複製修改套到其他照片；星等、收藏集、搜尋、批次匯出留到後面。原本「照片專案／目錄」列在不在範圍內，是因為當時載體是 ComfyUI 節點。
+
 - [① App 的執行環境與啟動](issues/21-app-runtime.md) — 複製 ComfyUI 的 python_embeded 當專用（LocalLLMs runtimes/darkroom-python/），darkroom 自己的啟動捷徑；App 自己協調 llama-server／ComfyUI
 
 - [三塊的先後順序與交接點？](issues/11-sequencing.md) — ① alpha（函式庫＋App＋校正）→ RAW → ② AI 建議 → AI 遮罩 → ③（去雜物、美顏、身形、放大／重畫、光線調整）；交接用參數 JSON／遮罩圖＋參數／新圖層程式貼回
@@ -55,6 +57,8 @@
 
 ## Not yet specified
 
+- **照片庫完整版**：星等、旗標、收藏集、搜尋、批次匯出、參數檔放哪（照片旁或 App 資料夾）與同步規則。
+
 - **RAW 管線細節**：解馬賽克用哪個、相機色彩描述檔（preset 裡 `CameraProfile` 是 Default Color 687、Embedded 603、Adobe Standard 37…）怎麼對應、白平衡從絕對值還是增量；等 ① 的 JPEG 版定案後才問得清楚。
 - **80 個引用 Adobe 內建 Look 的 preset**：有沒有合法的描述檔來源（Adobe DNG Converter？）。
 - **② 的互動方式**：AI 建議怎麼呈現給使用者（一鍵套用？逐項接受？），系統提示詞內容。
@@ -68,6 +72,5 @@
 
 - [② preset 效果概念地圖怎麼建、AI 怎麼挑？](issues/13-preset-concept-map.md) — **AI 自動挑 preset 與靈感模式拿掉**（使用者 2026-10-04，看過實驗後判斷不值得：LLM 挑選不穩定）；preset 由使用者自己挑
 
-- **照片專案／目錄**（像 Lightroom 那樣管理一批照片與各自的設定）：使用者確認「專案資料夾」指 preset 分組。
 - **用 AI 取代程式調色**（整個 preset 寫成提示詞讓 Qwen 重畫）：違反已定原則。
 - **逐像素重現 Adobe 的結果**：演算法未公開，做不到；目標是觀感相近。
