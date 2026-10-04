@@ -16,6 +16,66 @@ def read(name):
         return f.read()
 
 
+def css_rules(css):
+    """[(enclosing at-rules, selector, declarations)] for every style rule, at any nesting depth."""
+    css = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
+    rules = []
+
+    def walk(text, ctx):
+        i = 0
+        while True:
+            j = text.find("{", i)
+            if j < 0:
+                return
+            head = text[i:j].strip()
+            depth, k = 1, j + 1
+            while k < len(text) and depth:
+                depth += {"{": 1, "}": -1}.get(text[k], 0)
+                k += 1
+            body = text[j + 1:k - 1]
+            if head.startswith("@"):
+                walk(body, ctx + (" ".join(head.split()),))
+            else:
+                rules.append((ctx, head, body))
+            i = k
+    walk(css, ())
+    return rules
+
+
+def split_selectors(selector):
+    """Split a selector list on top-level commas (not inside parentheses)."""
+    out, depth, cur = [], 0, ""
+    for ch in selector:
+        depth += {"(": 1, ")": -1}.get(ch, 0)
+        if ch == "," and depth == 0:
+            out.append(cur.strip())
+            cur = ""
+        else:
+            cur += ch
+    out.append(cur.strip())
+    return [" ".join(s.split()) for s in out if s.strip()]
+
+
+_LEN0 = r"0(?:\.0*)?(?:px|%|em|rem|vw|vh)?"
+_HIDING = re.compile(
+    r"(?:^|[;{\s])(?:"
+    r"display\s*:\s*none"
+    r"|visibility\s*:\s*(?:hidden|collapse)"
+    r"|(?:max-)?(?:width|height)\s*:\s*(?:" + _LEN0 + r"|1px|0?\.\d+px)\s*(?:;|!|$)"
+    r"|opacity\s*:\s*0(?:\.0*)?\s*(?:;|!|$)"
+    r"|transform\s*:[^;]*scale[xy]?\(\s*0(?:\.0*)?\s*[,)]"
+    r"|clip\s*:\s*rect\("
+    r"|clip-path\s*:"
+    r"|font-size\s*:\s*0(?:\.0*)?(?:px|em|rem|%)?\s*(?:;|!|$)"
+    r"|text-indent\s*:\s*-\d{3,}"
+    r"|(?:left|right|top)\s*:\s*-\d{3,}px"
+    r")", re.I | re.M)
+
+
+def hides(body):
+    return bool(_HIDING.search(body))
+
+
 class TestLogicJs(unittest.TestCase):
     def test_logic_suite(self):  # B13 / F3: the front-end suite must run; a missing node is a failure, not a skip
         self.assertIsNotNone(NODE, "node not found: the front-end tests (node --test) cannot be skipped")
@@ -59,15 +119,21 @@ class TestPageStructure(unittest.TestCase):
         css = read("app.css")
         protected = ("#carry-hint", ".hint", "#reset-all", "#undo", "#redo", "#toggle-lib", "#toggle-sl",
                      "#prev", "#next", "#strength-100")
-        hiding = re.compile(r"display\s*:\s*none|visibility\s*:\s*hidden|(?<![\w-])(?:max-)?width\s*:\s*0(?:\.0*)?(?:px|%|em|rem)?\s*(?:;|!|$)"
-                            r"|(?<![\w-])(?:max-)?height\s*:\s*0(?:\.0*)?(?:px|%|em|rem)?\s*(?:;|!|$)|opacity\s*:\s*0(?:\.0*)?\s*(?:;|!|$)")
-        for m in re.finditer(r"@media[^{]*\{((?:[^{}]*\{[^{}]*\})*)\s*\}", css):
-            for sel, body in re.findall(r"([^{}]+)\{([^{}]*)\}", m.group(1)):
-                if hiding.search(body.strip()):
-                    for p in protected:
-                        # the hint keeps its icon: only its long text child may be clipped
-                        if p in sel and not sel.strip().endswith((".hint-text", ".btn-text")):
-                            self.fail(f"{p} hidden in a media query: {sel.strip()} {{{body.strip()}}}")
+        checked = 0
+        for ctx, selector, body in css_rules(css):
+            if not any(c.startswith("@media") for c in ctx):          # any depth: @supports inside @media too
+                continue
+            if not hides(body):
+                continue
+            for item in split_selectors(selector):                     # judge every comma-separated item
+                checked += 1
+                # exception (R6 / H11): only the long-text child of a shrunk control may be clipped
+                if item.endswith((".hint-text", ".btn-text")):
+                    continue
+                for p in protected:
+                    if p in item:
+                        self.fail(f"{p} hidden in a media query: {item} {{{body.strip()}}} in {ctx}")
+        self.assertGreater(checked, 0)                                  # the clipped text children are seen
         html = read("index.html")
         for ident in ("reset-all", "undo", "redo", "toggle-lib", "toggle-sl", "prev", "next", "strength-100"):
             tag = re.search(r'<[a-z]+ id="%s"[^>]*>' % ident, html).group(0)
