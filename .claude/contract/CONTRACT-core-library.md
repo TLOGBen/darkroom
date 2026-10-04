@@ -74,3 +74,6 @@ CLI：python -m darkroom scan <preset_dir>
   SplitToningShadowSaturation/SplitToningHighlightSaturation/ColorGradeMidtoneSat/ColorGradeGlobalSat/ColorGradeBlending 0～100、
   SplitToningShadowHue/SplitToningHighlightHue/ColorGradeMidtoneHue/ColorGradeGlobalHue/ColorGradeShadowHue/ColorGradeHighlightHue/LocalToningHue 0～360、曲線點 0～255
 ```
+
+## 條文補丁（Patches）
+- K1（2026-10-04，HEIC 合約 H1～H6）`read_image` 加讀 `.heic`／`.heif`（不分大小寫，經 pillow-heif 1.8.0）：只解主影像、10-bit 不降 8-bit、內嵌 ICC／nclx 轉成 sRGB 編碼、方向照 libheif（不再套 EXIF）、壞檔拋 `ValueError`。JPEG／PNG／TIFF 的行為不變（仍假設 sRGB、不讀 ICC、忽略 EXIF 方向）。細節與容差見 `CONTRACT-heic.md`。
