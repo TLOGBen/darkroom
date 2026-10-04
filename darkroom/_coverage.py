@@ -21,31 +21,62 @@ RENDERED = frozenset([
     "ColorGradeBlending",
     "RedHue", "RedSaturation", "GreenHue", "GreenSaturation", "BlueHue", "BlueSaturation", "ShadowTint",
     "ConvertToGrayscale",
-    "PostCropVignetteAmount", "PostCropVignetteMidpoint", "PostCropVignetteFeather", "PostCropVignetteRoundness",
-    "PostCropVignetteStyle", "PostCropVignetteHighlightContrast",
-    "GrainAmount", "GrainSize", "GrainFrequency",
+    "PostCropVignetteAmount", "PostCropVignetteMidpoint", "PostCropVignetteFeather",
+    "PostCropVignetteRoundness",  # positive values only; negative ones are reported (see unrendered_active)
+    "GrainAmount", "GrainSize",
     "Sharpness", "SharpenRadius",
     *_HSL, *_GRAY,
 ])
 
-# Sub-settings of a feature: only meaningful when the feature's main amount is on (reported via that amount).
-DETAIL = frozenset([
-    "SharpenDetail", "SharpenEdgeMasking", "LuminanceNoiseReductionDetail", "LuminanceNoiseReductionContrast",
-    "ColorNoiseReductionDetail", "ColorNoiseReductionSmoothness", "DefringePurpleHueLo", "DefringePurpleHueHi",
-    "DefringeGreenHueLo", "DefringeGreenHueHi", "LensProfileDistortionScale", "LensProfileVignettingScale",
-    "VignetteMidpoint", "CropConstrainToWarp",
-    # absolute white balance is reported by name (Temperature / Tint) by the parser
-    "Temperature", "Tint",
-])
+# Sub-settings that do nothing while their parent amount sits at its inactive value. When the parent is on and
+# the sub-setting differs from its default, it is reported like any other unrendered setting.
+DETAIL_PARENT = {
+    "SharpenDetail": "Sharpness", "SharpenEdgeMasking": "Sharpness",
+    "LuminanceNoiseReductionDetail": "LuminanceSmoothing", "LuminanceNoiseReductionContrast": "LuminanceSmoothing",
+    "ColorNoiseReductionDetail": "ColorNoiseReduction", "ColorNoiseReductionSmoothness": "ColorNoiseReduction",
+    "DefringePurpleHueLo": "DefringePurpleAmount", "DefringePurpleHueHi": "DefringePurpleAmount",
+    "DefringeGreenHueLo": "DefringeGreenAmount", "DefringeGreenHueHi": "DefringeGreenAmount",
+    "LensProfileDistortionScale": "LensProfileEnable", "LensProfileVignettingScale": "LensProfileEnable",
+    "VignetteMidpoint": "VignetteAmount",
+    "GrainFrequency": "GrainAmount",
+    "PostCropVignetteStyle": "PostCropVignetteAmount", "PostCropVignetteHighlightContrast": "PostCropVignetteAmount",
+    "ColorGradeShadowHue": "ColorGradeShadowSat", "ColorGradeHighlightHue": "ColorGradeHighlightSat",
+    "LocalToningHue": "LocalToningSaturation",
+}
 
-# Value at which an unrendered setting does nothing (otherwise 0).
+# Absolute white balance: kept as data, always reported by name by the parser (A12).
+ABSOLUTE_WB = frozenset(["Temperature", "Tint"])
+
+# Value at which an unrendered setting does nothing (otherwise its default from the defaults table).
 INACTIVE = {"PerspectiveScale": 100.0, "CurveRefineSaturation": 100.0, "ColorNoiseReduction": 0.0}
+
+
+def inactive_value(key):
+    from ._params import default
+    return INACTIVE.get(key, default(key))
+
+
+def unrendered_active(key, values, rendered=None):
+    """True when `key` is present with an effect the renderer does not apply (so it belongs in skipped)."""
+    rendered = RENDERED if rendered is None else rendered
+    v = values[key]
+    if key == "PostCropVignetteRoundness":
+        return v < 0 and values.get("PostCropVignetteAmount", 0.0) != 0
+    if key in rendered or key in ABSOLUTE_WB:
+        return False
+    parent = DETAIL_PARENT.get(key)
+    if parent is not None:
+        if values.get(parent, inactive_value(parent)) == inactive_value(parent):
+            return False
+        from ._params import default
+        return v != default(key)
+    return v != inactive_value(key)
+
 
 LOCAL_RENDERED = frozenset([
     "LocalExposure2012", "LocalContrast2012", "LocalHighlights2012", "LocalShadows2012", "LocalWhites2012",
     "LocalBlacks2012", "LocalClarity2012", "LocalTexture", "LocalDehaze", "LocalTemperature", "LocalTint",
     "LocalSaturation",
 ])
-LOCAL_DETAIL = frozenset(["LocalToningHue"])
 
 SUPPORTED_MASKS = ("Mask/Gradient", "Mask/CircularGradient")

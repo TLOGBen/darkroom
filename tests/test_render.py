@@ -255,12 +255,28 @@ class TestMasks(unittest.TestCase):  # A14
         self.assertLess(edge, 0.4)
 
 
+CUDA_CONTEXT_MIB = 512  # rough size of this process's CUDA context, which torch does not report
+
+
+def other_gpu_usage_mib():
+    """nvidia-smi used memory minus this process's share (torch reserved + context estimate), in MiB."""
+    import subprocess
+    try:
+        r = subprocess.run(["nvidia-smi", "--query-gpu=memory.used", "--format=csv,noheader,nounits",
+                            f"--id={torch.cuda.current_device()}"], capture_output=True, text=True, timeout=20)
+        used = float(r.stdout.strip().splitlines()[0])
+    except (OSError, ValueError, IndexError, subprocess.SubprocessError):
+        return None
+    own = torch.cuda.memory_reserved() / 2**20 + CUDA_CONTEXT_MIB
+    return used - own
+
+
 RANGE_TABLE = """範圍表（未列者 -100～100）：Exposure2012 -5～5、LocalExposure2012 -4～4、SharpenRadius 0.5～3、Sharpness 0～150、
   SharpenDetail/SharpenEdgeMasking/LuminanceSmoothing/LuminanceNoiseReductionDetail/LuminanceNoiseReductionContrast/
   ColorNoiseReduction/ColorNoiseReductionDetail/ColorNoiseReductionSmoothness/GrainAmount/GrainSize/GrainFrequency/
   PostCropVignetteMidpoint/PostCropVignetteFeather/ParametricShadowSplit/ParametricMidtoneSplit/ParametricHighlightSplit/
   SplitToningShadowSaturation/SplitToningHighlightSaturation/ColorGradeMidtoneSat/ColorGradeGlobalSat/ColorGradeBlending 0～100、
-  SplitToningShadowHue/SplitToningHighlightHue/ColorGradeMidtoneHue/ColorGradeGlobalHue 0～360、曲線點 0～255"""
+  SplitToningShadowHue/SplitToningHighlightHue/ColorGradeMidtoneHue/ColorGradeGlobalHue/ColorGradeShadowHue/ColorGradeHighlightHue/LocalToningHue 0～360、曲線點 0～255"""
 
 
 class TestRangeClamp(unittest.TestCase):  # A19
@@ -307,7 +323,9 @@ class TestRangeClamp(unittest.TestCase):  # A19
             for k in keys.split("/"):
                 expect[k] = (float(lo), float(hi))
         self.assertEqual(expect.pop("CURVE"), _params.CURVE_RANGE)
-        self.assertGreaterEqual(len(expect), 29)
+        self.assertGreaterEqual(len(expect), 32)
+        for k in ("ColorGradeShadowHue", "ColorGradeHighlightHue", "LocalToningHue"):
+            self.assertEqual(expect[k], (0.0, 360.0))
         for k, r in expect.items():
             self.assertEqual(_params.value_range(k), r, k)
         self.assertEqual(_params.value_range("Contrast2012"), (-100.0, 100.0))
@@ -318,6 +336,16 @@ class TestSpeedAndDevice(unittest.TestCase):  # A17
     def test_full_pipeline_15mp_median(self):
         img = torch.rand(1, 3, 1000, 1500, device="cuda")
         p = heavy_params()
+        render(img, p)
+        torch.cuda.synchronize()
+        others = other_gpu_usage_mib()
+        if others is None:
+            self.skipTest("[A17] nvidia-smi unavailable: cannot check whether other processes use the GPU")
+        if others > 1024:
+            msg = (f"[A17] skipped: other processes hold about {others:.0f} MiB of GPU memory "
+                   f"(nvidia-smi used minus this process > 1 GiB); timing would not be representative")
+            print("\n" + msg)
+            self.skipTest(msg)
         for _ in range(5):
             render(img, p)
         torch.cuda.synchronize()

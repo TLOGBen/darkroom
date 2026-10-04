@@ -10,6 +10,13 @@ MSG_SKIP = "略過：{items}"
 MSG_SCAN = "已解析 {ok}／{total}，不支援 {unsupported}，失敗 {failed}"
 MSG_PV = "不支援的 preset 版本：ProcessVersion {pv}（{file_name}）"
 MSG_EXISTS = "輸出檔已存在或與輸入相同：{output_path}（要覆寫請加 --overwrite）"
+MSG_STRENGTH = "強度要在 0～200 之間：{strength}"
+MSG_PRESET = "preset 讀取失敗：{file_name}：{reason}"
+MSG_PHOTO = "照片讀取失敗：{input_path}：{reason}"
+MSG_FORMAT = "不支援的輸出格式：{ext}（可用 .png、.tif、.tiff 16-bit 或 .jpg 8-bit）"
+MSG_NODIR = "找不到資料夾：{preset_dir}"
+MSG_SCAN_FAIL = "解析失敗：{file_name}：{reason}"
+MSG_STRENGTH_CLAMP = "{key}（強度後超出範圍，已夾值）"
 USAGE_APPLY = "python -m darkroom apply --preset <xmp> [--strength 0..200] [--overwrite] <input> <output>"
 USAGE_SCAN = "python -m darkroom scan <preset_dir>"
 
@@ -19,6 +26,8 @@ def _err(msg):
 
 
 def _same_file(a, b):
+    """Same file on disk? Uses the file identity (volume + file index on Windows, so different case, slashes,
+    relative paths, hard links, junctions and symlinks all compare equal); string comparison only as fallback."""
     try:
         if os.path.exists(a) and os.path.exists(b):
             return os.path.samefile(a, b)
@@ -35,10 +44,14 @@ def _fmt_strength(v):
 def cmd_apply(a):
     from . import _io, _xmp
     if not (0.0 <= a.strength <= 200.0):
-        _err(f"強度要在 0～200 之間：{_fmt_strength(a.strength)}")
+        _err(MSG_STRENGTH.format(strength=_fmt_strength(a.strength)))
         return 2
     if _same_file(a.input, a.output) or (os.path.exists(a.output) and not a.overwrite):
         _err(MSG_EXISTS.format(output_path=a.output))
+        return 2
+    ext = os.path.splitext(a.output)[1].lower()
+    if ext not in _io.WRITE_EXT:
+        _err(MSG_FORMAT.format(ext=ext))
         return 2
     try:
         params, name = _xmp.read_preset(a.preset)
@@ -46,30 +59,28 @@ def cmd_apply(a):
         _err(MSG_PV.format(pv=e.process_version, file_name=os.path.basename(a.preset)))
         return 2
     except (OSError, ValueError) as e:
-        _err(f"preset 讀取失敗：{os.path.basename(a.preset)}：{e}")
+        _err(MSG_PRESET.format(file_name=os.path.basename(a.preset), reason=e))
         return 2
     try:
         img = _io.read_image(a.input)
     except (OSError, ValueError) as e:
-        _err(f"照片讀取失敗：{a.input}：{e}")
-        return 2
-    ext = os.path.splitext(a.output)[1].lower()
-    if ext not in _io.WRITE_EXT:
-        _err(f"不支援的輸出格式：{ext or a.output}（可用 .png、.tif、.tiff 16-bit 或 .jpg 8-bit）")
+        _err(MSG_PHOTO.format(input_path=a.input, reason=e))
         return 2
     from ._render import render
     out = render(img, params, strength=a.strength / 100.0)
     _io.write_image(a.output, out)
     print(MSG_OK.format(preset_name=name, strength=_fmt_strength(a.strength), output_path=a.output))
-    if params.skipped:
-        print(MSG_SKIP.format(items="、".join(params.skipped)))
+    skipped = list(params.skipped) + [MSG_STRENGTH_CLAMP.format(key=k)
+                                      for k in params.at_strength(a.strength / 100.0).out_of_range_keys()]
+    if skipped:
+        print(MSG_SKIP.format(items="、".join(skipped)))
     return 0
 
 
 def cmd_scan(a):
     from ._xmp import read_preset
     if not os.path.isdir(a.preset_dir):
-        _err(f"找不到資料夾：{a.preset_dir}")
+        _err(MSG_NODIR.format(preset_dir=a.preset_dir))
         return 2
     files = []
     for root, _, names in os.walk(a.preset_dir):
@@ -83,7 +94,7 @@ def cmd_scan(a):
             unsupported += 1
         except (OSError, ValueError) as e:
             failed += 1
-            _err(f"解析失敗：{os.path.basename(path)}：{e}")
+            _err(MSG_SCAN_FAIL.format(file_name=os.path.basename(path), reason=e))
     print(MSG_SCAN.format(ok=ok, total=len(files), unsupported=unsupported, failed=failed))
     return 0 if failed == 0 else 1
 

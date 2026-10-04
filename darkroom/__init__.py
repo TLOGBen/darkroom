@@ -5,7 +5,7 @@ Public API (everything else is private):
     Params                               versioned parameter object (to_json/from_json/at_strength)
     render(image, params, strength=1.0)  apply parameters to an sRGB image in 0..1
     SCHEMA_VERSION                       "darkroom-params/1"
-    UnsupportedPresetError               raised for ProcessVersion 6.7 presets
+    UnsupportedPresetError               raised for process versions other than 6.x/10.x/11.x/15.x
 """
 from ._errors import UnsupportedPresetError
 from ._params import SCHEMA_VERSION, Params

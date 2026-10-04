@@ -17,8 +17,8 @@ _NUM = re.compile(r"^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$")
 SUPPORTED_PV_MAJORS = (6, 10, 11, 15)
 
 # Numeric attributes that are adjustments (a parse failure on any of these fails the preset).
-KNOWN_NUMERIC = frozenset(cov.RENDERED - {"ConvertToGrayscale"}) | cov.DETAIL | frozenset([
-    "LuminanceSmoothing", "ColorNoiseReduction", "DefringePurpleAmount", "DefringeGreenAmount", "AutoLateralCA",
+KNOWN_NUMERIC = frozenset(cov.RENDERED - {"ConvertToGrayscale"}) | frozenset(cov.DETAIL_PARENT) | cov.ABSOLUTE_WB | frozenset([
+    "LuminanceSmoothing", "CropConstrainToWarp", "ColorNoiseReduction", "DefringePurpleAmount", "DefringeGreenAmount", "AutoLateralCA",
     "LensProfileEnable", "LensManualDistortionAmount", "VignetteAmount", "PerspectiveUpright", "PerspectiveVertical",
     "PerspectiveHorizontal", "PerspectiveRotate", "PerspectiveAspect", "PerspectiveScale", "PerspectiveX",
     "PerspectiveY", "CurveRefineSaturation", "ColorGradeShadowHue", "ColorGradeShadowSat", "ColorGradeHighlightHue",
@@ -136,8 +136,9 @@ def _parse_masks(el, skipped):
                 values[k], was = clamp_value(k, number(v, k))
                 if was:
                     _note_clamp(skipped, k)
-                if k not in cov.LOCAL_RENDERED and k not in cov.LOCAL_DETAIL and values[k] != 0:
-                    skipped.add(k)
+        for k in values:
+            if cov.unrendered_active(k, values, cov.LOCAL_RENDERED):
+                skipped.add(k)
         node = d if d is not None else li
         rng = node.find(f"{CRS}CorrectionRangeMask")
         if rng is not None and number(_attrs(rng).get("Type", "0"), "CorrectionRangeMask.Type") != 0:
@@ -231,14 +232,11 @@ def read_preset(path):
     prof = attrs.get("CameraProfile", "").strip()
     if prof and prof not in NEUTRAL_PROFILES:
         skipped.add(f"CameraProfile（{prof}）")
-    for k in ("ColorGradeShadowSat", "ColorGradeHighlightSat"):
-        if values.get(k, 0) != 0:  # Lightroom stores these tones in SplitToning*; never applied twice
-            skipped.add(k)
-    for k, v in values.items():
-        if k in cov.RENDERED or k in cov.DETAIL or k.startswith("ColorGradeShadow") or k.startswith("ColorGradeHighlight"):
-            continue
-        if v != cov.INACTIVE.get(k, default(k)):
-            skipped.add(k)
+    # Everything present with an effect the renderer does not apply (incl. ColorGradeShadow/HighlightSat: Lightroom
+    # stores those tones in SplitToning*, so they are never applied a second time).
+    for k in values:
+        if cov.unrendered_active(k, values):
+            skipped.add("PostCropVignetteRoundness（負值）" if k == "PostCropVignetteRoundness" else k)
 
     curves, masks, name = {}, [], ""
     for ch in children:

@@ -16,6 +16,24 @@ MSG_SKIP = "略過：{skipped_items_joined_by_、}"
 MSG_SCAN = "已解析 {ok}／{total}，不支援 {unsupported}，失敗 {failed}"
 MSG_PV = "不支援的 preset 版本：ProcessVersion {pv}（{file_name}）"
 MSG_EXISTS = "輸出檔已存在或與輸入相同：{output_path}（要覆寫請加 --overwrite）"
+MSG_STRENGTH = "強度要在 0～200 之間：{strength}"
+MSG_PRESET = "preset 讀取失敗：{file_name}：{reason}"
+MSG_PHOTO = "照片讀取失敗：{input_path}：{reason}"
+MSG_FORMAT = "不支援的輸出格式：{ext}（可用 .png、.tif、.tiff 16-bit 或 .jpg 8-bit）"
+MSG_NODIR = "找不到資料夾：{preset_dir}"
+MSG_SCAN_FAIL = "解析失敗：{file_name}：{reason}"
+MSG_STRENGTH_CLAMP = "{key}（強度後超出範圍，已夾值）"
+
+
+def line_pattern(template, **kw):
+    """Exact line from a contract template; {reason} (free text from the error) may be any non-empty text."""
+    filled = template.format(reason="\x00", **kw)
+    return "^" + re.escape(filled).replace("\x00", ".+") + "$"
+
+
+def assert_line(tc, template, text, **kw):
+    pat = line_pattern(template, **kw)
+    tc.assertTrue(any(re.match(pat, ln) for ln in text.splitlines()), (pat, text))
 
 
 def preset_name(path):
@@ -45,7 +63,16 @@ class TestScan(unittest.TestCase):
         _xmpgen.write(d, "b.xmp", _xmpgen.xmp_text({"ProcessVersion": "5.7"}))
         _xmpgen.write(d, "c.xmp", _xmpgen.xmp_text({"Contrast2012": "oops"}))
         rc, out, err = _util.run_cli("scan", d)
+        self.assertEqual(rc, 1)
         self.assertEqual(out.splitlines(), [MSG_SCAN.format(ok=1, total=3, unsupported=1, failed=1)])
+        self.assertEqual(len(err.splitlines()), 1)
+        assert_line(self, MSG_SCAN_FAIL, err, file_name="c.xmp")
+
+    def test_scan_missing_folder(self):
+        missing = os.path.join(_util.tmpdir(self), "沒有這個資料夾")
+        rc, out, err = _util.run_cli("scan", missing)
+        self.assertEqual(rc, 2)
+        self.assertEqual(err.splitlines(), [MSG_NODIR.format(preset_dir=missing)])
 
 
 class TestAnyDirectory(unittest.TestCase):  # A21
@@ -114,14 +141,95 @@ class TestApply(unittest.TestCase):
         with open(existing, "rb") as f:
             self.assertNotEqual(f.read(), original)
 
+    def test_apply_refuses_same_file_spellings(self):  # A16 / F2: same file written differently
+        d = _util.tmpdir(self)
+        src = small_photo(d)
+        with open(src, "rb") as f:
+            original = f.read()
+        preset = _xmpgen.write(d, "p.xmp", _xmpgen.xmp_text({"Exposure2012": "+1.00"}))
+        os.makedirs(os.path.join(d, "sub"))
+        spellings = [  # (output as typed, cwd)
+            (os.path.join(d, "IN.PNG"), None),                                  # different case
+            (os.path.join(os.path.dirname(d), os.path.basename(d).upper(), "In.Png"), None),
+            ("in.png", d),                                                      # relative vs absolute
+            (os.path.join("sub", "..", "in.png"), d),
+            (os.path.join(d, "sub", "..", "in.png"), None),
+            (src.replace("\\", "/"), None),                                     # slash direction
+            (src.replace("/", "\\"), None),
+        ]
+        hard = os.path.join(d, "hard.png")
+        os.link(src, hard)                                                      # hard link = same file
+        spellings.append((hard, None))
+        import subprocess
+        junction = os.path.join(d, "jx")
+        r = subprocess.run(["cmd", "/c", "mklink", "/J", junction, d], capture_output=True)
+        made_junction = r.returncode == 0
+        if made_junction:
+            spellings.append((os.path.join(junction, "in.png"), None))
+        try:
+            link = os.path.join(d, "link.png")
+            os.symlink(src, link)
+            spellings.append((link, None))
+        except OSError:
+            pass  # symlinks need developer mode / privilege on Windows; junction and hard link still cover it
+        for out_path, cwd in spellings:
+            rc, out, err = _util.run_cli("apply", "--preset", preset, "--overwrite", src, out_path, cwd=cwd)
+            self.assertEqual(rc, 2, (out_path, out, err))
+            self.assertIn(MSG_EXISTS.format(output_path=out_path), err.splitlines())
+            with open(src, "rb") as f:
+                self.assertEqual(f.read(), original, out_path)
+        self.assertTrue(made_junction, r.stderr)
+        if made_junction:
+            os.rmdir(junction)  # removes only the junction, not its target
+
     def test_apply_bad_strength(self):
         d = _util.tmpdir(self)
         src = small_photo(d)
         preset = _xmpgen.write(d, "p.xmp", _xmpgen.xmp_text({"Exposure2012": "+1.00"}))
         out_path = os.path.join(d, "o.png")
-        rc, out, err = _util.run_cli("apply", "--preset", preset, "--strength", "250", src, out_path)
+        for bad in ("250", "-1"):
+            rc, out, err = _util.run_cli("apply", "--preset", preset, "--strength", bad, src, out_path)
+            self.assertEqual(rc, 2)
+            self.assertEqual(err.splitlines(), [MSG_STRENGTH.format(strength=bad)])
+            self.assertFalse(os.path.exists(out_path))
+
+    def test_apply_error_lines(self):  # F8
+        d = _util.tmpdir(self)
+        src = small_photo(d)
+        good = _xmpgen.write(d, "good.xmp", _xmpgen.xmp_text({"Exposure2012": "+1.00"}))
+        bad = _xmpgen.write(d, "bad.xmp", _xmpgen.xmp_text({"Contrast2012": "oops"}))
+        out_path = os.path.join(d, "o.png")
+        rc, out, err = _util.run_cli("apply", "--preset", bad, src, out_path)
         self.assertEqual(rc, 2)
+        self.assertEqual(len(err.splitlines()), 1)
+        assert_line(self, MSG_PRESET, err, file_name="bad.xmp")
+        broken = os.path.join(d, "broken.png")
+        with open(broken, "wb") as f:
+            f.write(b"not an image")
+        rc, out, err = _util.run_cli("apply", "--preset", good, broken, out_path)
+        self.assertEqual(rc, 2)
+        assert_line(self, MSG_PHOTO, err, input_path=broken)
+        bmp = os.path.join(d, "o.bmp")
+        rc, out, err = _util.run_cli("apply", "--preset", good, src, bmp)
+        self.assertEqual(rc, 2)
+        self.assertEqual(err.splitlines(), [MSG_FORMAT.format(ext=".bmp")])
+        self.assertFalse(os.path.exists(bmp))
         self.assertFalse(os.path.exists(out_path))
+
+    def test_strength_clamp_reported(self):  # A19 / F7
+        d = _util.tmpdir(self)
+        src = small_photo(d)
+        preset = _xmpgen.write(d, "strong.xmp", _xmpgen.xmp_text(
+            {"Exposure2012": "+4.00", "SaturationAdjustmentRed": "+60", "Contrast2012": "+20"}, name="強"))
+        out_path = os.path.join(d, "o.png")
+        rc, out, err = _util.run_cli("apply", "--preset", preset, "--strength", "200", src, out_path)
+        self.assertEqual(rc, 0, err)
+        items = "、".join(MSG_STRENGTH_CLAMP.format(key=k) for k in ("Exposure2012", "SaturationAdjustmentRed"))
+        self.assertEqual(out.splitlines(), [
+            MSG_OK.format(preset_name="強", strength="200", output_path=out_path),
+            MSG_SKIP.replace("{skipped_items_joined_by_、}", items)])
+        rc, out, err = _util.run_cli("apply", "--preset", preset, "--overwrite", src, out_path)
+        self.assertEqual(out.splitlines(), [MSG_OK.format(preset_name="強", strength="100", output_path=out_path)])
 
 
 class TestIO(unittest.TestCase):

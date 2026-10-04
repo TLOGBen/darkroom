@@ -181,5 +181,57 @@ class TestReadOnly(unittest.TestCase):  # A15
             self.assertEqual(m, "rb")
 
 
+# Value at which an unrendered key has no effect (else the contract default table, else 0), and the parent
+# amount that switches a sub-setting on. Written out independently of darkroom._coverage on purpose.
+NO_EFFECT = {"PerspectiveScale": 100.0, "CurveRefineSaturation": 100.0, "ColorNoiseReduction": 0.0}
+PARENT = {"SharpenDetail": "Sharpness", "SharpenEdgeMasking": "Sharpness",
+          "LuminanceNoiseReductionDetail": "LuminanceSmoothing", "LuminanceNoiseReductionContrast": "LuminanceSmoothing",
+          "ColorNoiseReductionDetail": "ColorNoiseReduction", "ColorNoiseReductionSmoothness": "ColorNoiseReduction",
+          "DefringePurpleHueLo": "DefringePurpleAmount", "DefringePurpleHueHi": "DefringePurpleAmount",
+          "DefringeGreenHueLo": "DefringeGreenAmount", "DefringeGreenHueHi": "DefringeGreenAmount",
+          "LensProfileDistortionScale": "LensProfileEnable", "LensProfileVignettingScale": "LensProfileEnable",
+          "VignetteMidpoint": "VignetteAmount", "GrainFrequency": "GrainAmount",
+          "PostCropVignetteStyle": "PostCropVignetteAmount", "PostCropVignetteHighlightContrast": "PostCropVignetteAmount",
+          "ColorGradeShadowHue": "ColorGradeShadowSat", "ColorGradeHighlightHue": "ColorGradeHighlightSat",
+          "LocalToningHue": "LocalToningSaturation"}
+
+
+class TestCoverage(unittest.TestCase):  # A13 (full library)
+    def test_every_effective_key_rendered_or_skipped(self):
+        from darkroom import _coverage, _params
+        no_effect = lambda k: NO_EFFECT.get(k, _params.DEFAULTS.get(k, 0.0))
+        counts = {"GrainFrequency": 0, "PostCropVignetteHighlightContrast": 0, "PostCropVignetteRoundness": 0}
+
+        def check(values, skipped, rendered, path):
+            for k, v in values.items():
+                in_skipped = any(s == k or s.startswith(k + "（") for s in skipped)
+                if k == "PostCropVignetteRoundness" and v < 0 and values.get("PostCropVignetteAmount", 0) != 0:
+                    self.assertTrue(in_skipped, (path, k))
+                    counts[k] += 1
+                    continue
+                if k in rendered or in_skipped:
+                    if in_skipped and k in counts:
+                        counts[k] += 1
+                    continue
+                parent = PARENT.get(k)
+                if parent is not None and values.get(parent, no_effect(parent)) == no_effect(parent):
+                    continue  # sub-setting of a feature that is off
+                if parent is not None:
+                    self.assertEqual(v, _params.DEFAULTS.get(k, 0.0), (path, k))
+                else:
+                    self.assertEqual(v, no_effect(k), (path, k))
+
+        for path in _util.preset_files():
+            p = load_preset(path)
+            check(p.values, p.skipped, _coverage.RENDERED, path)
+            for m in p.masks:
+                check(m["values"], p.skipped, _coverage.LOCAL_RENDERED, path)
+        # the three keys found unreported in seal round 1 (F3) are now reported wherever they have an effect
+        self.assertEqual(counts, {"GrainFrequency": 173, "PostCropVignetteHighlightContrast": 20,
+                                  "PostCropVignetteRoundness": 4})
+        for k in ("GrainFrequency", "PostCropVignetteHighlightContrast", "PostCropVignetteStyle"):
+            self.assertNotIn(k, _coverage.RENDERED)
+
+
 if __name__ == "__main__":
     unittest.main()

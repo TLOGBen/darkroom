@@ -129,6 +129,18 @@ class Params:
             masks.append(m)
         return Params(values=values, curves=curves, masks=masks, skipped=list(self.skipped))
 
+    def out_of_range_keys(self):
+        """Keys (value keys, curve tags, local mask keys) holding a value outside the range table."""
+        keys = [k for k, v in self.values.items()
+                if k not in BOOL_KEYS and k not in UNCLAMPED_DATA_KEYS and clamp_value(k, v)[1]]
+        lo, hi = CURVE_RANGE
+        keys += [k for k, pts in self.curves.items() if any(not (lo <= c <= hi) for pt in pts for c in pt)]
+        for m in self.masks:
+            for k, v in m.get("values", {}).items():
+                if clamp_value(k, v)[1] and k not in keys:
+                    keys.append(k)
+        return keys
+
     def clamped(self):
         """Copy with every numeric value (global, curve, local) inside the range table; used by render()."""
         values = {k: (v if k in BOOL_KEYS else clamp_value(k, v)[0]) for k, v in self.values.items()}
