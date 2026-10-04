@@ -15,6 +15,7 @@ SRGB8_MAX, SRGB8_MEAN = 2 / 255, 0.5 / 255
 SRGB10_MAX, SRGB10_MEAN = 0.004, 0.001
 P3_10_LIN_MAX, P3_10_LIN_MEAN = 0.003, 0.0005    # Display P3 against the expected sRGB, in linear light
 P3_8_LIN_MAX, P3_8_LIN_MEAN = 0.008, 0.0015
+LCMS_LIN_MAX, LCMS_LIN_MEAN = 0.012, 0.002     # LittleCMS 8-bit fallback (8-bit in and out)
 
 
 def srgb_icc():
@@ -222,6 +223,192 @@ class TestCli(HeicCase):  # H8
         self.assertEqual(rc, 2)
         self.assertEqual(err.splitlines(),
                          ["不支援的輸出格式：.heic（可用 .png、.tif、.tiff 16-bit 或 .jpg 8-bit）"])
+
+
+# ---------------------------------------------------------------- seal round 1 (HEIC)
+ICC_BROKEN_PREFIX = "HEIC 解碼失敗：內嵌色彩描述檔損壞（"      # verbatim (CONTRACT-heic H6, F1)
+MISSING = "讀 HEIC 需要 pillow-heif（python -s -m pip install --no-deps pillow-heif==1.8.0）"
+OPEN_TIME_MEDIAN_S = 1.5                                      # verbatim (CONTRACT-heic H12, F6)
+
+
+class TestBrokenIcc(HeicCase):  # F1: damaged profile, decodable pixels
+    def files(self):
+        img = _heicgen.pattern(32, 32)
+        return {k: _heicgen.write_heic(self.p(k + ".heic"), img, bits=8, icc=v)
+                for k, v in _iccgen.broken_profiles().items()}
+
+    def test_read_image_value_error(self):
+        for name, path in self.files().items():
+            with self.assertRaises(ValueError, msg=name) as cm:
+                read_image(path)
+            msg = str(cm.exception)
+            self.assertTrue(msg.startswith(ICC_BROKEN_PREFIX), (name, msg))
+            self.assertTrue(msg.endswith("）"), (name, msg))
+            self.assertNotIn("\n", msg)
+
+    def test_cli_error_line(self):
+        import _xmpgen
+        _xmpgen.write(self.d, "p.xmp", _xmpgen.xmp_text({"Exposure2012": "+0.5"}))
+        for name, path in self.files().items():
+            out_path = self.p(name + "-out.png")
+            rc, out, err = _util.run_cli("apply", "--preset", self.p("p.xmp"), path, out_path)
+            self.assertEqual(rc, 2, (name, err))
+            lines = err.splitlines()
+            self.assertEqual(len(lines), 1, (name, err))
+            self.assertTrue(lines[0].startswith("照片讀取失敗：" + path + "：" + ICC_BROKEN_PREFIX), lines[0])
+            self.assertNotIn("Traceback", err)
+            self.assertFalse(os.path.exists(out_path))
+
+
+class TestNclxAndFallbacks(HeicCase):  # F2, F3
+    def test_nclx_only_p3(self):
+        import pillow_heif
+        img = _heicgen.pattern()
+        path = _heicgen.write_heic_nclx(self.p("nclx_p3.heic"), _heicgen.srgb_to_p3(img), primaries=12, transfer=13)
+        info = pillow_heif.open_heif(path).info
+        self.assertFalse(info.get("icc_profile"))
+        self.assertEqual(info["nclx_profile"]["color_primaries"], 12)
+        mx, mean = lin_diff(read_image(path), img)
+        self.assertLessEqual(mx, P3_8_LIN_MAX, mx)
+        self.assertLessEqual(mean, P3_8_LIN_MEAN, mean)
+
+    def test_nclx_srgb_primaries_untouched(self):
+        img = _heicgen.pattern()
+        path = _heicgen.write_heic_nclx(self.p("nclx_709.heic"), img, primaries=1, transfer=13)
+        png = read_image(_heicgen.write_png8(self.p("nclx_709.png"), img))
+        self.assertLessEqual(diff(read_image(path), png)[0], SRGB8_MAX)
+
+    def test_littlecms_fallback_branch(self):
+        """A profile the float path cannot use goes through LittleCMS at 8 bits (H3 known limit)."""
+        from unittest import mock
+        from darkroom import _icc
+        img = _heicgen.pattern()
+        path = _heicgen.write_heic(self.p("lut.heic"), _heicgen.srgb_to_p3(img), bits=10, icc=_iccgen.display_p3())
+        calls = []
+        real = _icc.littlecms_8bit
+
+        def spy(a, icc):
+            calls.append(len(icc))
+            return real(a, icc)
+        with mock.patch.object(_icc, "from_icc", return_value=None), mock.patch.object(_icc, "littlecms_8bit", spy):
+            out = read_image(path)
+        self.assertEqual(calls, [len(_iccgen.display_p3())])
+        mx, mean = lin_diff(out, img)
+        self.assertLessEqual(mx, LCMS_LIN_MAX, mx)
+        self.assertLessEqual(mean, LCMS_LIN_MEAN, mean)
+        self.assertGreater(lin_diff(read_image(_heicgen.write_heic(self.p("lut_plain.heic"), _heicgen.srgb_to_p3(img),
+                                                                   bits=10)), img)[0], 10 * LCMS_LIN_MAX)
+
+    def test_missing_pillow_heif_message(self):
+        import sys
+        from unittest import mock
+        path = _heicgen.write_heic(self.p("m.heic"), _heicgen.pattern(16, 16))
+        with mock.patch.dict(sys.modules, {"pillow_heif": None}):
+            with self.assertRaises(ValueError) as cm:
+                read_image(path)
+        self.assertEqual(str(cm.exception), MISSING)
+
+
+class TestReasonShared(HeicCase):  # F5: CLI and App report the same reason text for the same file
+    def test_cli_and_app_same_reason(self):
+        import asyncio
+        import _xmpgen
+        from aiohttp.test_utils import TestClient, TestServer
+        from darkroom_app.server import make_app
+        from test_app_server import make_presets
+        good = _heicgen.write_heic(self.p("g.heic"), _heicgen.pattern(64, 64))
+        with open(good, "rb") as f:
+            data = f.read()
+        files = {"half.heic": data[: len(data) // 2], "badicc.heic": None, "broken.jpg": b"not an image"}
+        for name, blob in files.items():
+            if blob is None:
+                _heicgen.write_heic(self.p(name), _heicgen.pattern(16, 16), icc=_iccgen.broken_profiles()["trunc200"])
+            else:
+                with open(self.p(name), "wb") as f:
+                    f.write(blob)
+        _xmpgen.write(self.d, "p.xmp", _xmpgen.xmp_text({"Exposure2012": "+0.5"}))
+        pdir = os.path.join(self.d, "presets")
+        os.makedirs(pdir)
+        make_presets(pdir)
+
+        async def app_errors():
+            out = {}
+            async with TestClient(TestServer(make_app(pdir))) as c:
+                for name in files:
+                    r = await c.post("/api/open", json={"path": self.p(name)})
+                    self.assertEqual(r.status, 400)
+                    out[name] = (await r.json())["error"]
+            return out
+        app = asyncio.run(app_errors())
+        for name in files:
+            with self.assertRaises(ValueError) as cm:
+                read_image(self.p(name))
+            reason = str(cm.exception)
+            self.assertNotIn("\n", reason)
+            rc, out, err = _util.run_cli("apply", "--preset", self.p("p.xmp"), self.p(name), self.p(name + ".png"))
+            self.assertEqual(err.splitlines(), ["照片讀取失敗：" + self.p(name) + "：" + reason], name)
+            self.assertEqual(app[name], "照片讀取失敗：" + name + "：" + reason, name)
+
+
+class TestOpenTime(unittest.TestCase):  # F6 / H12: 24 MP HEIC opens in about a second
+    @classmethod
+    def setUpClass(cls):
+        import tempfile
+        import pillow_heif
+        cls.d = tempfile.mkdtemp(prefix="darkroom-heic24-")
+        cls.path = os.path.join(cls.d, "IMG_24MP.HEIC")
+        h, w = 5712, 4284
+        img = _heicgen.pattern(h, w)
+        data = ((_heicgen.srgb_to_p3(img) * 1023 + 0.5).astype(np.uint16) << 6)
+        del img
+        hf = pillow_heif.from_bytes(mode="RGB;16", size=(w, h), data=data.tobytes())
+        # lossy, 512 px grid tiles: the way iPhone stores 24 MP HEIC (libheif decodes the tiles in parallel)
+        hf.save(cls.path, quality=90, icc_profile=_iccgen.display_p3(), tile_size=512)
+
+    @classmethod
+    def tearDownClass(cls):
+        import shutil
+        shutil.rmtree(cls.d, True)
+
+    def test_read_image_24mp_median(self):
+        import statistics
+        import time
+        from darkroom_app import gpucheck
+        busy, reason = gpucheck.gpu_busy()
+        if busy is None or busy:
+            print("\n[H12] skipped: " + reason)
+            self.skipTest("[H12] skipped: " + reason)
+        read_image(self.path)                                   # warm-up
+        ts = []
+        for _ in range(5):
+            t0 = time.perf_counter()
+            out = read_image(self.path)
+            ts.append(time.perf_counter() - t0)
+        self.assertEqual(out.shape, (5712, 4284, 3))
+        self.assertEqual(out.dtype, np.float32)
+        med = statistics.median(ts)
+        runs = ", ".join("%.2f" % t for t in ts)
+        print("\n[H12] 24MP HEIC read_image median %.2f s (runs %s); %s" % (med, runs, reason))
+        self.assertLessEqual(med, OPEN_TIME_MEDIAN_S)
+
+
+class TestFastPath(unittest.TestCase):  # H3 / F6: the lookup-table path matches the float64 reference
+    def test_from_codes_matches_float_path(self):
+        from darkroom import _icc
+        rng = np.random.default_rng(7)
+        for icc in (_iccgen.display_p3(), srgb_icc()):
+            conv = _icc.from_icc(icc)
+            for levels in (256, 1024, 4096):
+                codes = rng.integers(0, levels, size=(300, 257, 3)).astype(np.uint16)
+                fast = conv.from_codes(codes, levels)
+                ref = conv(codes / (levels - 1.0))
+                self.assertEqual(fast.dtype, np.float32)
+                self.assertLessEqual(float(np.abs(fast - ref).max()), 2e-4, (levels, len(icc)))
+        nclx = _icc.from_nclx({"color_primaries": 12})
+        codes = rng.integers(0, 1024, size=(129, 64, 3)).astype(np.uint16)
+        self.assertLessEqual(float(np.abs(nclx.from_codes(codes, 1024) - nclx(codes / 1023.0)).max()), 2e-4)
+        plain = _icc.codes_to_float(codes, 1024)
+        self.assertLessEqual(float(np.abs(plain - codes / 1023.0).max()), 1e-6)
 
 
 if __name__ == "__main__":

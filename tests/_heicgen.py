@@ -87,3 +87,18 @@ def write_png8(path, img):
     with open(path, "wb") as f:
         f.write(buf.tobytes())
     return path
+
+
+def write_heic_nclx(path, img, primaries=12, transfer=13, bits=8):
+    """HEIC that describes its colours only with nclx (no ICC): e.g. Display P3 = primaries 12, transfer 13."""
+    import pillow_heif
+    h, w = img.shape[:2]
+    if bits == 8:
+        data = (np.clip(img, 0, 1) * 255 + 0.5).astype(np.uint8)
+        hf = pillow_heif.from_bytes(mode="RGB", size=(w, h), data=data.tobytes())
+    else:
+        data = ((np.clip(img, 0, 1) * 1023 + 0.5).astype(np.uint16) << 6)
+        hf = pillow_heif.from_bytes(mode="RGB;16", size=(w, h), data=data.tobytes())
+    hf.save(path, quality=-1, chroma=444, matrix_coefficients=0, color_primaries=primaries,
+            transfer_characteristics=transfer)
+    return path

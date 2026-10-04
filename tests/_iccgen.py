@@ -55,3 +55,13 @@ def matrix_trc_profile(colorants=P3_COLORANTS, para=SRGB_PARA, name="Display P3 
 
 def display_p3():
     return matrix_trc_profile()
+
+
+def broken_profiles():
+    """Embedded ICC data that is damaged in three ways (seal round 1 F1)."""
+    import random
+    good = display_p3()
+    rng = random.Random(20261004)
+    return {"trunc200": good[:200],                           # tag table points past the end
+            "trunc_last_tag": good[:-30],                     # last tag cut short
+            "garbage600": bytes(rng.randrange(256) for _ in range(600))}
