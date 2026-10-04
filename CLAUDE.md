@@ -7,7 +7,11 @@
 使用者退了 Lightroom 訂閱，要在本機用自己買的 Lightroom XMP preset 修照片：點 preset → 調強度 → 微調滑桿，拖動即時預覽；AI 只做程式做不到的部分。
 2026-10-04 從 LocalLLMs repo 的規劃獨立出來（使用者指定放 `D:/Code/darkroom`）。
 
-## 目前狀態：規劃中，還沒開工
+## 目前狀態：核心函式庫已封緘；App 外殼（`darkroom_app/`）已做
+
+- 啟動：`tools/start.ps1`（專用 Python 跑 `python -s -m darkroom_app`，只綁 127.0.0.1、預設埠 8765，就緒後開瀏覽器）；桌面捷徑用 `tools/make-shortcut.ps1` 產生。LocalLLMs 路徑來自 `LOCALLLMS_ROOT` 或 `config.local.json`（不進 git，鍵：localllms_root、preset_dir）。
+- 延遲驗收：`python -s tools/bench_preview.py`（GPU 上有其他 Type C 運算程序時照合約跳過；`--force` 強制量測）。
+- 測試：`python -s -m unittest discover -s tests`。
 
 - **先讀地圖**：`.claude/wayfinder/darkroom/map.md`（Destination、已定原則、Decisions so far、還看不清楚、不在範圍內）；每個決定的細節在 `issues/`，研究在 `research/`，實驗與原型在 `prototypes/`。用 `/common:wayfinder` 帶這個地圖路徑繼續；HTML 檢視：`map.html`（不要手改，改 markdown 後重跑 wayfinder 的 `render_map.py`）。
 - **計畫檔**：`.claude/think/comfyui-lightroom-preset-editor.md`（最初的 ① 調色引擎計畫；開頭註明載體已改，其餘仍有效）。
@@ -32,4 +36,4 @@
 
 - Windows 端腳本用 PowerShell 7（pwsh），不寫 `.cmd`／`.bat`。
 - commit 訊息用 conventional commits（feat／fix／docs／chore…）。
-- App 的 Python 執行環境、啟動方式、操作台項目還沒定（地圖「還看不清楚」區）。
+- App 執行環境＝LocalLLMs 的 darkroom 專用 Python（`runtimes/darkroom-python/...`）；操作台（LocalLLMs launcher）項目還沒加。

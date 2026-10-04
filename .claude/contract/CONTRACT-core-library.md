@@ -13,7 +13,7 @@
 
 ## 可斷言條文
 - [ ] A1：`python -m unittest discover -s tests` 結束碼 0（不得依賴 pytest 等未安裝套件）。
-- [ ] A2：公開 API＝`darkroom/__init__.py` 的 `__all__` 恰為 `load_preset`、`Params`、`render`、`SCHEMA_VERSION`、`UnsupportedPresetError`；`tests/` 外不得 import `darkroom._*` 或子模組私有名稱。
+- [ ] A2：公開 API＝`darkroom/__init__.py` 的 `__all__` 恰為 `load_preset`、`Params`、`render`、`read_image`、`write_image`、`SCHEMA_VERSION`、`UnsupportedPresetError`（7 個；2026-10-04 依 App 外殼合約 B1 擴充，`render` 接受已在 GPU 的 torch 張量並回傳同裝置張量）；`tests/` 外不得 import `darkroom._*` 或子模組私有名稱。
 - [ ] A3：`scan` 對使用者 preset 資料夾輸出恰一行（見常數），值為 `1466／1466`、不支援 `0`、失敗 `0`。
 - [ ] A4：支援的 ProcessVersion＝`6.7`、`10.0`、`11.0`、`15.4`（以及同一主版號的其他小版號）；其他版本（例如不帶 `*2012` 鍵的 PV2010 以前）由 `load_preset` 拋 `UnsupportedPresetError`；`apply` 印錯誤行（見常數）、結束碼 2、不得產生輸出檔（用合成的舊版 xmp 測）。
 - [ ] A5：數值解析接受正號與小數（`"+15"`、`"-0.24"`、`"+0.80"`）；任何已知數值鍵解析失敗＝該 preset 解析失敗，不得默默當 0。
@@ -28,7 +28,7 @@
 - [ ] A14：線性與放射狀漸層依 xmp 幾何（座標為 0～1 的相對值、`MaskInverted`、`Flipped`）產生 0～1 的遮罩，只在遮罩內套該組局部調整。
 - [ ] A15：`load_preset` 與 `scan` 只以唯讀模式開檔；跑完全部測試與 `scan` 後 preset 資料夾合併雜湊仍為 `15C015CC0C080FF9`。
 - [ ] A16：`apply` 的輸出路徑等於輸入路徑、或已存在且沒帶 `--overwrite` 時，印錯誤行、結束碼 2、不寫檔；「等於輸入」要涵蓋同一個檔案的不同寫法——大小寫不同、相對路徑對絕對路徑、斜線方向不同、可行時加 junction／符號連結——每一種都帶 `--overwrite` 測，斷言結束碼 2 且原檔位元組不變。（封緘第 1 輪 F2 收緊）
-- [ ] A17：在 CUDA 上對 1.5MP 圖跑完整全域管線，熱機後 20 次的中位數 ≤ 25 ms（門檻不放寬）；量測前偵測到其他程序佔用 GPU（`nvidia-smi` 的已用記憶體扣掉本程序後超過 1 GiB）時，該測試以 skip 結束並印出原因與佔用量，不得默默通過；無 CUDA 時自動用 CPU 且結果與 CUDA 差 ≤ 1e-3。（封緘第 1 輪 F5）已知限制（指揮官裁決）：這台 Windows 桌面常駐約 1.2 GiB 顯存、WDDM 下 nvidia-smi 看不到單一程序用量，現行跳過判準幾乎永遠成立；本切片的 A17 以 GPU 閒置時的量測為證（15.9～21 ms，派遣封緘前基準 20.57 ms），改進判準（改看是否有其他運算型程序）併入 App 外殼切片。
+- [ ] A17：在 CUDA 上對 1.5MP 圖跑完整全域管線，熱機後 20 次的中位數 ≤ 25 ms（門檻不放寬）；量測前若 `nvidia-smi --query-compute-apps` 列出本程序以外的運算型程序（Type 為 `C`；WDDM 下桌面程式列為 `C+G` 不算，判不出類型時當作運算型），該測試以 skip 結束並印出程序名稱，不得默默通過（2026-10-04 依 App 外殼合約 B7 改判準，取代「已用記憶體扣本程序 > 1 GiB」）；無 CUDA 時自動用 CPU 且結果與 CUDA 差 ≤ 1e-3。（封緘第 1 輪 F5）已知限制（指揮官裁決）：這台 Windows 桌面常駐約 1.2 GiB 顯存、WDDM 下 nvidia-smi 看不到單一程序用量，現行跳過判準幾乎永遠成立；本切片的 A17 以 GPU 閒置時的量測為證（15.9～21 ms，派遣封緘前基準 20.57 ms），改進判準（改看是否有其他運算型程序）併入 App 外殼切片。
 - [ ] A18：色彩管線：sRGB → 線性光工作空間 → sRGB 的往返，對色域內顏色最大差 ≤ 1e-4。
 - [ ] A19：所有數值參數在進入渲染前夾到範圍表（見常數；未列的 ±100）；超出範圍的值不得讓記憶體或時間失控（測試：把半徑、顆粒大小等設成 1e9 時 render 在 1.5MP 圖上 10 秒內完成且不配置超過 2GB 的張量），夾值的鍵列入 `skipped`；**套用強度之後才超出範圍而被夾的鍵**也要回報：`apply` 的略過行附加 `{key}（強度後超出範圍，已夾值）`。（封緘第 1 輪 F7）
 - [ ] A20：xmp 用不解析外部實體與 DTD 的 XML 解析器讀取（`xml.etree.ElementTree` 加上拒絕 DOCTYPE，或等效做法）；帶 `<!DOCTYPE` 或 `<!ENTITY` 的檔案＝解析失敗；不得再以正規表示式抽屬性作為唯一解析手段。
@@ -56,6 +56,7 @@ scan 摘要：已解析 {ok}／{total}，不支援 {unsupported}，失敗 {faile
 錯誤（preset）：preset 讀取失敗：{file_name}：{reason}
 錯誤（照片）：照片讀取失敗：{input_path}：{reason}
 錯誤（格式）：不支援的輸出格式：{ext}（可用 .png、.tif、.tiff 16-bit 或 .jpg 8-bit）
+  （補註，App 外殼 B14：輸出路徑沒有副檔名時 {ext} 顯示「（無副檔名）」）
 錯誤（資料夾）：找不到資料夾：{preset_dir}
 scan 單檔失敗（stderr）：解析失敗：{file_name}：{reason}
 略過項（強度夾值）：{key}（強度後超出範圍，已夾值）
