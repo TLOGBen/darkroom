@@ -1,0 +1,70 @@
+{
+ "content": "{\n\"diagnosis\": {\n\"subject\": \"A full English breakfast on a white plate, resting on a dark wooden table.\",\n\"white_balance\": \"neutral\",\n\"exposure\": \"slightly underexposed\",\n\"contrast\": \"low\",\n\"main_problems\": [\n\"Overall brightness is a bit low.\",\n\"Midtones are flat (low contrast).\",\n\"Shadows on the wooden table are crushed and lack texture.\",\n\"The warm colours (bacon, sausages, beans) are a bit dull.\",\n\"Shadows on the plate are too dark.\"\n]\n},\n\"adjustments\": {\n\"Exposure2012\": 0.4,\n\"Contrast2012\": 15,\n\"Highlights2012\": 0,\n\"Shadows2012\": 45,\n\"Whites2012\": 15,\n\"Blacks2012\": -15,\n\"IncrementalTemperature\": 5,\n\"IncrementalTint\": 0,\n\"Vibrance\": 10,\n\"Saturation\": 0,\n\"Clarity2012\": 5,\n\"Dehaze\": 0,\n\"Texture\": 5,\n\"HueAdjustmentRed\": 0,\n\"SaturationAdjustmentRed\": 0,\n\"LuminanceAdjustmentRed\": 0,\n\"HueAdjustmentOrange\": 0,\n\"SaturationAdjustmentOrange\": 0,\n\"LuminanceAdjustmentOrange\": 0,\n\"HueAdjustmentYellow\": 0,\n\"SaturationAdjustmentYellow\": 0,\n\"LuminanceAdjustmentYellow\": 0,\n\"HueAdjustmentGreen\": 0,\n\"SaturationAdjustmentGreen\": 0,\n\"LuminanceAdjustmentGreen\": 0,\n\"HueAdjustmentAqua\": 0,\n\"SaturationAdjustmentAqua\": 0,\n\"LuminanceAdjustmentAqua\": 0,\n\"HueAdjustmentBlue\": 0,\n\"SaturationAdjustmentBlue\": 0,\n\"LuminanceAdjustmentBlue\": 0\n},\n\"intent\": \"To create a bright, airy Japanese-style fresh look by lifting shadows and exposure while adding a subtle warmth to the already appetizing colors.\"\n}",
+ "reasoning": "",
+ "finish": "stop",
+ "wall_s": 9.71,
+ "prompt_n": 563,
+ "prompt_tps": 489.150077846975,
+ "gen_n": 508,
+ "gen_tps": 59.56548214380752,
+ "photo": "food_breakfast",
+ "run": "warm_airy_s101",
+ "seed": 101,
+ "wish": {
+  "tag": "warm_airy",
+  "want": "a warm, bright, airy Japanese-style fresh look (日系清新)",
+  "avoid": "oversaturated colours"
+ },
+ "parse_ok": true,
+ "errors": [],
+ "valid": true,
+ "parsed": {
+  "diagnosis": {
+   "subject": "A full English breakfast on a white plate, resting on a dark wooden table.",
+   "white_balance": "neutral",
+   "exposure": "slightly underexposed",
+   "contrast": "low",
+   "main_problems": [
+    "Overall brightness is a bit low.",
+    "Midtones are flat (low contrast).",
+    "Shadows on the wooden table are crushed and lack texture.",
+    "The warm colours (bacon, sausages, beans) are a bit dull.",
+    "Shadows on the plate are too dark."
+   ]
+  },
+  "adjustments": {
+   "Exposure2012": 0.4,
+   "Contrast2012": 15,
+   "Highlights2012": 0,
+   "Shadows2012": 45,
+   "Whites2012": 15,
+   "Blacks2012": -15,
+   "IncrementalTemperature": 5,
+   "IncrementalTint": 0,
+   "Vibrance": 10,
+   "Saturation": 0,
+   "Clarity2012": 5,
+   "Dehaze": 0,
+   "Texture": 5,
+   "HueAdjustmentRed": 0,
+   "SaturationAdjustmentRed": 0,
+   "LuminanceAdjustmentRed": 0,
+   "HueAdjustmentOrange": 0,
+   "SaturationAdjustmentOrange": 0,
+   "LuminanceAdjustmentOrange": 0,
+   "HueAdjustmentYellow": 0,
+   "SaturationAdjustmentYellow": 0,
+   "LuminanceAdjustmentYellow": 0,
+   "HueAdjustmentGreen": 0,
+   "SaturationAdjustmentGreen": 0,
+   "LuminanceAdjustmentGreen": 0,
+   "HueAdjustmentAqua": 0,
+   "SaturationAdjustmentAqua": 0,
+   "LuminanceAdjustmentAqua": 0,
+   "HueAdjustmentBlue": 0,
+   "SaturationAdjustmentBlue": 0,
+   "LuminanceAdjustmentBlue": 0
+  },
+  "intent": "To create a bright, airy Japanese-style fresh look by lifting shadows and exposure while adding a subtle warmth to the already appetizing colors."
+ }
+}

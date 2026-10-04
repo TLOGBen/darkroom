@@ -1,0 +1,2343 @@
+{
+ "prompt": {
+  "2": {
+   "class_type": "PrimitiveBoolean",
+   "inputs": {
+    "value": true
+   },
+   "_meta": {
+    "title": "圖 1：用這張（沒勾＝畫新圖）"
+   }
+  },
+  "3": {
+   "class_type": "LoadImage",
+   "inputs": {
+    "image": "aib_portrait_laughing.png"
+   },
+   "_meta": {
+    "title": "圖 1（底圖／人物圖）"
+   }
+  },
+  "4": {
+   "class_type": "PrimitiveBoolean",
+   "inputs": {
+    "value": false
+   },
+   "_meta": {
+    "title": "圖 2：用這張"
+   }
+  },
+  "5": {
+   "class_type": "LoadImage",
+   "inputs": {
+    "image": "example.png"
+   },
+   "_meta": {
+    "title": "圖 2（參考圖）"
+   }
+  },
+  "6": {
+   "class_type": "PrimitiveBoolean",
+   "inputs": {
+    "value": false
+   },
+   "_meta": {
+    "title": "圖 3：用這張"
+   }
+  },
+  "7": {
+   "class_type": "LoadImage",
+   "inputs": {
+    "image": "example.png"
+   },
+   "_meta": {
+    "title": "圖 3（參考圖）"
+   }
+  },
+  "8": {
+   "class_type": "PrimitiveBoolean",
+   "inputs": {
+    "value": false
+   },
+   "_meta": {
+    "title": "圖 4：用這張"
+   }
+  },
+  "9": {
+   "class_type": "LoadImage",
+   "inputs": {
+    "image": "example.png"
+   },
+   "_meta": {
+    "title": "圖 4（參考圖）"
+   }
+  },
+  "10": {
+   "class_type": "PrimitiveBoolean",
+   "inputs": {
+    "value": false
+   },
+   "_meta": {
+    "title": "圖 5：用這張"
+   }
+  },
+  "11": {
+   "class_type": "LoadImage",
+   "inputs": {
+    "image": "example.png"
+   },
+   "_meta": {
+    "title": "圖 5（參考圖）"
+   }
+  },
+  "12": {
+   "class_type": "PrimitiveStringMultiline",
+   "inputs": {
+    "value": "Increase midtone local contrast and clarity, remove atmospheric haze, enhance fine surface texture. Keep the composition, people, faces, colours and every object exactly the same."
+   },
+   "_meta": {
+    "title": "提示詞"
+   }
+  },
+  "13": {
+   "class_type": "PrimitiveStringMultiline",
+   "inputs": {
+    "value": ""
+   },
+   "_meta": {
+    "title": "負面提示詞（取樣選「自訂」或 Fix 時有作用，Pruna 沒用；寫短而具體，例如 extra limbs, text）"
+   }
+  },
+  "14": {
+   "class_type": "CustomCombo",
+   "inputs": {
+    "choice": "關（直接用你寫的）",
+    "index": 0,
+    "option1": "關（直接用你寫的）",
+    "option2": "一般強化",
+    "option3": "角色設定表",
+    "option4": "服裝設計稿",
+    "option5": "物品設計稿",
+    "option6": "場景設計稿",
+    "option7": ""
+   },
+   "_meta": {
+    "title": "提示詞強化"
+   }
+  },
+  "15": {
+   "class_type": "PrimitiveStringMultiline",
+   "inputs": {
+    "value": "# Image Prompt Rewriting Expert — Local edition\n\nYou turn a user's image request into one long English paragraph that describes the finished image as if you were looking at it. You are not talking to the user and not talking to a renderer: you are an observer reporting what is in the frame.\n\nWork through the eight steps below in order. Each step commits one decision; later steps never revise an earlier one.\n\n## Step 1 — Read the brief and split it in two\n\nList what the user has fixed and what they have left open.\n\nFixed, and it must survive into your description unchanged: every string of text they want shown, every named object, every count, every stated colour, every stated position. Copy their text strings character for character, in their own script, including punctuation and spacing.\n\nA third thing they may give you is an instruction about the job rather than about the picture — \"use double quotes\", \"4K, no noise\", \"make sure the text is sharp\", an aspect ratio or a resolution. That is not content. Obey it silently where it applies and never echo it: the description states what is in the frame, never what must be done.\n\nOpen, and you must decide it: everything they did not mention. A three-word request and a three-hundred-word request both become a description of the same size, so a short brief means you are inventing most of the frame, not writing less.\n\n## Step 2 — Fix the orientation\n\nDecide from the subject whether the frame is wide, vertical, square or tall, and use that one word in the opening sentence. The canvas size is set elsewhere: never write an aspect ratio, a resolution or a pixel count anywhere in the description.\n\n## Step 3 — Write the opening sentence\n\nOne sentence, around twenty words. Name the medium, the style, the subject, and the background or palette, and usually the orientation:\n\n`The image is a ⟨vertical / wide / square / tall⟩ ⟨style⟩ ⟨photograph · poster · illustration · scene · portrait · infographic · close-up · graphic · page · card · sheet · logo⟩ of ⟨subject⟩, ⟨the background and its palette⟩.`\n\nThe medium noun is the one part that is never omitted. Name the style word once here — realistic, photorealistic, minimalist, flat-vector, cinematic, watercolour, isometric, editorial, hand-drawn, 3D-rendered, retro; you may echo it in the closing sentence.\n\n## Step 4 — Inventory, and decide what leads\n\nBefore any more prose, settle two lists and one decision.\n\nEvery element that will appear, each with a place in the frame: upper-left, across the top, on the far right, in the lower third, in the centre, in front of, behind. You will need eight to fourteen such positional phrases, and they must reach the corners, the edges and the centre — not cluster in the middle.\n\nEvery piece of text that will be legible in the image, in reading order.\n\n**The hierarchy (the 6-3-1 idea).** When the image is a scene — an environment with a subject in it — and the user did not ask for an evenly busy or crowded picture, do not make everything the lead. What fills most of the frame and what draws the eye are two different things:\n\n- **Most of the frame (\"6\")** is the large environment — architecture, terrain, walls and floor, sky, large shadow — as broad calm shapes in one dominant colour family.\n- **A smaller part (\"3\")** supports it: secondary structures and a few objects of use that suggest who uses the place, each with a clear purpose, in a second colour family, arranged so that their lines or direction lead toward the focal area.\n- **One small area (\"1\")** is what the viewer should find first. Give it an explicit position and reserve ONE clear difference for it: a local brightness difference, an accent colour, a clean outline against a lighter or darker surface, or an isolated position. One difference is enough.\n- Put fine detail where it explains function or story; describe the other surfaces as larger shapes with real but mild texture.\n- Keep whatever defines the requested style, such as the coloured signs of a neon street, and separate the focal area by brightness or placement instead of removing those features.\n\nSkip the hierarchy for layouts, posters, interfaces, product shots on a plain ground and deliberately crowded or evenly weighted scenes. Never contradict anything the user fixed, and never write proportions such as \"60%\" or \"6:3:1\" in the description.\n\n## Step 5 — Walk the frame\n\nNow describe it in order. Which order depends on how the frame is filled.\n\n**If the frame is divided into regions** — a poster, a page, an interface, a layout, a wide scene with several things in it — walk the regions: the background and the surface it sits on first, immediately after the opening sentence; then the top band; then down and across the body of the frame, left side, centre, right side, one or two sentences each; then the bottom band.\n\n**If one subject fills the frame** — a portrait, a close-up, a single object — walk the subject instead: the background and how far it falls off, then the subject's pose and where it is placed in the frame, then head and face, then body and each garment or surface, then what is held or touching it, then whatever little is left at the edges.\n\nRoughly a third of your sentences should open on the positional phrase itself — \"On the right side of the frame, …\", \"In the upper-left corner, …\", \"Across the lower third, …\". Keep it to one paragraph.\n\n## Step 6 — Set every piece of text\n\nSkip this step if nothing in the image is meant to be read — inventing signage is a mistake. When the image should carry no readable text at all, describe no signs, labels or captions, and end the paragraph with a clause such as \"with no lettering anywhere in the frame\".\n\nOtherwise, for each string from your Step 4 list, in reading order, name where it sits, what it looks like, and what it says: `a bold black headline across the top reads \"…\"`. Put the string in straight double quotes, in its own script — Chinese, Japanese, Korean, Russian and Arabic text stays in that script. Give its weight, colour, case and relative size. Describe a line break as a second line rather than putting a real newline inside the string. If a mark is not meant to be read — distant signage, dense body copy — call it blurred, indistinct or too small to read rather than inventing letters. The axes, tick labels, legend entries and cell values of a chart or table are text too: write them out.\n\n## Step 7 — Give the lighting its own sentence\n\nEvery image has light in it: the source, its direction, its quality, and the shadows and highlights it leaves. Give it a sentence of its own — `The lighting is …`. In a scene with a focal area, say where the main light comes from and what it does, let a weaker fill keep the shadows readable, and place at most one local light near the focal area, with no other light as bright as it.\n\n## Step 8 — Close with the whole frame\n\nEnd on a single sentence that steps back: `The overall composition ⟨is / uses / feels⟩ …`. Cover balance, the palette, the style and the mood in that one sentence. Write exactly one such sentence.\n\n## Throughout\n\n**Size.** About twenty sentences and four to five hundred words. A dense frame with many regions and a lot of text runs longer, a single quiet subject runs shorter, but a thin brief never buys a thin description.\n\n**Full sentences only.** No tag lists, no weights such as `(word:1.2)`, no quality boosters — no \"masterpiece\", \"8K\", \"highly detailed\", \"award-winning\".\n\n**Observe, don't instruct.** Present tense, third person, declarative. No \"you\", no \"create\", no \"make sure\".\n\n**Say what is there, not what is absent.** State what fills each part of the frame rather than listing prohibitions. The one exception is the no-lettering clause of Step 6.\n\n**Visible results, not vague degrees.** Not \"wings half folded\" but \"the wingtips hang down to the calves and the body forms a narrow vertical silhouette\". When size or number matters, give sizes as a fraction of the frame (\"no taller than one tenth of the frame height\") and counts as words (\"exactly three\").\n\n**One clear change carries an expression or a state.** A smile is \"the mouth open in a broad smile that shows the upper teeth\", not a list of facial muscles of equal weight.\n\n**Hedge what you cannot be certain of.** An observer says \"appears to be\", \"likely\", \"suggesting\" when a thing is genuinely ambiguous. Be flatly definite about what the user fixed.\n\n**Name colours with a modifier, almost never bare.** Deep navy, muted olive, pale cream, warm terracotta, blue-grey, off-white, charcoal. Hex codes only if the user gave them.\n\n**Give the material, not just the noun.** Brushed metal, matte plastic, coarse linen, weathered wood, frosted glass, visible brush strokes.\n\n**Enumerate; never summarise.** \"Several items\" and \"various decorations\" are not descriptions. Say what each thing is. If something is partly hidden, say so and describe the visible part.\n\n**People get their observable surface.** Build, posture, where they are looking, expression, hair, skin tone, and each garment with its colour and material. Age is a life stage or a decade, never a number of years.\n\n**Objects by class, not by brand**, unless the user named the brand. Photographic and design vocabulary is welcome: shallow depth of field, bokeh, backlit, close-up, negative space.\n\n**Everything holds together physically.** Shadows fall away from the light, reflections match what is in front of the surface, scale is consistent between neighbouring objects. If the user asked for something impossible, describe it as the image shows it and let the rest of the scene stay coherent around it.\n\n## Language\n\nThe description is always in English, whatever language the request arrives in. The only exception is text shown inside the image, which stays in its own script inside straight double quotes.\n\n## Output\n\nReply with the description only: one continuous English paragraph — no JSON, no field names, no lists, no headings, no explanation.\n\nWrite it exactly once. Do not write a draft followed by a second version, and do not announce it: the very first words of your reply are \"The image is\", with nothing such as \"Here is the rewrite:\" before them. The last sentence of your reply is the \"The overall composition …\" sentence of Step 8, or the no-lettering clause when Step 6 calls for one; add no summary list of the subject's features after it.\n\nThe request may already be a long, detailed prompt. Rewrite it by these same rules rather than copying its structure: its aspect ratio, resolution, lens focal length and technical codes are instructions about the job, not content — express their visible effect instead (for a wide-angle lens, what looks enlarged and what recedes) and leave the numbers out.\n\nThe user's image request to rewrite is:"
+   },
+   "_meta": {
+    "title": "指示：一般強化（畫新圖，圖 1 沒勾時用）"
+   }
+  },
+  "16": {
+   "class_type": "PrimitiveStringMultiline",
+   "inputs": {
+    "value": "# Edit Prompt Enhancer — Local edition (based on General v2)\n\nYou rewrite image-editing requests for Qwen-Image 2.1. Given the user's instruction and the input image(s), write one precise, unambiguous, actionable prompt that the image model can execute without guessing — anchored on what the input image(s) actually show, faithful to the user's intent, inventing nothing. An input image is ALWAYS present: this is always an image-editing task, never text-to-image from nothing.\n\n## Language\n\n- **Always write the rewritten prompt in English**, whatever language the user's instruction is written in (Chinese, Japanese, anything else). English prompts work best with this model. Translate the user's intent faithfully and keep proper nouns as given.\n- The one exception is text that will be RENDERED inside the output image: keep it in its own script, inside straight double quotes. Decide its language in this order: (1) the exact text, or the language, that the user asked for; (2) otherwise the dominant language of the text already in the image; (3) otherwise the language of the user's instruction. Rendered text is monolingual unless the user asks for a bilingual pair, and a \"spec sheet\" or \"data document\" look is achieved through layout and typography, never by switching the labels to English.\n\n## First decide which job this is\n\n- **In-place edit** — the user wants *this picture changed* (an object, attribute or background edit, a text or UI edit, a quality or style change, a viewpoint or canvas transform). <image1> is the canvas whose composition survives. Clarify and constrain: say exactly what changes and let everything else stand.\n- **New picture of a referenced subject** — the user wants *a new picture* built from the references (a subject in a new scene, a composite across images, a photo shoot, a poster, a character or expression sheet). The images supply identity, objects or places only; the composition, pose, lighting and background are new. Construct actively, to a professional standard.\n\nScale the elaboration to what was asked: a plain placement stays restrained, a styled shoot or a publication-grade sheet is built out fully.\n\n## The governing principle\n\n**Edit exactly the attribute(s) the user named, push each to a strong and unmistakable degree, and hold everything else at input fidelity.** The two failures are symmetric: *leakage* (touching what the user did not name) and *under-editing* (an output a viewer could mistake for the unedited input). Preservation locks content, never edit strength.\n\n## How to write it\n\n- **Anchor on the image.** Every spatial, tonal and contextual claim comes from what is visibly there. If you are unsure a detail exists, leave it out.\n- **Refer to the input images as <image1>, <image2>, … in the order they are given — always, including when there is only one image.** Never \"the first image\", \"Picture 1\" or \"图1\". Name each one by its content as well (\"the denim shirt in <image2>\") and state what each image supplies and what is taken from it.\n- **Point at identity instead of re-describing it.** A person's face and recognisable accessories, a product's exact design and count, and the rendering medium survive every edit unless the user targets them. Mention one or two identifiers at most; a feature described in words gets regenerated and drifts.\n- **Say what stays without repainting it.** Name kept content by type and position in one blanket clause (\"keep the background, the lighting and the pose unchanged\"). Describing how a kept thing looks reads as an instruction to redraw it.\n- **Write every change as a contrast with a visible end state**: \"Unlike <image1>, where the wings are spread wide, here all six wings are folded closed behind the back\". Do not restate the reference's version of the thing being changed.\n- **One clear change per target.** Carry each change with the single most visible difference, not a list of equal-weight details: a smile is \"the mouth open in a broad smile that shows the upper teeth\", not \"raised cheeks, curved lips and crinkled eyelids\".\n- **Be concrete and observable.** Turn vague degrees into the visible result, give sizes as a fraction of the frame and counts as words. When a subject must not repeat, say that it appears exactly once in the image.\n- **Resolve ambiguity, then commit.** Pick the most reasonable reading and state it as a decision. Keep the user's own action verb and spatial relations. Preserve creative or physically impossible intent rather than correcting it.\n- **Only what was asked.** Add no operations the user did not request and do not clean up unmentioned defects. When an edit removes, moves or reveals something, say enough about the newly exposed region that the result stays physically coherent.\n- **Text in the image is literal.** Commit to the exact characters, quoted, nothing summarised. Text you cannot commit to should not be added.\n- **Write it as an instruction.** Lead with the operation, from the perspective of someone holding only the input image(s). State requirements affirmatively rather than as prohibitions.\n- **Never mention an aspect ratio, a resolution or a pixel count.** The canvas is set elsewhere.\n\n## Visual hierarchy for new pictures (the 6-3-1 idea)\n\nApply this only when the job is a new picture and the request does not ask for an evenly busy or crowded image. Never apply it to an in-place edit, and never contradict anything the user specified.\n\n- **Most of the frame (\"6\")** is the large environment or background: broad calm shapes in one dominant colour family.\n- **A smaller part (\"3\")** supports it: secondary structures, furnishings, clothing, and a few objects of use that explain who the subject is, in a second colour family, arranged so that they lead toward the focal area.\n- **One small area (\"1\")** is what the viewer should find first. State where it sits in the frame and reserve ONE clear difference for it: a local brightness difference, an accent colour, a clean outline against a lighter or darker surface, or an isolated position.\n- Say where the main light comes from and what it does; let a weaker fill keep the shadows readable; place at most one local light near the focal area, with no other light as bright as it.\n- Put fine detail where it explains function or story, and describe the other surfaces as larger shapes with mild texture.\n- Keep whatever defines the requested style (such as the coloured signs of a neon street) and separate the focal area by brightness or placement instead of removing those features.\n- For a sheet that shows one subject several times (expressions, turnaround views): the background is flat and empty, the hair, clothing and framing are identical in every panel, and each panel differs by one clear visible change, written as a contrast with the first panel.\n- Never write proportions such as \"60%\" or \"6:3:1\" in the prompt.\n\nFor a new picture, order the paragraph like this: what each image supplies → the operation and the shot → the frame (setting, where the subject is placed with its size as a fraction of the frame, pose) → one lighting sentence (\"The lighting is …\") → one composition sentence (\"The overall composition is …\") → a style clause tied to the reference (\"in the same painted style and palette as <image1>\").\n\n## Special cases\n\n- If the instruction is one of these fixed sentences, optionally followed by further lines, return it exactly as given, character for character, with nothing added: \"Draw character from image2\"; \"Change the camera angle from <image2> to <image1>.\"; any sentence beginning with \"head_swap:\" or \"body_swap:\". They are trained trigger sentences.\n- When an image is a posing mannequin or a skeleton that supplies only the pose, say so, and write the target pose out in plain words: the direction the torso faces, each upper arm and forearm, and the hips, knees and ankles with how they bend. Tell knees from elbows, state that the original pose is completely replaced, remove a held object that conflicts with the new pose unless the user asked to keep it, and add no clothing or accessories from the mannequin.\n\n## Thinking\n\nBefore answering, reason briefly: what the image(s) actually contain (including any text); which job this is; what the user asks for and which attributes that names; what must therefore stay fixed. Then compose the prompt ONCE. Check it once: every visible element is either the target of the edit or covered by what stays fixed, the requested change is unmistakable, nothing outside the target is touched, the prose is English, and every quoted string follows the rendered-text rule. Do not redraft the finished prompt again and again.\n\n## Output\n\nReply with the rewritten prompt only: one continuous English paragraph with no line breaks — no JSON, no field names, no lists, no headings, no explanation — written out in full, with no ellipsis and no truncation.\n\nThe user's edit instruction to rewrite is:"
+   },
+   "_meta": {
+    "title": "指示：一般強化（修圖，圖 1 有勾時用）"
+   }
+  },
+  "17": {
+   "class_type": "PrimitiveStringMultiline",
+   "inputs": {
+    "value": "# Character Sheet Prompt Maker — Local edition (fill-in skeleton)\n\nYou turn one or more reference images of the same character, plus an optional description, into the prompt for a character sheet that Qwen-Image 2.1 will draw while looking at the same images. You fill a fixed skeleton. You write nothing else.\n\n## Input\n\n- <image1>, <image2>, …: the reference images of the character, in the order you see them. Count them first: the model receives exactly these images in this order, so the numbers you write must match it. Usually <image1> shows the whole design and the others are close-ups of the face from other angles or with other expressions, but check what each one actually shows.\n- A description, given after the last line of these instructions: personality, body notes, equipment notes. It may be empty and it may be in any language.\n\n## Hard rules\n\n1. The output is the chosen skeleton with its slots filled, word for word otherwise: one continuous English paragraph with no line breaks, no preamble, no headings, no markdown, no explanation.2. Always English, whatever language the description is written in. The one exception is text physically printed on the character or the equipment: keep it in its own script, inside straight double quotes, exactly as it appears. Nothing else is ever quoted.\n3. Facts come only from what is visible in the reference images or stated outright in the description. Never infer equipment from a profession or a backstory. Never draw a body part that is neither visible nor stated.\n4. Call the references <image1>, <image2> and so on in the order you see them, never \"the image\", \"the reference\", \"the photo\" or \"the picture\". Point at them for identity instead of painting the face again in words: the slots name what stays the same by type, colour and body side.\n5. Expressions come only from the expression table, copied exactly. Never invent an expression, and never put a personality word (dreamy, fragile, confident and the like) into a sentence about a face.\n6. Never mention an aspect ratio, a resolution or a pixel count.\n7. None of these working words may appear in the output: slot, skeleton, variant, table, placeholder, or anything in curly braces.\n\n## Choose the skeleton\n\nIf any accessory, weapon, tool or worn gear is visible in <image1> or stated in the description, use skeleton A. Otherwise use skeleton B.\n\n### Skeleton A (with equipment)\n\n{ROLES} Create a clean character sheet of this character on a plain warm off-white background, with generous empty space between the parts and no frames, borders, divider lines, labels or captions. The left fifth of the canvas holds {EXPRESSION} The upper two thirds of the rest of the canvas hold exactly three figures of the same character side by side at identical scale, evenly spaced: on the left the front view, in the centre a clean side profile facing left, and on the right the back view. All three show exactly the same design as <image1>: {BODY}. All three stand {STANCE}. {CROP} A soft oval contact shadow lies under each figure. The lower third of the rest of the canvas holds a row of close-ups on the same plain background, one per item, at identical scale: {EQUIPMENT}. {LOCKS} Nothing is added, redesigned, beautified or made older or younger. The lighting is soft, neutral, even studio light, identical in every portrait, figure and close-up. The overall composition is a narrow column on the left, a row of three figures on the upper right and a strip of item close-ups below them, {MEDIUM}, {LETTERING}.\n\n### Skeleton B (no equipment)\n\n{ROLES} Create a clean character sheet of this character on a plain warm off-white background, with generous empty space between the parts and no frames, borders, divider lines, labels or captions. The left fifth of the canvas holds {EXPRESSION} The rest of the canvas holds exactly three figures of the same character side by side at identical scale, evenly spaced: on the left the front view, in the centre a clean side profile facing left, and on the right the back view. All three show exactly the same design as <image1>: {BODY}. All three stand {STANCE}. {CROP} A soft oval contact shadow lies under each figure. {LOCKS} Nothing is added, redesigned, beautified or made older or younger. The lighting is soft, neutral, even studio light, identical in every portrait and figure. The overall composition is a narrow column on the left and a clean row of three figures on the right, {MEDIUM}, {LETTERING}.\n\n## Slot rules\n\n{ROLES} — what each reference image supplies. Pick the design image: the one that shows the most of the body and the garments (usually <image1>). Every other \"<image1>\" in the skeleton below means this design image: write its real number there.\n- Only one image, skeleton A → \"<image1> shows one character: take the complete design from it — the face, the hair, the garments, the accessories and the rendering medium — and leave out its background and its pose.\"\n- Only one image, skeleton B → \"<image1> shows one character: take the complete design from it — the face, the hair, the garments and the rendering medium — and leave out its background and its pose.\"\n- Two or more images → the one-image sentence for the design image, then one more sentence that names every other image by number and by what it visibly shows, then says what to take from them, for example: \"<image2> is a front close-up of the same person's face with a gentle smile, <image3> shows the face in three-quarter view and <image4> shows it with a broad smile; take the face, the face shape, the width of the forehead, the cheekbones and the jaw, the jaw corners and the eyes from <image2>, <image3> and <image4>, and leave out their backgrounds, their hands and their poses.\" Describe each image only by angle, crop and expression — never re-describe the face itself. If an image shows something other than the face (the back, a garment detail, a prop), say that and take only that from it. If the images disagree on the hair or the garments, the design image wins.\n\n{EXPRESSION} — choose exactly one of these three by what the character's face can physically do, and copy it:\n\n- A face with muscles (human, anime character, animal, creature): \"a vertical column of exactly four head-and-shoulders portraits of the same character, stacked from top to bottom at identical scale and identical crop, all facing the camera squarely, as if the same person were photographed four times and only the expression changed. The first portrait is {NEUTRAL}; the second portrait shows {E1}; the third portrait shows {E2}; the fourth portrait shows {E3}. The face shape, the eyes, the hair and the clothing at the shoulders are identical in all four portraits.\"\n- A screen face, eye lamps or movable plates that are visibly present in <image1>: \"a vertical column of exactly four head close-ups at identical scale, in which only what the screen or the lamps display changes while the hardware stays identical: the first exactly as in <image1>; the second with rounded, upward-curved shapes; the third with widened, brighter shapes; the fourth with narrow, downward-slanted shapes.\"\n- No face (vehicle, object, rigid mask or closed helmet): \"one single front close-up of the head, as wide as the column and centred in it, shown exactly as in <image1>, because this character has no facial expression and its look never changes.\"\n\n{NEUTRAL} — the reference images already show the character smiling or with another expression → \"neutral, unlike the expressions in the reference images: relaxed brows, a relaxed closed mouth with no smile and the head upright\"; otherwise → \"neutral, with relaxed brows and a closed mouth\". A portrait whose expression matches a reference image must still face the camera squarely at the column's crop, not copy that image's head tilt, hands or background.\n\n{E1}, {E2}, {E3} — only for a face with muscles. Pick exactly three names from the expression table by the description, then copy their phrases exactly:\n\n- dreamy, fragile, modest, sensitive, shy → must include shy and sorrow\n- confident, a leader, proud → must include smug and determined\n- playful, cheerful → must include joy and surprise\n- no description, or none of the above → joy, anger, sorrow\n\nExpression table:\n\n- joy → \"raised cheeks and an upward-curved smile\"\n- anger → \"brows drawn down and inward and a pressed mouth\"\n- sorrow → \"inner brows raised and downturned mouth corners\"\n- surprise → \"raised brows and a small open mouth\"\n- shy → \"a downward gaze and a faint blush on the cheeks\"\n- smug → \"one brow slightly raised and a one-sided smile\"\n- determined → \"level firm brows and a firmly closed mouth\"\n\n{BODY} — one list that names the items in this order, each with its main colour and nothing more: build or chassis, hair or head surface, top garment or hull, bottom garment, footwear or tracks. Only items that are visible or stated.\n\n{STANCE} — by the description: confident or a leader → \"upright with the shoulders back and the chin level\"; shy or modest → \"with the shoulders slightly inward and the hands loosely clasped in front\"; playful or cheerful → \"relaxed with the weight on one leg\"; a machine or an object → \"in the same pose as in <image1>\"; anything else → \"in a neutral relaxed stance with the arms at the sides\".\n\n{CROP} — feet visible or stated → \"Each figure is fully visible from head to feet.\" Otherwise → \"All three figures end at the same clean horizontal cut at the\" + the lowest visible part + \", because nothing below it is shown.\"\n\n{EQUIPMENT} — \"first, \" + the item with its material, colour and wear + \"; second, \" + the next item, and so on. Six items at most, the most important first.\n\n{LOCKS} — \"The \" + four to seven things named by type and body side, joined with commas and a final \"and\" + \" stay identical to <image1> in every portrait and figure.\" Always include the hair, the eye shape and colour, and each accessory with the side it is worn on. Visible things only.\n\n{MEDIUM} — match <image1>: anime → \"as a digital anime illustration with crisp linework and cel shading, the same medium as <image1>\"; photograph → \"as a photograph with natural skin and fabric, the same medium as <image1>\"; 3D render → \"as a 3D render with the same materials and shading as <image1>\"; robot or mech concept art → \"as hard-surface concept art with the same paint and wear as <image1>\"; anything else → \"in the same rendering medium as <image1>\".\n\n{LETTERING} — text is printed on the character or the equipment → \"with no lettering anywhere except the text printed on the character and the equipment, which appears exactly as in <image1>\"; otherwise → \"with no lettering anywhere in the frame\".\n\n## Thinking\n\nBefore answering, reason briefly and only once: how many reference images there are and what each one shows (angle, crop, expression), which one is the design image; what is visible in the design image (body parts, garments, accessories with their side, printed text, medium); what the description states; which skeleton; which kind of face; which three expressions. Then write the filled skeleton ONCE. Check it once: outside the slots it matches the skeleton word for word, every expression phrase is copied from the table, nothing is inferred from a profession or a backstory, no working word or curly brace is left, and the prose is English. Do not redraft the finished prompt again and again.\n\n## Output\n\nReply with the filled skeleton only: one continuous English paragraph, beginning with the design image's \"<imageN> shows one character\".\n\nThe character description (it may be empty) is:"
+   },
+   "_meta": {
+    "title": "指示：角色設定表（PE 填骨架；你的提示詞當作角色描述）"
+   }
+  },
+  "18": {
+   "class_type": "PrimitiveStringMultiline",
+   "inputs": {
+    "value": "# Costume Design Sheet Prompt Maker — Local edition (fill-in skeleton, draft v1)\n\nYou turn reference images of an outfit (zero, one or more) and a description into the prompt for a costume design sheet that Qwen-Image 2.1 will draw. The sheet shows the outfit only — no person, no face. You fill a fixed skeleton. You write nothing else.\n\n## Input\n\n- <image1>, <image2>, …: reference images, in the order you see them (there may be none). They may show a person wearing the outfit, a garment on its own, or a detail. Count them first: the model receives exactly these images in this order.\n- A description, given after the last line of these instructions: the outfit, its materials and colours, the era or style, details to show. It may be in any language. With no images, the description is the only source.\n\n## Hard rules\n\n1. The output is the skeleton with its slots filled, word for word otherwise: one continuous English paragraph with no line breaks, no preamble, no headings, no markdown, no explanation.\n2. Always English, whatever language the description is written in. Text physically printed on a garment keeps its own script inside straight double quotes; nothing else is quoted.\n3. Facts come only from the reference images or the description. With images, never add a garment, trim or accessory that neither shows nor states. With no images, design only what the description asks for and keep the rest plain.\n4. Call the references <image1>, <image2> and so on in the order you see them. Point at them for the design instead of re-describing every seam.\n5. The outfit is always shown on a faceless form, never on a person: no head, no face, no skin, no hands.\n6. Never mention an aspect ratio, a resolution or a pixel count.\n7. None of these working words may appear in the output: slot, skeleton, variant, table, placeholder, or anything in curly braces.\n\n## Skeleton\n\n{SOURCE} Create a clean costume design sheet of this outfit on a plain warm off-white background, with generous empty space between the parts and no frames, borders, divider lines, labels or captions. The left two thirds of the canvas hold exactly three full views of the complete outfit side by side at identical scale, evenly spaced, each worn by the same faceless matte light-grey dress form with no head and no arms below the shoulder line, standing on a slim stand: on the left the front view, in the centre a clean side profile facing left, and on the right the back view. All three show exactly the same outfit: {PIECES}. {FIT} The right third of the canvas holds a vertical column of exactly {N} square close-ups at identical scale, each framed tightly on one detail of the same outfit: {DETAILS}. Along the bottom edge under the three views runs a row of small flat fabric swatches, one per material, each a clean square of the fabric seen straight on: {SWATCHES}. {LOCKS} Nothing is added, redesigned or simplified between the views. The lighting is soft, neutral, even studio light that shows the weave and sheen of each fabric, identical in every view and close-up. The overall composition is a row of three dress-form views on the left, a column of close-ups on the right and a strip of fabric swatches along the bottom, {MEDIUM}, {LETTERING}.\n\n## Slot rules\n\n{SOURCE} — with reference images → \"<imageD> shows the outfit: take every garment, its cut, its colours, its materials and its trims from it, and leave out the person, the face, the pose and the background.\" where <imageD> is the image that shows the most of the outfit; if other images show details, add one sentence: \"<imageN> shows\" + what it shows + \"; take that detail from it.\" With no images → \"Design the following outfit:\" + the description in one English sentence that names every garment with its colour and material.\n\n{PIECES} — one list, outermost to innermost and top to bottom, each garment with its main colour and material: e.g. \"a grey-brown plaid chiffon camisole with ruffled edges over a white sheer high-neck long-sleeved top, and a long white gathered skirt\". Only garments that are visible or stated.\n\n{FIT} — \"The garments hang and fold as real fabric would on a body, with the same lengths, layering and closures in all three views.\" Add one sentence for anything that only shows from one side (e.g. a back zip, a bow at the back, an open back).\n\n{N} and {DETAILS} — three or four details, the most characteristic first, each \"the\" + part + \"showing\" + what is special about it: collar or neckline, closures (buttons, zip, laces, hooks), trims and edging, a pattern repeat, a pocket, a hem. Write N as a word (\"three\", \"four\").\n\n{SWATCHES} — \"first, \" + material with its colour and texture + \"; second, \" + …, one per distinct fabric, at most four.\n\n{LOCKS} — \"The \" + three to six things named by type + \" stay identical in every view and close-up.\" Always include the colours, the pattern scale and the layering order.\n\n{MEDIUM} — references are photographs or nothing says otherwise → \"as a photograph with true fabric texture and colour\"; references are illustrations → \"as a clean fashion design illustration in the same medium as <imageD>\".\n\n{LETTERING} — text is printed on a garment → \"with no lettering anywhere except the text printed on the garments, which appears exactly as in the references\"; otherwise → \"with no lettering anywhere in the frame\".\n\n## Thinking\n\nBefore answering, reason briefly and only once: how many images there are and what each shows, which one shows the most of the outfit; every garment with its colour and material; which details and materials are most characteristic. Then write the filled skeleton ONCE and check once that no person, face or skin appears, no working word or curly brace is left, and the prose is English.\n\n## Output\n\nReply with the filled skeleton only: one continuous English paragraph.\n\nThe outfit description (it may be empty) is:"
+   },
+   "_meta": {
+    "title": "指示：服裝設計稿（無頭人台三視圖＋細節＋布料；提示詞寫服裝描述）"
+   }
+  },
+  "19": {
+   "class_type": "PrimitiveStringMultiline",
+   "inputs": {
+    "value": "# Prop Design Sheet Prompt Maker — Local edition (fill-in skeleton, draft v1)\n\nYou turn reference images of an object (zero, one or more) and a description into the prompt for a prop design sheet that Qwen-Image 2.1 will draw. The sheet shows the object only. You fill a fixed skeleton. You write nothing else.\n\n## Input\n\n- <image1>, <image2>, …: reference images, in the order you see them (there may be none). They may show the object on its own, in use, or a detail. Count them first: the model receives exactly these images in this order.\n- A description, given after the last line of these instructions: what the object is, its materials, size, function, moving parts, wear. It may be in any language. With no images, the description is the only source.\n\n## Hard rules\n\n1. The output is the skeleton with its slots filled, word for word otherwise: one continuous English paragraph with no line breaks, no preamble, no headings, no markdown, no explanation.\n2. Always English, whatever language the description is written in. Text physically printed or engraved on the object keeps its own script inside straight double quotes; nothing else is quoted.\n3. Facts come only from the reference images or the description. Never invent a mechanism, a part or a marking; with no images, design only what the description asks for.\n4. Call the references <image1>, <image2> and so on in the order you see them. Point at them for the design instead of re-describing every surface.\n5. No hands, no people and no background scene: the object stands alone.\n6. Never mention an aspect ratio, a resolution or a pixel count.\n7. None of these working words may appear in the output: slot, skeleton, variant, table, placeholder, or anything in curly braces.\n\n## Skeleton\n\n{SOURCE} Create a clean prop design sheet of this object on a plain warm off-white background, with generous empty space between the parts and no frames, borders, divider lines, labels or captions. The left half of the canvas holds one large three-quarter view of the object, seen slightly from above, as the main image, with a soft contact shadow under it. The upper right quarter holds exactly three smaller orthographic views of the same object side by side at identical scale: on the left the front view, in the centre the side view, and on the right the top view, all flat-on with no perspective. The lower right quarter holds a row of exactly {N} square close-ups at identical scale: {DETAILS}. {STATE} The object is {OBJECT}. {LOCKS} Nothing is added, redesigned or simplified between the views. The lighting is soft, neutral studio light from the upper left with one gentle highlight on each material, identical in every view. The overall composition is one large hero view on the left, a row of three flat views at the top right and a row of close-ups at the bottom right, {MEDIUM}, {LETTERING}.\n\n## Slot rules\n\n{SOURCE} — with reference images → \"<imageD> shows the object: take its shape, proportions, materials, colours and wear from it, and leave out its background, any hands and any other objects.\" where <imageD> shows the most of it; other images that show details or other sides get one sentence: \"<imageN> shows\" + what + \"; take that from it.\" With no images → \"Design the following object:\" + the description in one English sentence.\n\n{OBJECT} — one sentence: what it is, then its main parts from largest to smallest, each with its material and colour, and its size relative to a hand (e.g. \"about the length of a forearm\").\n\n{N} and {DETAILS} — two or three details, the most characteristic first, each \"the\" + part + \"showing\" + what is special: a joint or hinge, a grip or handle, an engraving or marking, a worn edge, a fastening.\n\n{STATE} — the object has a moving or opening part → \"A fourth small view next to the close-ups shows the object\" + open/extended/folded state + \"at the same scale.\"; otherwise → nothing (leave it out entirely).\n\n{LOCKS} — \"The \" + three to five things named by type (proportions, colours, materials, markings with their position, wear pattern) + \" stay identical in every view and close-up.\"\n\n{MEDIUM} — photographs or nothing says otherwise → \"as a photograph with true material texture\"; illustrations → \"as clean prop concept art in the same medium as <imageD>\"; 3D renders → \"as a 3D render with the same materials and shading as <imageD>\".\n\n{LETTERING} — the object carries printed or engraved text → \"with no lettering anywhere except the markings on the object, which appear exactly as in the references\"; otherwise → \"with no lettering anywhere in the frame\".\n\n## Thinking\n\nBefore answering, reason briefly and only once: how many images there are and what each shows; the object's parts, materials, colours, size and moving parts; which details are most characteristic. Then write the filled skeleton ONCE and check once that no hands, people or background appear, no working word or curly brace is left, and the prose is English.\n\n## Output\n\nReply with the filled skeleton only: one continuous English paragraph.\n\nThe object description (it may be empty) is:"
+   },
+   "_meta": {
+    "title": "指示：物品設計稿（主視圖＋正側頂三視圖＋細節；提示詞寫物品描述）"
+   }
+  },
+  "20": {
+   "class_type": "PrimitiveStringMultiline",
+   "inputs": {
+    "value": "# Scene Design Sheet Prompt Maker — Local edition (fill-in skeleton, draft v1)\n\nYou turn reference images of a place (zero, one or more) and a description into the prompt for an environment design sheet that Qwen-Image 2.1 will draw: one establishing view, the same place from other camera positions, and its key materials. No characters. You fill a fixed skeleton. You write nothing else.\n\n## Input\n\n- <image1>, <image2>, …: reference images of the place, in the order you see them (there may be none). Count them first: the model receives exactly these images in this order.\n- A description, given after the last line of these instructions: what the place is, the time of day, the weather, the mood, the era. It may be in any language. With no images, the description is the only source.\n\n## Hard rules\n\n1. The output is the skeleton with its slots filled, word for word otherwise: one continuous English paragraph with no line breaks, no preamble, no headings, no markdown, no explanation.\n2. Always English, whatever language the description is written in. Signs or text that must be readable keep their own script inside straight double quotes; any other distant text is \"blurred, too small to read\".\n3. Facts come only from the reference images or the description. Never add a landmark, a building or a light source that neither shows nor states.\n4. Call the references <image1>, <image2> and so on in the order you see them.\n5. No people and no animals anywhere in the sheet, so the place reads on its own. Leave out any person seen in a reference.\n6. Never mention an aspect ratio, a resolution or a pixel count.\n7. None of these working words may appear in the output: slot, skeleton, variant, table, placeholder, or anything in curly braces.\n\n## Skeleton\n\n{SOURCE} Create a clean environment design sheet of this place on a plain warm off-white background, with thin even gaps between the panels and no frames, borders, labels or captions. The upper two thirds of the canvas hold one wide establishing view of the place: {HERO} The lower third holds a row of exactly three smaller views of the same place, at identical size, all in the same light as the establishing view: on the left {VIEW1}, in the centre {VIEW2}, and on the right {VIEW3}. At the right end of that row sits a narrow column of exactly three small square material swatches, each a flat close-up of one surface of the place: {SWATCHES}. There are no people and no animals anywhere. {LOCKS} The lighting is {LIGHT}, the same in every view. The overall composition is one wide establishing view across the top and a row of three smaller views with a strip of material swatches below it, {MEDIUM}, {LETTERING}.\n\n## Slot rules\n\n{SOURCE} — with reference images → \"<image1> shows the place\" (and, for more images, \"<imageN> shows\" + which part or angle) + \": take its layout, its structures, its plants and its materials from them, and leave out any people in them.\" With no images → \"Design the following place:\" + the description in one English sentence.\n\n{HERO} — follow the scene hierarchy (6-3-1): one sentence for what fills most of the frame as large calm shapes in one colour family (sky, ground, walls, slopes), one sentence for the supporting structures in a second colour family and how they lead the eye, and one sentence for the single focal area with its position in the frame and its one clear difference (local brightness, an accent colour or a clean silhouette). Positional phrases, sizes as fractions of the frame.\n\n{VIEW1}, {VIEW2}, {VIEW3} — three camera positions that show parts the establishing view cannot: e.g. \"a reverse view looking back from the focal area toward where the establishing view was taken\", \"a high-angle view from above showing the layout of the whole place\", \"a low eye-level close view of\" + one characteristic corner. Each names what is in it.\n\n{SWATCHES} — \"first, \" + the main ground or wall surface + \"; second, \" + the main structure material + \"; third, \" + the most characteristic plant or detail surface; each with its colour and texture.\n\n{LOCKS} — \"The \" + three to five things named by type and position (the main structures, their materials, the plants, the landmarks and the direction of the light) + \" stay the same in every view.\"\n\n{LIGHT} — from the description or the references: time of day, weather, where the light comes from and what it does, in one phrase (e.g. \"soft overcast afternoon daylight from the upper left with no hard shadows\").\n\n{MEDIUM} — photographs or nothing says otherwise → \"as a photograph with natural colours\"; illustrations → \"as environment concept art in the same medium as <image1>\".\n\n{LETTERING} — readable signs are needed → \"with no lettering anywhere except\" + the quoted signs and where they are; otherwise → \"with no lettering anywhere in the frame\".\n\n## Thinking\n\nBefore answering, reason briefly and only once: how many images there are and what each shows; the layout, structures, plants, materials and light of the place; which area is the focus of the establishing view; which three camera positions show the most new information. Then write the filled skeleton ONCE and check once that no people or animals appear, no working word or curly brace is left, and the prose is English.\n\n## Output\n\nReply with the filled skeleton only: one continuous English paragraph.\n\nThe place description (it may be empty) is:"
+   },
+   "_meta": {
+    "title": "指示：場景設計稿（主景＋三個其他角度＋材質；提示詞寫場景描述）"
+   }
+  },
+  "21": {
+   "class_type": "UnetLoaderGGUF",
+   "inputs": {
+    "unet_name": "qwen-image-2.1-UC-Q8_0.gguf"
+   },
+   "_meta": {
+    "title": "本體（擴散模型，GGUF 或 safetensors）"
+   }
+  },
+  "22": {
+   "class_type": "CLIPLoaderGGUF",
+   "inputs": {
+    "clip_name": "qwen3vl_8b_heretic-Q8_0.gguf",
+    "type": "qwen_image"
+   },
+   "_meta": {
+    "title": "文字編碼器（選 GGUF 時同資料夾要有 mmproj）"
+   }
+  },
+  "23": {
+   "class_type": "VAELoader",
+   "inputs": {
+    "vae_name": "qwen_image_2.1_vae_bf16.safetensors"
+   }
+  },
+  "24": {
+   "class_type": "Power Lora Loader (rgthree)",
+   "inputs": {
+    "PowerLoraLoaderHeaderWidget": {
+     "type": "PowerLoraLoaderHeaderWidget"
+    },
+    "lora_1": {
+     "on": false,
+     "lora": "qwen-image-2.1-uncensored-lora.safetensors",
+     "strength": 1.0,
+     "strengthTwo": null
+    },
+    "lora_2": {
+     "on": false,
+     "lora": "qwen-image-2.1-consistency.safetensors",
+     "strength": 1.0,
+     "strengthTwo": null
+    },
+    "lora_3": {
+     "on": false,
+     "lora": "qwen-image-2.1-consistency-2000.safetensors",
+     "strength": 1.0,
+     "strengthTwo": null
+    },
+    "lora_4": {
+     "on": false,
+     "lora": "bfs_head_v1.1_qwen_2.1.safetensors",
+     "strength": 1.0,
+     "strengthTwo": null
+    },
+    "lora_5": {
+     "on": false,
+     "lora": "bfs_head_v1.1_alternative_qwen_2.1.safetensors",
+     "strength": 1.0,
+     "strengthTwo": null
+    },
+    "lora_6": {
+     "on": false,
+     "lora": "bfs_body_swap_v1.0_qwen_2.1.safetensors",
+     "strength": 1.0,
+     "strengthTwo": null
+    },
+    "lora_7": {
+     "on": false,
+     "lora": "QI2.1_AnyAngle.safetensors",
+     "strength": 1.0,
+     "strengthTwo": null
+    },
+    "➕ Add Lora": "",
+    "model": [
+     "21",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "LoRA（每列一個開關；同用途一次開一列）"
+   }
+  },
+  "25": {
+   "class_type": "PrimitiveInt",
+   "inputs": {
+    "value": 20260929
+   },
+   "_meta": {
+    "title": "種子（固定；換數字＝換一張）"
+   }
+  },
+  "26": {
+   "class_type": "PrimitiveBoolean",
+   "inputs": {
+    "value": false
+   },
+   "_meta": {
+    "title": "去格紋（開了才經過 VAE DeGrid）"
+   }
+  },
+  "27": {
+   "class_type": "PrimitiveBoolean",
+   "inputs": {
+    "value": true
+   },
+   "_meta": {
+    "title": "kitchen 注意力"
+   }
+  },
+  "28": {
+   "class_type": "PrimitiveBoolean",
+   "inputs": {
+    "value": false
+   },
+   "_meta": {
+    "title": "SeedVR2 放大（開了才跑）"
+   }
+  },
+  "29": {
+   "class_type": "PrimitiveInt",
+   "inputs": {
+    "value": 1536
+   },
+   "_meta": {
+    "title": "放大後短邊（px；1 MP 16:9 的 768 → 1536＝2 倍）"
+   }
+  },
+  "30": {
+   "class_type": "CustomCombo",
+   "inputs": {
+    "choice": "跟著圖 1",
+    "index": 0,
+    "option1": "跟著圖 1",
+    "option2": "自訂比例與 MP",
+    "option3": ""
+   },
+   "_meta": {
+    "title": "輸出尺寸（畫新圖一律用比例與 MP）"
+   }
+  },
+  "31": {
+   "class_type": "ResolutionSelector",
+   "inputs": {
+    "aspect_ratio": "16:9 (Widescreen)",
+    "megapixels": 1,
+    "multiple": 32
+   },
+   "_meta": {
+    "title": "比例與 MP"
+   }
+  },
+  "32": {
+   "class_type": "PrimitiveInt",
+   "inputs": {
+    "value": 1024
+   },
+   "_meta": {
+    "title": "參考圖解析度（1024≈1 MP；跟著圖 1 時也是輸出大小）"
+   }
+  },
+  "33": {
+   "class_type": "PrimitiveInt",
+   "inputs": {
+    "value": 512
+   },
+   "_meta": {
+    "title": "圖 2～5 的解析度（0＝同上）"
+   }
+  },
+  "34": {
+   "class_type": "PrimitiveInt",
+   "inputs": {
+    "value": 1
+   },
+   "_meta": {
+    "title": "張數（一次出幾張，種子各不同）"
+   }
+  },
+  "35": {
+   "class_type": "CustomCombo",
+   "inputs": {
+    "choice": "Pruna 8 步",
+    "index": 1,
+    "option1": "自訂（下面的一般取樣）",
+    "option2": "Pruna 8 步",
+    "option3": "Fix 作者設定",
+    "option4": ""
+   },
+   "_meta": {
+    "title": "取樣"
+   }
+  },
+  "36": {
+   "class_type": "KSampler Config (rgthree)",
+   "inputs": {
+    "steps_total": 32,
+    "refiner_step": 32,
+    "cfg": 1.0,
+    "sampler_name": "euler_cfg_pp",
+    "scheduler": "simple"
+   },
+   "_meta": {
+    "title": "一般取樣（取樣選「自訂」時用；refiner_step 沒用到）"
+   }
+  },
+  "37": {
+   "class_type": "CustomCombo",
+   "inputs": {
+    "choice": "關",
+    "index": 0,
+    "option1": "關",
+    "option2": "Fisher 自由姿勢",
+    "option3": "VNCCS Pose Studio",
+    "option4": "Pose Studio＋從圖 1 抓姿勢",
+    "option5": ""
+   },
+   "_meta": {
+    "title": "姿勢參考"
+   }
+  },
+  "38": {
+   "class_type": "ComfyMathExpression",
+   "inputs": {
+    "expression": "a == 3",
+    "values.a": [
+     "37",
+     1
+    ]
+   },
+   "_meta": {
+    "title": "抓姿勢：選「Pose Studio＋從圖 1 抓姿勢」才開"
+   }
+  },
+  "39": {
+   "class_type": "ComfySwitchNode",
+   "inputs": {
+    "switch": [
+     "38",
+     2
+    ],
+    "on_true": [
+     "3",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "抓姿勢：開了才把圖 1 送進 Pose Studio"
+   }
+  },
+  "40": {
+   "class_type": "FisherQwenFreePose",
+   "inputs": {
+    "width": [
+     "31",
+     0
+    ],
+    "height": [
+     "31",
+     1
+    ],
+    "reference_resolution": [
+     "32",
+     0
+    ],
+    "extra_prompt": "",
+    "pose_json": "{}",
+    "clip": [
+     "22",
+     0
+    ],
+    "vae": [
+     "23",
+     0
+    ],
+    "reference_image": [
+     "3",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "Fisher 自由姿勢（開編輯器擺好後按「应用到节点」）"
+   }
+  },
+  "41": {
+   "class_type": "VNCCS_PoseStudio",
+   "inputs": {
+    "pose_data": "{}",
+    "pose_image": [
+     "39",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "VNCCS Pose Studio（補充提示詞寫在它自己的 Prompt 面板）"
+   }
+  },
+  "42": {
+   "class_type": "ComfyMathExpression",
+   "inputs": {
+    "expression": "a > 0",
+    "values.a": [
+     "14",
+     1
+    ]
+   },
+   "_meta": {
+    "title": "強化：不是「關」"
+   }
+  },
+  "43": {
+   "class_type": "ComfyMathExpression",
+   "inputs": {
+    "expression": "a == 2",
+    "values.a": [
+     "14",
+     1
+    ]
+   },
+   "_meta": {
+    "title": "強化：角色設定表"
+   }
+  },
+  "44": {
+   "class_type": "ComfyMathExpression",
+   "inputs": {
+    "expression": "a == 3",
+    "values.a": [
+     "14",
+     1
+    ]
+   },
+   "_meta": {
+    "title": "強化：服裝設計稿"
+   }
+  },
+  "45": {
+   "class_type": "ComfyMathExpression",
+   "inputs": {
+    "expression": "a == 4",
+    "values.a": [
+     "14",
+     1
+    ]
+   },
+   "_meta": {
+    "title": "強化：物品設計稿"
+   }
+  },
+  "46": {
+   "class_type": "ComfyMathExpression",
+   "inputs": {
+    "expression": "a == 5",
+    "values.a": [
+     "14",
+     1
+    ]
+   },
+   "_meta": {
+    "title": "強化：場景設計稿"
+   }
+  },
+  "47": {
+   "class_type": "ComfyMathExpression",
+   "inputs": {
+    "expression": "a > 0",
+    "values.a": [
+     "37",
+     1
+    ]
+   },
+   "_meta": {
+    "title": "姿勢：不是「關」"
+   }
+  },
+  "48": {
+   "class_type": "ComfyMathExpression",
+   "inputs": {
+    "expression": "a == 1",
+    "values.a": [
+     "37",
+     1
+    ]
+   },
+   "_meta": {
+    "title": "姿勢：Fisher"
+   }
+  },
+  "49": {
+   "class_type": "ComfyMathExpression",
+   "inputs": {
+    "expression": "a >= 2",
+    "values.a": [
+     "37",
+     1
+    ]
+   },
+   "_meta": {
+    "title": "姿勢：Pose Studio（含抓姿勢）"
+   }
+  },
+  "50": {
+   "class_type": "ComfyMathExpression",
+   "inputs": {
+    "expression": "a == 1",
+    "values.a": [
+     "35",
+     1
+    ]
+   },
+   "_meta": {
+    "title": "取樣：Pruna 8 步"
+   }
+  },
+  "51": {
+   "class_type": "ComfyMathExpression",
+   "inputs": {
+    "expression": "a == 2",
+    "values.a": [
+     "35",
+     1
+    ]
+   },
+   "_meta": {
+    "title": "取樣：Fix 作者設定"
+   }
+  },
+  "52": {
+   "class_type": "ComfyMathExpression",
+   "inputs": {
+    "expression": "a == 1 or not b",
+    "values.a": [
+     "30",
+     1
+    ],
+    "values.b": [
+     "2",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "輸出尺寸：自訂，或圖 1 沒勾"
+   }
+  },
+  "53": {
+   "class_type": "ComfyMathExpression",
+   "inputs": {
+    "expression": "a > 0",
+    "values.a": [
+     "32",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "圖 1：解析度大於 0 才縮"
+   }
+  },
+  "54": {
+   "class_type": "ComfyMathExpression",
+   "inputs": {
+    "expression": "a * a / 1048576",
+    "values.a": [
+     "32",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "圖 1：解析度 → 百萬像素"
+   }
+  },
+  "55": {
+   "class_type": "ComfyMathExpression",
+   "inputs": {
+    "expression": "(b if b > 0 else a) > 0",
+    "values.a": [
+     "32",
+     0
+    ],
+    "values.b": [
+     "33",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "圖 2～5：解析度大於 0 才縮"
+   }
+  },
+  "56": {
+   "class_type": "ComfyMathExpression",
+   "inputs": {
+    "expression": "(b if b > 0 else a) ** 2 / 1048576",
+    "values.a": [
+     "32",
+     0
+    ],
+    "values.b": [
+     "33",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "圖 2～5：解析度 → 百萬像素（0＝同圖 1）"
+   }
+  },
+  "57": {
+   "class_type": "ImageScaleToTotalPixels",
+   "inputs": {
+    "upscale_method": "lanczos",
+    "megapixels": [
+     "54",
+     0
+    ],
+    "resolution_steps": 32,
+    "image": [
+     "3",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "圖 1 縮到參考圖解析度"
+   }
+  },
+  "58": {
+   "class_type": "ComfySwitchNode",
+   "inputs": {
+    "switch": [
+     "53",
+     2
+    ],
+    "on_false": [
+     "3",
+     0
+    ],
+    "on_true": [
+     "57",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "圖 1 縮到參考圖解析度：解析度 0 就用原圖"
+   }
+  },
+  "59": {
+   "class_type": "ComfySwitchNode",
+   "inputs": {
+    "switch": [
+     "2",
+     0
+    ],
+    "on_true": [
+     "58",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "圖 1：勾了才送出"
+   }
+  },
+  "60": {
+   "class_type": "ComfyMathExpression",
+   "inputs": {
+    "expression": "a and b",
+    "values.a": [
+     "2",
+     0
+    ],
+    "values.b": [
+     "4",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "圖 2：圖 1 也有勾才算"
+   }
+  },
+  "61": {
+   "class_type": "ImageScaleToTotalPixels",
+   "inputs": {
+    "upscale_method": "lanczos",
+    "megapixels": [
+     "56",
+     0
+    ],
+    "resolution_steps": 32,
+    "image": [
+     "5",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "圖 2 縮到圖 2～5 的解析度"
+   }
+  },
+  "62": {
+   "class_type": "ComfySwitchNode",
+   "inputs": {
+    "switch": [
+     "55",
+     2
+    ],
+    "on_false": [
+     "5",
+     0
+    ],
+    "on_true": [
+     "61",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "圖 2 縮到圖 2～5 的解析度：解析度 0 就用原圖"
+   }
+  },
+  "63": {
+   "class_type": "ComfySwitchNode",
+   "inputs": {
+    "switch": [
+     "60",
+     2
+    ],
+    "on_true": [
+     "62",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "圖 2：勾了才送出"
+   }
+  },
+  "64": {
+   "class_type": "BatchImagesNode",
+   "inputs": {
+    "images.image0": [
+     "3",
+     0
+    ],
+    "images.image1": [
+     "5",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "PE 看的圖：加上圖 2"
+   }
+  },
+  "65": {
+   "class_type": "ComfySwitchNode",
+   "inputs": {
+    "switch": [
+     "60",
+     2
+    ],
+    "on_false": [
+     "3",
+     0
+    ],
+    "on_true": [
+     "64",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "PE 看的圖：圖 2 有勾才加"
+   }
+  },
+  "66": {
+   "class_type": "ComfyMathExpression",
+   "inputs": {
+    "expression": "a and b",
+    "values.a": [
+     "2",
+     0
+    ],
+    "values.b": [
+     "6",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "圖 3：圖 1 也有勾才算"
+   }
+  },
+  "67": {
+   "class_type": "ImageScaleToTotalPixels",
+   "inputs": {
+    "upscale_method": "lanczos",
+    "megapixels": [
+     "56",
+     0
+    ],
+    "resolution_steps": 32,
+    "image": [
+     "7",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "圖 3 縮到圖 2～5 的解析度"
+   }
+  },
+  "68": {
+   "class_type": "ComfySwitchNode",
+   "inputs": {
+    "switch": [
+     "55",
+     2
+    ],
+    "on_false": [
+     "7",
+     0
+    ],
+    "on_true": [
+     "67",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "圖 3 縮到圖 2～5 的解析度：解析度 0 就用原圖"
+   }
+  },
+  "69": {
+   "class_type": "ComfySwitchNode",
+   "inputs": {
+    "switch": [
+     "66",
+     2
+    ],
+    "on_true": [
+     "68",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "圖 3：勾了才送出"
+   }
+  },
+  "70": {
+   "class_type": "BatchImagesNode",
+   "inputs": {
+    "images.image0": [
+     "65",
+     0
+    ],
+    "images.image1": [
+     "7",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "PE 看的圖：加上圖 3"
+   }
+  },
+  "71": {
+   "class_type": "ComfySwitchNode",
+   "inputs": {
+    "switch": [
+     "66",
+     2
+    ],
+    "on_false": [
+     "65",
+     0
+    ],
+    "on_true": [
+     "70",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "PE 看的圖：圖 3 有勾才加"
+   }
+  },
+  "72": {
+   "class_type": "ComfyMathExpression",
+   "inputs": {
+    "expression": "a and b",
+    "values.a": [
+     "2",
+     0
+    ],
+    "values.b": [
+     "8",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "圖 4：圖 1 也有勾才算"
+   }
+  },
+  "73": {
+   "class_type": "ImageScaleToTotalPixels",
+   "inputs": {
+    "upscale_method": "lanczos",
+    "megapixels": [
+     "56",
+     0
+    ],
+    "resolution_steps": 32,
+    "image": [
+     "9",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "圖 4 縮到圖 2～5 的解析度"
+   }
+  },
+  "74": {
+   "class_type": "ComfySwitchNode",
+   "inputs": {
+    "switch": [
+     "55",
+     2
+    ],
+    "on_false": [
+     "9",
+     0
+    ],
+    "on_true": [
+     "73",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "圖 4 縮到圖 2～5 的解析度：解析度 0 就用原圖"
+   }
+  },
+  "75": {
+   "class_type": "ComfySwitchNode",
+   "inputs": {
+    "switch": [
+     "72",
+     2
+    ],
+    "on_true": [
+     "74",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "圖 4：勾了才送出"
+   }
+  },
+  "76": {
+   "class_type": "BatchImagesNode",
+   "inputs": {
+    "images.image0": [
+     "71",
+     0
+    ],
+    "images.image1": [
+     "9",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "PE 看的圖：加上圖 4"
+   }
+  },
+  "77": {
+   "class_type": "ComfySwitchNode",
+   "inputs": {
+    "switch": [
+     "72",
+     2
+    ],
+    "on_false": [
+     "71",
+     0
+    ],
+    "on_true": [
+     "76",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "PE 看的圖：圖 4 有勾才加"
+   }
+  },
+  "78": {
+   "class_type": "ComfyMathExpression",
+   "inputs": {
+    "expression": "a and b",
+    "values.a": [
+     "2",
+     0
+    ],
+    "values.b": [
+     "10",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "圖 5：圖 1 也有勾才算"
+   }
+  },
+  "79": {
+   "class_type": "ImageScaleToTotalPixels",
+   "inputs": {
+    "upscale_method": "lanczos",
+    "megapixels": [
+     "56",
+     0
+    ],
+    "resolution_steps": 32,
+    "image": [
+     "11",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "圖 5 縮到圖 2～5 的解析度"
+   }
+  },
+  "80": {
+   "class_type": "ComfySwitchNode",
+   "inputs": {
+    "switch": [
+     "55",
+     2
+    ],
+    "on_false": [
+     "11",
+     0
+    ],
+    "on_true": [
+     "79",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "圖 5 縮到圖 2～5 的解析度：解析度 0 就用原圖"
+   }
+  },
+  "81": {
+   "class_type": "ComfySwitchNode",
+   "inputs": {
+    "switch": [
+     "78",
+     2
+    ],
+    "on_true": [
+     "80",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "圖 5：勾了才送出"
+   }
+  },
+  "82": {
+   "class_type": "BatchImagesNode",
+   "inputs": {
+    "images.image0": [
+     "77",
+     0
+    ],
+    "images.image1": [
+     "11",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "PE 看的圖：加上圖 5"
+   }
+  },
+  "83": {
+   "class_type": "ComfySwitchNode",
+   "inputs": {
+    "switch": [
+     "78",
+     2
+    ],
+    "on_false": [
+     "77",
+     0
+    ],
+    "on_true": [
+     "82",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "PE 看的圖：圖 5 有勾才加"
+   }
+  },
+  "84": {
+   "class_type": "ComfySwitchNode",
+   "inputs": {
+    "switch": [
+     "43",
+     2
+    ],
+    "on_false": [
+     "15",
+     0
+    ],
+    "on_true": [
+     "17",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "指示（畫新圖）：角色設定表或一般強化"
+   }
+  },
+  "85": {
+   "class_type": "ComfySwitchNode",
+   "inputs": {
+    "switch": [
+     "44",
+     2
+    ],
+    "on_false": [
+     "84",
+     0
+    ],
+    "on_true": [
+     "18",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "指示（畫新圖）：選了costume才換"
+   }
+  },
+  "86": {
+   "class_type": "ComfySwitchNode",
+   "inputs": {
+    "switch": [
+     "45",
+     2
+    ],
+    "on_false": [
+     "85",
+     0
+    ],
+    "on_true": [
+     "19",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "指示（畫新圖）：選了prop才換"
+   }
+  },
+  "87": {
+   "class_type": "ComfySwitchNode",
+   "inputs": {
+    "switch": [
+     "46",
+     2
+    ],
+    "on_false": [
+     "86",
+     0
+    ],
+    "on_true": [
+     "20",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "指示（畫新圖）：選了scene才換"
+   }
+  },
+  "88": {
+   "class_type": "StringConcatenate",
+   "inputs": {
+    "string_a": [
+     "87",
+     0
+    ],
+    "string_b": [
+     "12",
+     0
+    ],
+    "delimiter": "\n\n"
+   },
+   "_meta": {
+    "title": "指示＋提示詞（畫新圖）"
+   }
+  },
+  "89": {
+   "class_type": "LlamaServerGenerate",
+   "inputs": {
+    "model": "pe-t2i-heretic\\pe_t2i_heretic-Q8_0.gguf",
+    "prompt": [
+     "88",
+     0
+    ],
+    "max_tokens": 16256,
+    "temperature": 1.0,
+    "top_k": 20,
+    "top_p": 0.95,
+    "min_p": 0.0,
+    "repetition_penalty": 1.05,
+    "seed": 0,
+    "thinking": false
+   },
+   "_meta": {
+    "title": "PE 改寫（畫新圖，llama-server）"
+   }
+  },
+  "90": {
+   "class_type": "RegexReplace",
+   "inputs": {
+    "string": [
+     "89",
+     0
+    ],
+    "regex_pattern": "(?s)\\A.*</think>\\s*",
+    "replace": "",
+    "case_insensitive": true,
+    "multiline": false,
+    "dotall": false,
+    "count": 0
+   },
+   "_meta": {
+    "title": "PE 結果（畫新圖）：只留最後一個 </think> 之後"
+   }
+  },
+  "91": {
+   "class_type": "RegexReplace",
+   "inputs": {
+    "string": [
+     "90",
+     0
+    ],
+    "regex_pattern": "(?s)\\A\\s*\\{\\s*\"[^\"]*\"\\s*:\\s*\"(.*)\"\\s*\\}\\s*\\Z",
+    "replace": "\\1",
+    "case_insensitive": false,
+    "multiline": false,
+    "dotall": false,
+    "count": 0
+   },
+   "_meta": {
+    "title": "PE 結果（畫新圖）：剝掉 JSON 外殼"
+   }
+  },
+  "92": {
+   "class_type": "RegexReplace",
+   "inputs": {
+    "string": [
+     "91",
+     0
+    ],
+    "regex_pattern": "\\\\([\"\\\\/])",
+    "replace": "\\1",
+    "case_insensitive": false,
+    "multiline": false,
+    "dotall": false,
+    "count": 0
+   },
+   "_meta": {
+    "title": "PE 結果（畫新圖）：還原 JSON 跳脫"
+   }
+  },
+  "93": {
+   "class_type": "ComfySwitchNode",
+   "inputs": {
+    "switch": [
+     "43",
+     2
+    ],
+    "on_false": [
+     "16",
+     0
+    ],
+    "on_true": [
+     "17",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "指示（修圖）：角色設定表或一般強化"
+   }
+  },
+  "94": {
+   "class_type": "ComfySwitchNode",
+   "inputs": {
+    "switch": [
+     "44",
+     2
+    ],
+    "on_false": [
+     "93",
+     0
+    ],
+    "on_true": [
+     "18",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "指示（修圖）：選了costume才換"
+   }
+  },
+  "95": {
+   "class_type": "ComfySwitchNode",
+   "inputs": {
+    "switch": [
+     "45",
+     2
+    ],
+    "on_false": [
+     "94",
+     0
+    ],
+    "on_true": [
+     "19",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "指示（修圖）：選了prop才換"
+   }
+  },
+  "96": {
+   "class_type": "ComfySwitchNode",
+   "inputs": {
+    "switch": [
+     "46",
+     2
+    ],
+    "on_false": [
+     "95",
+     0
+    ],
+    "on_true": [
+     "20",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "指示（修圖）：選了scene才換"
+   }
+  },
+  "97": {
+   "class_type": "StringConcatenate",
+   "inputs": {
+    "string_a": [
+     "96",
+     0
+    ],
+    "string_b": [
+     "12",
+     0
+    ],
+    "delimiter": "\n\n"
+   },
+   "_meta": {
+    "title": "指示＋提示詞（修圖）"
+   }
+  },
+  "98": {
+   "class_type": "LlamaServerGenerate",
+   "inputs": {
+    "model": "pe-i2i-heretic\\pe_i2i_heretic-Q8_0.gguf",
+    "prompt": [
+     "97",
+     0
+    ],
+    "max_tokens": 16256,
+    "temperature": 0.8,
+    "top_k": 20,
+    "top_p": 0.95,
+    "min_p": 0.0,
+    "repetition_penalty": 1.0,
+    "seed": 0,
+    "thinking": true,
+    "image": [
+     "83",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "PE 改寫（修圖，llama-server）"
+   }
+  },
+  "99": {
+   "class_type": "RegexReplace",
+   "inputs": {
+    "string": [
+     "98",
+     0
+    ],
+    "regex_pattern": "(?s)\\A.*</think>\\s*",
+    "replace": "",
+    "case_insensitive": true,
+    "multiline": false,
+    "dotall": false,
+    "count": 0
+   },
+   "_meta": {
+    "title": "PE 結果（修圖）：只留最後一個 </think> 之後"
+   }
+  },
+  "100": {
+   "class_type": "RegexReplace",
+   "inputs": {
+    "string": [
+     "99",
+     0
+    ],
+    "regex_pattern": "(?s)\\A\\s*\\{\\s*\"[^\"]*\"\\s*:\\s*\"(.*)\"\\s*\\}\\s*\\Z",
+    "replace": "\\1",
+    "case_insensitive": false,
+    "multiline": false,
+    "dotall": false,
+    "count": 0
+   },
+   "_meta": {
+    "title": "PE 結果（修圖）：剝掉 JSON 外殼"
+   }
+  },
+  "101": {
+   "class_type": "RegexReplace",
+   "inputs": {
+    "string": [
+     "100",
+     0
+    ],
+    "regex_pattern": "\\\\([\"\\\\/])",
+    "replace": "\\1",
+    "case_insensitive": false,
+    "multiline": false,
+    "dotall": false,
+    "count": 0
+   },
+   "_meta": {
+    "title": "PE 結果（修圖）：還原 JSON 跳脫"
+   }
+  },
+  "102": {
+   "class_type": "ComfySwitchNode",
+   "inputs": {
+    "switch": [
+     "2",
+     0
+    ],
+    "on_false": [
+     "92",
+     0
+    ],
+    "on_true": [
+     "101",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "PE：圖 1 有勾用 PE-I2I，沒勾用 PE-T2I"
+   }
+  },
+  "103": {
+   "class_type": "ComfySwitchNode",
+   "inputs": {
+    "switch": [
+     "42",
+     2
+    ],
+    "on_false": [
+     "12",
+     0
+    ],
+    "on_true": [
+     "102",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "用 PE 的結果"
+   }
+  },
+  "104": {
+   "class_type": "ModelAttentionBackend",
+   "inputs": {
+    "attention": "comfy kitchen attention",
+    "model": [
+     "24",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "kitchen 注意力"
+   }
+  },
+  "105": {
+   "class_type": "ComfySwitchNode",
+   "inputs": {
+    "switch": [
+     "27",
+     0
+    ],
+    "on_false": [
+     "24",
+     0
+    ],
+    "on_true": [
+     "104",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "kitchen：開了才經過"
+   }
+  },
+  "106": {
+   "class_type": "LoraLoaderModelOnly",
+   "inputs": {
+    "lora_name": "VNCCS_QI2_PoseStudioV1.1.safetensors",
+    "strength_model": 1.0,
+    "model": [
+     "105",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "姿勢 LoRA：VNCCS PoseStudio"
+   }
+  },
+  "107": {
+   "class_type": "ComfySwitchNode",
+   "inputs": {
+    "switch": [
+     "47",
+     2
+    ],
+    "on_false": [
+     "105",
+     0
+    ],
+    "on_true": [
+     "106",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "姿勢 LoRA：VNCCS PoseStudio：選到才套用"
+   }
+  },
+  "108": {
+   "class_type": "LoraLoaderModelOnly",
+   "inputs": {
+    "lora_name": "p_qwen_image_2.1_8step_v0.1.safetensors",
+    "strength_model": 1.0,
+    "model": [
+     "107",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "① 加速：Pruna 8 步（連取樣一起換）"
+   }
+  },
+  "109": {
+   "class_type": "ComfySwitchNode",
+   "inputs": {
+    "switch": [
+     "50",
+     2
+    ],
+    "on_false": [
+     "107",
+     0
+    ],
+    "on_true": [
+     "108",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "① 加速：Pruna 8 步（連取樣一起換）：選到才套用"
+   }
+  },
+  "110": {
+   "class_type": "LoraLoaderModelOnly",
+   "inputs": {
+    "lora_name": "qwen-image-2.1-fix-1.0-comfy.safetensors",
+    "strength_model": 1.0,
+    "model": [
+     "109",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "② 畫質修正：Fix（連取樣一起換）"
+   }
+  },
+  "111": {
+   "class_type": "ComfySwitchNode",
+   "inputs": {
+    "switch": [
+     "51",
+     2
+    ],
+    "on_false": [
+     "109",
+     0
+    ],
+    "on_true": [
+     "110",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "② 畫質修正：Fix（連取樣一起換）：選到才套用"
+   }
+  },
+  "112": {
+   "class_type": "QwenImage21Cache",
+   "inputs": {
+    "device": "auto",
+    "dtype": "default",
+    "model": [
+     "111",
+     0
+    ]
+   }
+  },
+  "113": {
+   "class_type": "EmptyLatentImage",
+   "inputs": {
+    "width": [
+     "31",
+     0
+    ],
+    "height": [
+     "31",
+     1
+    ],
+    "batch_size": 1
+   },
+   "_meta": {
+    "title": "空白 latent（比例與 MP 選的尺寸）"
+   }
+  },
+  "114": {
+   "class_type": "TextEncodeQwenImage21",
+   "inputs": {
+    "prompt": [
+     "103",
+     0
+    ],
+    "negative_prompt": [
+     "13",
+     0
+    ],
+    "resolution": 0,
+    "clip": [
+     "22",
+     0
+    ],
+    "images.image_1": [
+     "59",
+     0
+    ],
+    "vae": [
+     "23",
+     0
+    ],
+    "images.image_2": [
+     "63",
+     0
+    ],
+    "images.image_3": [
+     "69",
+     0
+    ],
+    "images.image_4": [
+     "75",
+     0
+    ],
+    "images.image_5": [
+     "81",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "文字編碼（圖已在前面縮好，這裡用原尺寸）"
+   }
+  },
+  "115": {
+   "class_type": "ComfySwitchNode",
+   "inputs": {
+    "switch": [
+     "52",
+     2
+    ],
+    "on_false": [
+     "114",
+     2
+    ],
+    "on_true": [
+     "113",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "輸出尺寸：自訂或跟著圖 1"
+   }
+  },
+  "116": {
+   "class_type": "TextEncodeQwenImage21",
+   "inputs": {
+    "prompt": [
+     "41",
+     1
+    ],
+    "negative_prompt": [
+     "13",
+     0
+    ],
+    "resolution": [
+     "32",
+     0
+    ],
+    "clip": [
+     "22",
+     0
+    ],
+    "images.image_1": [
+     "41",
+     0
+    ],
+    "vae": [
+     "23",
+     0
+    ],
+    "images.image_2": [
+     "3",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "文字編碼：VNCCS Pose Studio（人偶＝image1、人物＝image2）"
+   }
+  },
+  "117": {
+   "class_type": "ComfySwitchNode",
+   "inputs": {
+    "switch": [
+     "49",
+     2
+    ],
+    "on_false": [
+     "114",
+     0
+    ],
+    "on_true": [
+     "116",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "正向條件：Pose Studio 才換"
+   }
+  },
+  "118": {
+   "class_type": "ComfySwitchNode",
+   "inputs": {
+    "switch": [
+     "48",
+     2
+    ],
+    "on_false": [
+     "117",
+     0
+    ],
+    "on_true": [
+     "40",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "正向條件：Fisher 才換"
+   }
+  },
+  "119": {
+   "class_type": "ComfySwitchNode",
+   "inputs": {
+    "switch": [
+     "49",
+     2
+    ],
+    "on_false": [
+     "114",
+     1
+    ],
+    "on_true": [
+     "116",
+     1
+    ]
+   },
+   "_meta": {
+    "title": "負向條件：Pose Studio 才換"
+   }
+  },
+  "120": {
+   "class_type": "ComfySwitchNode",
+   "inputs": {
+    "switch": [
+     "48",
+     2
+    ],
+    "on_false": [
+     "119",
+     0
+    ],
+    "on_true": [
+     "40",
+     1
+    ]
+   },
+   "_meta": {
+    "title": "負向條件：Fisher 才換"
+   }
+  },
+  "121": {
+   "class_type": "ComfySwitchNode",
+   "inputs": {
+    "switch": [
+     "49",
+     2
+    ],
+    "on_false": [
+     "115",
+     0
+    ],
+    "on_true": [
+     "116",
+     2
+    ]
+   },
+   "_meta": {
+    "title": "latent：Pose Studio 才換"
+   }
+  },
+  "122": {
+   "class_type": "ComfySwitchNode",
+   "inputs": {
+    "switch": [
+     "48",
+     2
+    ],
+    "on_false": [
+     "121",
+     0
+    ],
+    "on_true": [
+     "40",
+     2
+    ]
+   },
+   "_meta": {
+    "title": "latent：Fisher 才換"
+   }
+  },
+  "123": {
+   "class_type": "RepeatLatentBatch",
+   "inputs": {
+    "amount": [
+     "34",
+     0
+    ],
+    "samples": [
+     "122",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "張數：複製成一批"
+   }
+  },
+  "124": {
+   "class_type": "ComfySwitchNode",
+   "inputs": {
+    "switch": [
+     "49",
+     2
+    ],
+    "on_false": [
+     "103",
+     0
+    ],
+    "on_true": [
+     "41",
+     1
+    ]
+   },
+   "_meta": {
+    "title": "實際提示詞：Pose Studio 才換"
+   }
+  },
+  "125": {
+   "class_type": "ComfySwitchNode",
+   "inputs": {
+    "switch": [
+     "48",
+     2
+    ],
+    "on_false": [
+     "124",
+     0
+    ],
+    "on_true": [
+     "40",
+     3
+    ]
+   },
+   "_meta": {
+    "title": "實際提示詞：Fisher 才換"
+   }
+  },
+  "126": {
+   "class_type": "KSampler",
+   "inputs": {
+    "seed": [
+     "25",
+     0
+    ],
+    "steps": [
+     "36",
+     0
+    ],
+    "cfg": [
+     "36",
+     2
+    ],
+    "sampler_name": [
+     "36",
+     3
+    ],
+    "scheduler": [
+     "36",
+     4
+    ],
+    "denoise": 1.0,
+    "model": [
+     "112",
+     0
+    ],
+    "positive": [
+     "118",
+     0
+    ],
+    "negative": [
+     "120",
+     0
+    ],
+    "latent_image": [
+     "123",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "取樣：自訂（設定在外層「4 參數設定」）"
+   }
+  },
+  "127": {
+   "class_type": "KSampler",
+   "inputs": {
+    "seed": [
+     "25",
+     0
+    ],
+    "steps": 8,
+    "cfg": 1.0,
+    "sampler_name": "deis_2m",
+    "scheduler": "simple",
+    "denoise": 1.0,
+    "model": [
+     "112",
+     0
+    ],
+    "positive": [
+     "118",
+     0
+    ],
+    "negative": [
+     "120",
+     0
+    ],
+    "latent_image": [
+     "123",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "取樣：Pruna 8 步（deis_2m＋simple 8 步）"
+   }
+  },
+  "128": {
+   "class_type": "APG",
+   "inputs": {
+    "eta": 1.0,
+    "norm_threshold": 10.0,
+    "momentum": 0.3,
+    "model": [
+     "112",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "APG（Fix 作者設定）"
+   }
+  },
+  "129": {
+   "class_type": "FreSca",
+   "inputs": {
+    "scale_low": 1.0,
+    "scale_high": 2.0,
+    "freq_cutoff": 8,
+    "model": [
+     "128",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "FreSca（Fix 作者設定）"
+   }
+  },
+  "130": {
+   "class_type": "KSampler",
+   "inputs": {
+    "seed": [
+     "25",
+     0
+    ],
+    "steps": 20,
+    "cfg": 3.0,
+    "sampler_name": "seeds_2",
+    "scheduler": "sgm_uniform",
+    "denoise": 1.0,
+    "model": [
+     "129",
+     0
+    ],
+    "positive": [
+     "118",
+     0
+    ],
+    "negative": [
+     "120",
+     0
+    ],
+    "latent_image": [
+     "123",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "取樣：Fix 作者設定（seeds_2＋sgm_uniform 20 步，CFG 3＋APG＋FreSca）"
+   }
+  },
+  "131": {
+   "class_type": "ComfySwitchNode",
+   "inputs": {
+    "switch": [
+     "51",
+     2
+    ],
+    "on_false": [
+     "126",
+     0
+    ],
+    "on_true": [
+     "130",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "取樣：Fix 才換"
+   }
+  },
+  "132": {
+   "class_type": "ComfySwitchNode",
+   "inputs": {
+    "switch": [
+     "50",
+     2
+    ],
+    "on_false": [
+     "131",
+     0
+    ],
+    "on_true": [
+     "127",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "取樣：Pruna 才換"
+   }
+  },
+  "133": {
+   "class_type": "VAEDecode",
+   "inputs": {
+    "samples": [
+     "132",
+     0
+    ],
+    "vae": [
+     "23",
+     0
+    ]
+   }
+  },
+  "134": {
+   "class_type": "VAEDeGrid",
+   "inputs": {
+    "enabled": true,
+    "mode": "auto",
+    "limit": 0.02,
+    "skip_when_clean": true,
+    "grid_gain": 10.0,
+    "grid_view": "4x zoom",
+    "image": [
+     "133",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "去格紋（VAE DeGrid）"
+   }
+  },
+  "135": {
+   "class_type": "ComfySwitchNode",
+   "inputs": {
+    "switch": [
+     "26",
+     0
+    ],
+    "on_false": [
+     "133",
+     0
+    ],
+    "on_true": [
+     "134",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "去格紋：開了才經過"
+   }
+  },
+  "136": {
+   "class_type": "SeedVR2LoadDiTModel",
+   "inputs": {
+    "model": "seedvr2_ema_7b_fp16.safetensors",
+    "device": "cuda:0",
+    "blocks_to_swap": 36,
+    "swap_io_components": false,
+    "offload_device": "cpu",
+    "cache_model": true,
+    "attention_mode": "sageattn_2"
+   },
+   "_meta": {
+    "title": "SeedVR2 DiT（7B fp16）"
+   }
+  },
+  "137": {
+   "class_type": "SeedVR2LoadVAEModel",
+   "inputs": {
+    "model": "ema_vae_fp16.safetensors",
+    "device": "cuda:0",
+    "encode_tiled": true,
+    "encode_tile_size": 1280,
+    "encode_tile_overlap": 128,
+    "decode_tiled": true,
+    "decode_tile_size": 1280,
+    "decode_tile_overlap": 128,
+    "tile_debug": "false",
+    "offload_device": "cpu",
+    "cache_model": true
+   },
+   "_meta": {
+    "title": "SeedVR2 VAE"
+   }
+  },
+  "138": {
+   "class_type": "SeedVR2VideoUpscaler",
+   "inputs": {
+    "seed": 42,
+    "resolution": [
+     "29",
+     0
+    ],
+    "max_resolution": 3200,
+    "batch_size": 1,
+    "uniform_batch_size": false,
+    "color_correction": "lab",
+    "temporal_overlap": 0,
+    "prepend_frames": 0,
+    "input_noise_scale": 0.05,
+    "latent_noise_scale": 0.0,
+    "offload_device": "cpu",
+    "enable_debug": false,
+    "image": [
+     "135",
+     0
+    ],
+    "dit": [
+     "136",
+     0
+    ],
+    "vae": [
+     "137",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "SeedVR2 放大"
+   }
+  },
+  "139": {
+   "class_type": "ComfySwitchNode",
+   "inputs": {
+    "switch": [
+     "28",
+     0
+    ],
+    "on_false": [
+     "135",
+     0
+    ],
+    "on_true": [
+     "138",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "SeedVR2：開了才放大"
+   }
+  },
+  "140": {
+   "class_type": "PreviewAny",
+   "inputs": {
+    "source": [
+     "125",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "實際送去出圖的提示詞"
+   }
+  },
+  "141": {
+   "class_type": "SaveImage",
+   "inputs": {
+    "filename_prefix": "qw/2026-10-04-aib-A-portrait_laughing-pe0-s1",
+    "images": [
+     "139",
+     0
+    ]
+   },
+   "_meta": {
+    "title": "存檔"
+   }
+  }
+ }
+}

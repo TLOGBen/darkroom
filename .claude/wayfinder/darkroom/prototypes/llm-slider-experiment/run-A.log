@@ -1,0 +1,26 @@
+[A] loaded in 15.2s (pid 16640); VRAM 1548 -> 15671 MiB
+  portrait_studio      base_s101            13.5s prompt 1577 gen 467 @58.7 valid=True [] EV=0.8
+  portrait_studio      base_s202             9.9s prompt 4 gen 571 @58.0 valid=True [] EV=0.6
+  landscape_lighthouse base_s101            10.6s prompt 1305 gen 470 @60.1 valid=True [] EV=0.8
+  landscape_lighthouse base_s202            10.3s prompt 4 gen 581 @56.9 valid=True [] EV=0.4
+  night_street         base_s101            12.3s prompt 1657 gen 509 @56.8 valid=True [] EV=0.55
+  night_street         base_s202            10.9s prompt 4 gen 613 @57.0 valid=True [] EV=1.25
+  night_street         lift_shadows_s101     9.5s prompt 563 gen 481 @57.8 valid=True [] EV=0.5
+  night_street         lift_shadows_s202    10.6s prompt 4 gen 610 @58.2 valid=True [] EV=0.9
+  street_rain          base_s101            10.9s prompt 1401 gen 451 @58.7 valid=True [] EV=0.45
+  street_rain          base_s202            10.1s prompt 4 gen 591 @59.1 valid=True [] EV=0.6
+  street_rain          cool_cine_s101        9.7s prompt 558 gen 483 @56.5 valid=True [] EV=0.6
+  street_rain          cool_cine_s202        9.8s prompt 4 gen 583 @60.2 valid=True [] EV=0.7
+  food_breakfast       base_s101            11.2s prompt 1561 gen 472 @58.4 valid=True [] EV=0.35
+  food_breakfast       base_s202             9.8s prompt 4 gen 578 @59.9 valid=True [] EV=0.3
+  food_breakfast       warm_airy_s101        9.7s prompt 563 gen 508 @59.6 valid=True [] EV=0.4
+  food_breakfast       warm_airy_s202        9.6s prompt 4 gen 566 @59.2 valid=True [] EV=0.6
+  interior_cafe        base_s101            11.2s prompt 1433 gen 482 @59.1 valid=True [] EV=0.75
+  interior_cafe        base_s202             9.9s prompt 4 gen 577 @59.1 valid=True [] EV=1.25
+  sunset_kite          base_s101            10.5s prompt 1177 gen 484 @59.5 valid=True [] EV=0.4
+  sunset_kite          base_s202            10.2s prompt 4 gen 590 @58.6 valid=True [] EV=0.4
+  portrait_balaclava   base_s101            11.2s prompt 1753 gen 460 @57.7 valid=True [] EV=0.3
+  portrait_balaclava   base_s202             9.9s prompt 4 gen 567 @58.2 valid=True [] EV=0.35
+  food_bluecast_dark   base_s101            11.3s prompt 1625 gen 485 @59.6 valid=True [] EV=1.5
+  food_bluecast_dark   base_s202             9.9s prompt 4 gen 569 @58.3 valid=True [] EV=1.5
+[A] server pid 16640 stopped

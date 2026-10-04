@@ -1,0 +1,70 @@
+{
+ "content": "{\n  \"diagnosis\": {\n    \"subject\": \"Night street scene in an old stone town (Quebec City), featuring cobblestones, stone buildings, and a castle on the hill.\",\n    \"white_balance\": \"cool / blue\",\n    \"exposure\": \"underexposed\",\n    \"contrast\": \"low\",\n    \"main_problems\": [\n      \"The image is too dark (underexposed).\",\n      \"The shadows are crushed black, hiding detail in the stone textures and street.\",\n      \"There is a slight blue color cast on the stone walls, which are naturally warm.\",\n      \"The distant castle is underexposed and blends into the night sky.\",\n      \"The overall image looks flat and lacks 'pop' due to low contrast.\"\n    ]\n  },\n  \"adjustments\": {\n    \"Exposure2012\": 0.9,\n    \"Contrast2012\": 10,\n    \"Highlights2012\": -20,\n    \"Shadows2012\": 50,\n    \"Whites2012\": 15,\n    \"Blacks2012\": -15,\n    \"IncrementalTemperature\": 10,\n    \"IncrementalTint\": 5,\n    \"Vibrance\": 20,\n    \"Saturation\": 0,\n    \"Clarity2012\": 25,\n    \"Dehaze\": 15,\n    \"Texture\": 0,\n    \"HueAdjustmentRed\": 0,\n    \"SaturationAdjustmentRed\": 0,\n    \"LuminanceAdjustmentRed\": 0,\n    \"HueAdjustmentOrange\": 0,\n    \"SaturationAdjustmentOrange\": 0,\n    \"LuminanceAdjustmentOrange\": 0,\n    \"HueAdjustmentYellow\": 0,\n    \"SaturationAdjustmentYellow\": 0,\n    \"LuminanceAdjustmentYellow\": 0,\n    \"HueAdjustmentGreen\": 0,\n    \"SaturationAdjustmentGreen\": 0,\n    \"LuminanceAdjustmentGreen\": 0,\n    \"HueAdjustmentAqua\": 0,\n    \"SaturationAdjustmentAqua\": 0,\n    \"LuminanceAdjustmentAqua\": 0,\n    \"HueAdjustmentBlue\": 0,\n    \"SaturationAdjustmentBlue\": 0,\n    \"LuminanceAdjustmentBlue\": 0\n  },\n  \"intent\": \"To reveal the rich textures of the stone architecture and the details of the street while maintaining the deep, atmospheric mood of a night scene, free from flatness or color casts.\"\n}",
+ "reasoning": "",
+ "finish": "stop",
+ "wall_s": 10.6,
+ "prompt_n": 4,
+ "prompt_tps": 60.871682493304114,
+ "gen_n": 610,
+ "gen_tps": 58.21573086552166,
+ "photo": "night_street",
+ "run": "lift_shadows_s202",
+ "seed": 202,
+ "wish": {
+  "tag": "lift_shadows",
+  "want": "recover the shadows so the dark areas show detail",
+  "avoid": "a flat, washed-out, matte look"
+ },
+ "parse_ok": true,
+ "errors": [],
+ "valid": true,
+ "parsed": {
+  "diagnosis": {
+   "subject": "Night street scene in an old stone town (Quebec City), featuring cobblestones, stone buildings, and a castle on the hill.",
+   "white_balance": "cool / blue",
+   "exposure": "underexposed",
+   "contrast": "low",
+   "main_problems": [
+    "The image is too dark (underexposed).",
+    "The shadows are crushed black, hiding detail in the stone textures and street.",
+    "There is a slight blue color cast on the stone walls, which are naturally warm.",
+    "The distant castle is underexposed and blends into the night sky.",
+    "The overall image looks flat and lacks 'pop' due to low contrast."
+   ]
+  },
+  "adjustments": {
+   "Exposure2012": 0.9,
+   "Contrast2012": 10,
+   "Highlights2012": -20,
+   "Shadows2012": 50,
+   "Whites2012": 15,
+   "Blacks2012": -15,
+   "IncrementalTemperature": 10,
+   "IncrementalTint": 5,
+   "Vibrance": 20,
+   "Saturation": 0,
+   "Clarity2012": 25,
+   "Dehaze": 15,
+   "Texture": 0,
+   "HueAdjustmentRed": 0,
+   "SaturationAdjustmentRed": 0,
+   "LuminanceAdjustmentRed": 0,
+   "HueAdjustmentOrange": 0,
+   "SaturationAdjustmentOrange": 0,
+   "LuminanceAdjustmentOrange": 0,
+   "HueAdjustmentYellow": 0,
+   "SaturationAdjustmentYellow": 0,
+   "LuminanceAdjustmentYellow": 0,
+   "HueAdjustmentGreen": 0,
+   "SaturationAdjustmentGreen": 0,
+   "LuminanceAdjustmentGreen": 0,
+   "HueAdjustmentAqua": 0,
+   "SaturationAdjustmentAqua": 0,
+   "LuminanceAdjustmentAqua": 0,
+   "HueAdjustmentBlue": 0,
+   "SaturationAdjustmentBlue": 0,
+   "LuminanceAdjustmentBlue": 0
+  },
+  "intent": "To reveal the rich textures of the stone architecture and the details of the street while maintaining the deep, atmospheric mood of a night scene, free from flatness or color casts."
+ }
+}

@@ -1,0 +1,57 @@
+[
+ {
+  "id": "portrait_studio",
+  "file": "portrait_studio.png",
+  "subject": "portrait (studio, AI-generated, profile face)",
+  "source": "runtimes/comfyui/v0.38.0-portable-nvidia/ComfyUI_windows_portable/ComfyUI/input/portrait_model_denim.png",
+  "license": "local (generated in this repo)",
+  "size": [
+   896,
+   1152
+  ]
+ },
+ {
+  "id": "landscape_lighthouse",
+  "file": "landscape_lighthouse.png",
+  "subject": "landscape (stormy coast, AI-generated)",
+  "source": "outputs/comfyui/qw/2026-10-04-lr-latency-busy_00001_.png",
+  "license": "local (generated in this repo)",
+  "size": [
+   1376,
+   768
+  ]
+ },
+ {
+  "id": "portrait_laughing",
+  "file": "portrait_laughing.png",
+  "subject": "portrait (real, frontal face)",
+  "source": "https://commons.wikimedia.org/wiki/File:Laughing_woman.jpg",
+  "license": "CC BY-SA 4.0, by Basile Morin",
+  "size": [
+   1280,
+   1515
+  ]
+ },
+ {
+  "id": "portrait_oldman",
+  "file": "portrait_oldman.png",
+  "subject": "portrait (real, close-up, skin texture)",
+  "source": "https://commons.wikimedia.org/wiki/File:Old_man_face.jpg",
+  "license": "CC BY-SA 4.0, by Basile Morin",
+  "size": [
+   1280,
+   853
+  ]
+ },
+ {
+  "id": "fog_karst",
+  "file": "fog_karst.png",
+  "subject": "fog / low contrast landscape",
+  "source": "https://commons.wikimedia.org/wiki/File:Green_karst_peaks_seen_from_the_top_of_Mount_Nam_Xay_a_sunny_morning_with_fog_Vang_Vieng_Laos.jpg",
+  "license": "CC BY-SA 4.0, by Basile Morin",
+  "size": [
+   1280,
+   853
+  ]
+ }
+]

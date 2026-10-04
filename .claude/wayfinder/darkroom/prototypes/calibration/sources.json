@@ -1,0 +1,34 @@
+{
+ "real-portrait": {
+  "commons": "File:Woman in a headwrap in Quebec City.jpg",
+  "url": "https://upload.wikimedia.org/wikipedia/commons/8/8f/Woman_in_a_headwrap_in_Quebec_City.jpg",
+  "sha1": "f3ccadd76e1c4e1cbcf101a9c4396722f1b925c3",
+  "author": "Wilfredor",
+  "license": "CC0 1.0",
+  "use": "人像：膚色、黑布料暗部、亮背景"
+ },
+ "real-landscape": {
+  "commons": "File:Wetterspitzen (Stubaier Alpen).jpg",
+  "url": "https://upload.wikimedia.org/wikipedia/commons/3/39/Wetterspitzen_%28Stubaier_Alpen%29.jpg",
+  "sha1": "d04ca4e2a844a70f318429c435da0c10d70c6231",
+  "author": "Jörg Braukmann",
+  "license": "CC0 1.0",
+  "use": "風景高反差：白雲＋陰影山壁、藍天、綠地"
+ },
+ "real-night": {
+  "commons": "File:Saint Peter's Basilica, Sant'Angelo bridge, by night, Rome, Italy.jpg",
+  "url": "https://upload.wikimedia.org/wikipedia/commons/3/36/Saint_Peter%27s_Basilica%2C_Sant%27Angelo_bridge%2C_by_night%2C_Rome%2C_Italy.jpg",
+  "sha1": "a71f468fbca249a32ec13ff7670ff8b92ac69a2f",
+  "author": "Jebulon",
+  "license": "CC0 1.0",
+  "use": "夜景：大片暗部、點光源、鈉燈色"
+ },
+ "real-fog": {
+  "commons": "File:Jetty in fog at Holländaröd 1.jpg",
+  "url": "https://upload.wikimedia.org/wikipedia/commons/4/4a/Jetty_in_fog_at_Holl%C3%A4ndar%C3%B6d_1.jpg",
+  "sha1": "fba5d3177b17b4dee3d485211cb8752f7fa80dc2",
+  "author": "W.carter",
+  "license": "CC0 1.0",
+  "use": "低對比霧景：由近到遠霧越濃（去朦朧用）"
+ }
+}

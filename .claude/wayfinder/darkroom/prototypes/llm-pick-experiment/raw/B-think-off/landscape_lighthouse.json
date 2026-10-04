@@ -1,0 +1,186 @@
+{
+ "photo": "landscape_lighthouse",
+ "describe": {
+  "content": "{\"subject\": \"dramatic coastal landscape\", \"main_subject\": \"a white lighthouse with a black band and red lantern room atop a rocky granite islet in the center of the frame, with the surrounding sea and stormy sky filling the rest of the frame\", \"lighting\": \"dramatic dusk light with a warm golden break on the left horizon behind the dark cloud bank, soft warm light grazing the top of the rocks, the lighthouse lit from within, cool overcast ambient light elsewhere\", \"color_tone\": \"moody desaturated palette with warm amber highlights on the left and cool gray-blue shadows, slight warm cast on the lit rock surfaces\", \"contrast\": \"high\", \"issues\": [\"the dark cloud bank at the top is crushed with lost detail in the highlights\", \"the mist band obscures the horizon and reduces depth separation between sea and sky\", \"the foreground rocks are underexposed with texture hidden in shadow\"], \"style_directions\": [\"enhance the dramatic storm mood by enriching the cloud texture with visible tonal gradations\", \"lift the shadow detail on the foreground rocks while preserving texture\", \"add a subtle teal-and-amber cinematic grade emphasizing the warm horizon glow against cool sea tones\", \"increase atmospheric depth by gently brightening the mist band and adding soft volumetric glow around the lighthouse beam\"]}",
+  "reasoning": "",
+  "finish": "stop",
+  "wall_s": 4.76,
+  "prompt_n": 778,
+  "prompt_tps": 2481.0176636977367,
+  "gen_n": 276,
+  "gen_tps": 63.194812602102715,
+  "strict_ok": true,
+  "lenient_ok": true,
+  "schema_ok": true,
+  "parsed": {
+   "subject": "dramatic coastal landscape",
+   "main_subject": "a white lighthouse with a black band and red lantern room atop a rocky granite islet in the center of the frame, with the surrounding sea and stormy sky filling the rest of the frame",
+   "lighting": "dramatic dusk light with a warm golden break on the left horizon behind the dark cloud bank, soft warm light grazing the top of the rocks, the lighthouse lit from within, cool overcast ambient light elsewhere",
+   "color_tone": "moody desaturated palette with warm amber highlights on the left and cool gray-blue shadows, slight warm cast on the lit rock surfaces",
+   "contrast": "high",
+   "issues": [
+    "the dark cloud bank at the top is crushed with lost detail in the highlights",
+    "the mist band obscures the horizon and reduces depth separation between sea and sky",
+    "the foreground rocks are underexposed with texture hidden in shadow"
+   ],
+   "style_directions": [
+    "enhance the dramatic storm mood by enriching the cloud texture with visible tonal gradations",
+    "lift the shadow detail on the foreground rocks while preserving texture",
+    "add a subtle teal-and-amber cinematic grade emphasizing the warm horizon glow against cool sea tones",
+    "increase atmospheric depth by gently brightening the mist band and adding soft volumetric glow around the lighthouse beam"
+   ]
+  }
+ },
+ "pick1": {
+  "content": "{\"picks\": [{\"id\": 1, \"strength\": 120, \"reason\": \"Marine power presets open up the heavy storm shadows and deepen the blue sea and rock tones, matching the dramatic ocean scene.\"}, {\"id\": 2, \"strength\": 90, \"reason\": \"This preset strongly mutes greens and lifts blues and whites, fitting the foggy sea and rocky islet with a clean, atmospheric mood.\"}, {\"id\": 6, \"strength\": 110, \"reason\": \"Analog film grading with slightly darker exposure, recovered highlights and fine grain suits the moody storm-lit lighthouse photograph.\"}]}",
+  "reasoning": "",
+  "finish": "stop",
+  "wall_s": 4.03,
+  "prompt_n": 8624,
+  "prompt_tps": 5066.724008070098,
+  "gen_n": 140,
+  "gen_tps": 61.29691032703005,
+  "strict_ok": true,
+  "lenient_ok": true,
+  "schema_ok": true,
+  "parsed": {
+   "picks": [
+    {
+     "id": 1,
+     "strength": 120,
+     "reason": "Marine power presets open up the heavy storm shadows and deepen the blue sea and rock tones, matching the dramatic ocean scene."
+    },
+    {
+     "id": 2,
+     "strength": 90,
+     "reason": "This preset strongly mutes greens and lifts blues and whites, fitting the foggy sea and rocky islet with a clean, atmospheric mood."
+    },
+    {
+     "id": 6,
+     "strength": 110,
+     "reason": "Analog film grading with slightly darker exposure, recovered highlights and fine grain suits the moody storm-lit lighthouse photograph."
+    }
+   ]
+  },
+  "order": [
+   "P01",
+   "P02",
+   "P03",
+   "P04",
+   "P05",
+   "P06",
+   "P07",
+   "P08",
+   "P09",
+   "P10",
+   "P11",
+   "P12",
+   "P13",
+   "P14",
+   "P15",
+   "P16",
+   "P17",
+   "P18"
+  ],
+  "picks": [
+   {
+    "key": "P01",
+    "label": "自然 - 海洋魄力 / 海洋魄力 4",
+    "on_topic": true,
+    "strength": 120,
+    "reason": "Marine power presets open up the heavy storm shadows and deepen the blue sea and rock tones, matching the dramatic ocean scene."
+   },
+   {
+    "key": "P02",
+    "label": "自然 - 海洋魄力 / 海洋魄力 3",
+    "on_topic": true,
+    "strength": 90,
+    "reason": "This preset strongly mutes greens and lifts blues and whites, fitting the foggy sea and rocky islet with a clean, atmospheric mood."
+   },
+   {
+    "key": "P06",
+    "label": "電影 - 模擬經典 / Analog 05",
+    "on_topic": false,
+    "strength": 110,
+    "reason": "Analog film grading with slightly darker exposure, recovered highlights and fine grain suits the moody storm-lit lighthouse photograph."
+   }
+  ]
+ },
+ "pick2": {
+  "content": "{\"picks\": [{\"id\": 12, \"strength\": 120, \"reason\": \"The '海洋魄力 4' preset's lifted shadows, brighter highlights, dehaze, and saturated aqua/blue ocean grading match this stormy seascape's misty haze and dark water, reviving the foggy midtones and deepening the sea's color.\"}, {\"id\": 1, \"strength\": 100, \"reason\": \"The '海洋魄力 3' preset's strong shadow lift, brighter whites, and highly saturated yellow-orange grading suit the warm sunlit granite rocks and breaking white surf, enhancing the golden rock tones and white foam.\"}, {\"id\": 2, \"strength\": 90, \"reason\": \"The '09 Fitness 09' preset's lifted blacks, muted desaturated palette, and matte faded midtone curve complement the dark storm-cloud sky and mist, giving the heavy clouds a cleaner, brighter, more atmospheric read.\"}]}",
+  "reasoning": "",
+  "finish": "stop",
+  "wall_s": 5.15,
+  "prompt_n": 8624,
+  "prompt_tps": 5107.004899147904,
+  "gen_n": 207,
+  "gen_tps": 61.008584440915556,
+  "strict_ok": true,
+  "lenient_ok": true,
+  "schema_ok": true,
+  "parsed": {
+   "picks": [
+    {
+     "id": 12,
+     "strength": 120,
+     "reason": "The '海洋魄力 4' preset's lifted shadows, brighter highlights, dehaze, and saturated aqua/blue ocean grading match this stormy seascape's misty haze and dark water, reviving the foggy midtones and deepening the sea's color."
+    },
+    {
+     "id": 1,
+     "strength": 100,
+     "reason": "The '海洋魄力 3' preset's strong shadow lift, brighter whites, and highly saturated yellow-orange grading suit the warm sunlit granite rocks and breaking white surf, enhancing the golden rock tones and white foam."
+    },
+    {
+     "id": 2,
+     "strength": 90,
+     "reason": "The '09 Fitness 09' preset's lifted blacks, muted desaturated palette, and matte faded midtone curve complement the dark storm-cloud sky and mist, giving the heavy clouds a cleaner, brighter, more atmospheric read."
+    }
+   ]
+  },
+  "order": [
+   "P02",
+   "P18",
+   "P08",
+   "P12",
+   "P03",
+   "P17",
+   "P06",
+   "P11",
+   "P14",
+   "P16",
+   "P07",
+   "P01",
+   "P10",
+   "P09",
+   "P04",
+   "P05",
+   "P13",
+   "P15"
+  ],
+  "picks": [
+   {
+    "key": "P01",
+    "label": "自然 - 海洋魄力 / 海洋魄力 4",
+    "on_topic": true,
+    "strength": 120,
+    "reason": "The '海洋魄力 4' preset's lifted shadows, brighter highlights, dehaze, and saturated aqua/blue ocean grading match this stormy seascape's misty haze and dark water, reviving the foggy midtones and deepening the sea's color."
+   },
+   {
+    "key": "P02",
+    "label": "自然 - 海洋魄力 / 海洋魄力 3",
+    "on_topic": true,
+    "strength": 100,
+    "reason": "The '海洋魄力 3' preset's strong shadow lift, brighter whites, and highly saturated yellow-orange grading suit the warm sunlit granite rocks and breaking white surf, enhancing the golden rock tones and white foam."
+   },
+   {
+    "key": "P18",
+    "label": "人物 - 運動者 / 09 Fitness 09",
+    "on_topic": false,
+    "strength": 90,
+    "reason": "The '09 Fitness 09' preset's lifted blacks, muted desaturated palette, and matte faded midtone curve complement the dark storm-cloud sky and mist, giving the heavy clouds a cleaner, brighter, more atmospheric read."
+   }
+  ]
+ },
+ "overlap": 2,
+ "top1_same": true
+}

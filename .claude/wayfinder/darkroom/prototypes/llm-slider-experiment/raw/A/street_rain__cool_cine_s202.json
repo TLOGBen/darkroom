@@ -1,0 +1,69 @@
+{
+ "content": "{\n  \"diagnosis\": {\n    \"subject\": \"A street scene in Dublin during the rain, featuring pedestrians with umbrellas and neon signs.\",\n    \"white_balance\": \"neutral\",\n    \"exposure\": \"underexposed\",\n    \"contrast\": \"low\",\n    \"main_problems\": [\n      \"The overall image is too dark (underexposed), hiding details in the shadows.\",\n      \"The contrast is low, making the image look flat and muddy.\",\n      \"The highlights from the neon signs and street lamps are slightly blown out.\",\n      \"The image lacks the desired cinematic 'cool' mood and has a bit of haze.\"\n    ]\n  },\n  \"adjustments\": {\n    \"Exposure2012\": 0.7,\n    \"Contrast2012\": 25,\n    \"Highlights2012\": -25,\n    \"Shadows2012\": 45,\n    \"Whites2012\": -15,\n    \"Blacks2012\": -10,\n    \"IncrementalTemperature\": -15,\n    \"IncrementalTint\": -10,\n    \"Vibrance\": 25,\n    \"Saturation\": 0,\n    \"Clarity2012\": 25,\n    \"Dehaze\": 15,\n    \"Texture\": 10,\n    \"HueAdjustmentRed\": 0,\n    \"SaturationAdjustmentRed\": 0,\n    \"LuminanceAdjustmentRed\": 0,\n    \"HueAdjustmentOrange\": 0,\n    \"SaturationAdjustmentOrange\": 0,\n    \"LuminanceAdjustmentOrange\": 0,\n    \"HueAdjustmentYellow\": 0,\n    \"SaturationAdjustmentYellow\": 0,\n    \"LuminanceAdjustmentYellow\": 0,\n    \"HueAdjustmentGreen\": 0,\n    \"SaturationAdjustmentGreen\": 0,\n    \"LuminanceAdjustmentGreen\": 0,\n    \"HueAdjustmentAqua\": 0,\n    \"SaturationAdjustmentAqua\": 0,\n    \"LuminanceAdjustmentAqua\": 0,\n    \"HueAdjustmentBlue\": 0,\n    \"SaturationAdjustmentBlue\": 0,\n    \"LuminanceAdjustmentBlue\": 0\n  },\n  \"intent\": \"To create a moody, cool-toned cinematic image by lifting exposure, recovering highlights, and adding a distinct blue-green cast to the shadows and overall scene.\"\n}",
+ "reasoning": "",
+ "finish": "stop",
+ "wall_s": 9.78,
+ "prompt_n": 4,
+ "prompt_tps": 68.41934214802525,
+ "gen_n": 583,
+ "gen_tps": 60.18972795070316,
+ "photo": "street_rain",
+ "run": "cool_cine_s202",
+ "seed": 202,
+ "wish": {
+  "tag": "cool_cine",
+  "want": "a cool-toned, cinematic film look",
+  "avoid": "warm or yellow tones"
+ },
+ "parse_ok": true,
+ "errors": [],
+ "valid": true,
+ "parsed": {
+  "diagnosis": {
+   "subject": "A street scene in Dublin during the rain, featuring pedestrians with umbrellas and neon signs.",
+   "white_balance": "neutral",
+   "exposure": "underexposed",
+   "contrast": "low",
+   "main_problems": [
+    "The overall image is too dark (underexposed), hiding details in the shadows.",
+    "The contrast is low, making the image look flat and muddy.",
+    "The highlights from the neon signs and street lamps are slightly blown out.",
+    "The image lacks the desired cinematic 'cool' mood and has a bit of haze."
+   ]
+  },
+  "adjustments": {
+   "Exposure2012": 0.7,
+   "Contrast2012": 25,
+   "Highlights2012": -25,
+   "Shadows2012": 45,
+   "Whites2012": -15,
+   "Blacks2012": -10,
+   "IncrementalTemperature": -15,
+   "IncrementalTint": -10,
+   "Vibrance": 25,
+   "Saturation": 0,
+   "Clarity2012": 25,
+   "Dehaze": 15,
+   "Texture": 10,
+   "HueAdjustmentRed": 0,
+   "SaturationAdjustmentRed": 0,
+   "LuminanceAdjustmentRed": 0,
+   "HueAdjustmentOrange": 0,
+   "SaturationAdjustmentOrange": 0,
+   "LuminanceAdjustmentOrange": 0,
+   "HueAdjustmentYellow": 0,
+   "SaturationAdjustmentYellow": 0,
+   "LuminanceAdjustmentYellow": 0,
+   "HueAdjustmentGreen": 0,
+   "SaturationAdjustmentGreen": 0,
+   "LuminanceAdjustmentGreen": 0,
+   "HueAdjustmentAqua": 0,
+   "SaturationAdjustmentAqua": 0,
+   "LuminanceAdjustmentAqua": 0,
+   "HueAdjustmentBlue": 0,
+   "SaturationAdjustmentBlue": 0,
+   "LuminanceAdjustmentBlue": 0
+  },
+  "intent": "To create a moody, cool-toned cinematic image by lifting exposure, recovering highlights, and adding a distinct blue-green cast to the shadows and overall scene."
+ }
+}

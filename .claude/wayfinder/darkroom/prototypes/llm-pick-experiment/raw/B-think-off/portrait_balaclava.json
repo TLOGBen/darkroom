@@ -1,0 +1,184 @@
+{
+ "photo": "portrait_balaclava",
+ "describe": {
+  "content": "{\"subject\": \"portrait\", \"main_subject\": \"a person wearing a checkered sun-protection hood/hat covering the head and face, with only the eyes and forehead visible, positioned centrally in the frame\", \"lighting\": \"warm golden-hour sunlight coming from the upper left, softly illuminating the forehead and eyes\", \"color_tone\": \"warm earthy tones with green and tan blurred background, neutral-to-warm white balance\", \"contrast\": \"medium\", \"issues\": [\"eyes slightly reddened and watery with visible redness around the eye area\"], \"style_directions\": [\"keep the warm golden-hour glow and soft creamy bokeh background\", \"refine skin texture on the visible forehead with natural finish\", \"enhance eye clarity and catchlights while keeping the playful squinting expression\", \"preserve the fine checkered fabric texture of the hood with crisp detail\"]}",
+  "reasoning": "",
+  "finish": "stop",
+  "wall_s": 3.47,
+  "prompt_n": 1226,
+  "prompt_tps": 2341.410499297195,
+  "gen_n": 180,
+  "gen_tps": 63.105250744659585,
+  "strict_ok": true,
+  "lenient_ok": true,
+  "schema_ok": true,
+  "parsed": {
+   "subject": "portrait",
+   "main_subject": "a person wearing a checkered sun-protection hood/hat covering the head and face, with only the eyes and forehead visible, positioned centrally in the frame",
+   "lighting": "warm golden-hour sunlight coming from the upper left, softly illuminating the forehead and eyes",
+   "color_tone": "warm earthy tones with green and tan blurred background, neutral-to-warm white balance",
+   "contrast": "medium",
+   "issues": [
+    "eyes slightly reddened and watery with visible redness around the eye area"
+   ],
+   "style_directions": [
+    "keep the warm golden-hour glow and soft creamy bokeh background",
+    "refine skin texture on the visible forehead with natural finish",
+    "enhance eye clarity and catchlights while keeping the playful squinting expression",
+    "preserve the fine checkered fabric texture of the hood with crisp detail"
+   ]
+  }
+ },
+ "pick1": {
+  "content": "{\"picks\": [{\"id\": 13, \"strength\": 100, \"reason\": \"The Japanese-style fresh look lifts the washed-out greens into bright airy whites and soft warm light, matching the photo's bright outdoor backlight and the subject's fair skin, giving a clean, airy, high-key finish.\"}, {\"id\": 3, \"strength\": 100, \"reason\": \"The beauty preset gently brightens the face, adds fine skin texture and clarity while muting the background greens and adding a slight vignette and fine grain, refining the portrait without changing the expression.\"}, {\"id\": 1, \"strength\": 100, \"reason\": \"The N03 skin-emphasis preset adds punchy contrast, opens the shadows on the checkered hood and face, pulls the highlights down on the bright background, and adds clarity and dehaze, enhancing the texture of the fabric and the skin.\"}]}",
+  "reasoning": "",
+  "finish": "stop",
+  "wall_s": 5.41,
+  "prompt_n": 10308,
+  "prompt_tps": 4778.356658803176,
+  "gen_n": 196,
+  "gen_tps": 60.65626344352762,
+  "strict_ok": true,
+  "lenient_ok": true,
+  "schema_ok": true,
+  "parsed": {
+   "picks": [
+    {
+     "id": 13,
+     "strength": 100,
+     "reason": "The Japanese-style fresh look lifts the washed-out greens into bright airy whites and soft warm light, matching the photo's bright outdoor backlight and the subject's fair skin, giving a clean, airy, high-key finish."
+    },
+    {
+     "id": 3,
+     "strength": 100,
+     "reason": "The beauty preset gently brightens the face, adds fine skin texture and clarity while muting the background greens and adding a slight vignette and fine grain, refining the portrait without changing the expression."
+    },
+    {
+     "id": 1,
+     "strength": 100,
+     "reason": "The N03 skin-emphasis preset adds punchy contrast, opens the shadows on the checkered hood and face, pulls the highlights down on the bright background, and adds clarity and dehaze, enhancing the texture of the fabric and the skin."
+    }
+   ]
+  },
+  "order": [
+   "P01",
+   "P02",
+   "P03",
+   "P04",
+   "P05",
+   "P06",
+   "P07",
+   "P08",
+   "P09",
+   "P10",
+   "P11",
+   "P12",
+   "P13",
+   "P14",
+   "P15",
+   "P16",
+   "P17",
+   "P18"
+  ],
+  "picks": [
+   {
+    "key": "P13",
+    "label": "地區 - 日系清新 / 日系清新5",
+    "on_topic": false,
+    "strength": 100,
+    "reason": "The Japanese-style fresh look lifts the washed-out greens into bright airy whites and soft warm light, matching the photo's bright outdoor backlight and the subject's fair skin, giving a clean, airy, high-key finish."
+   },
+   {
+    "key": "P03",
+    "label": "人物 - 女人 / Beauty 05",
+    "on_topic": true,
+    "strength": 100,
+    "reason": "The beauty preset gently brightens the face, adds fine skin texture and clarity while muting the background greens and adding a slight vignette and fine grain, refining the portrait without changing the expression."
+   },
+   {
+    "key": "P01",
+    "label": "風格 - 皮膚強調 / N03",
+    "on_topic": true,
+    "strength": 100,
+    "reason": "The N03 skin-emphasis preset adds punchy contrast, opens the shadows on the checkered hood and face, pulls the highlights down on the bright background, and adds clarity and dehaze, enhancing the texture of the fabric and the skin."
+   }
+  ]
+ },
+ "pick2": {
+  "content": "{\"picks\": [{\"id\": 6, \"strength\": 120, \"reason\": \"A beauty portrait of a woman with strong warm sunlight on the face; the Beauty 05 preset brightens the face, adds fine skin and fabric texture detail, deepens the blacks, and adds a subtle vignette and fine film grain that suits a close-up portrait.\"}, {\"id\": 16, \"strength\": 100, \"reason\": \"Beauty 02 lifts the overall exposure, opens the shadows, and adds texture and clarity while keeping the skin natural, matching the soft outdoor light and the checkered fabric detail of the hat and face cover.\"}, {\"id\": 3, \"strength\": 90, \"reason\": \"CINEMATIC 05 gives a natural cinematic grade with lifted highlights, deeper blacks, and muted greens that harmonize with the blurred green field background and the warm golden-hour light.\"}]}",
+  "reasoning": "",
+  "finish": "stop",
+  "wall_s": 5.48,
+  "prompt_n": 10308,
+  "prompt_tps": 4814.552390952116,
+  "gen_n": 198,
+  "gen_tps": 61.32927626161638,
+  "strict_ok": true,
+  "lenient_ok": true,
+  "schema_ok": true,
+  "parsed": {
+   "picks": [
+    {
+     "id": 6,
+     "strength": 120,
+     "reason": "A beauty portrait of a woman with strong warm sunlight on the face; the Beauty 05 preset brightens the face, adds fine skin and fabric texture detail, deepens the blacks, and adds a subtle vignette and fine film grain that suits a close-up portrait."
+    },
+    {
+     "id": 16,
+     "strength": 100,
+     "reason": "Beauty 02 lifts the overall exposure, opens the shadows, and adds texture and clarity while keeping the skin natural, matching the soft outdoor light and the checkered fabric detail of the hat and face cover."
+    },
+    {
+     "id": 3,
+     "strength": 90,
+     "reason": "CINEMATIC 05 gives a natural cinematic grade with lifted highlights, deeper blacks, and muted greens that harmonize with the blurred green field background and the warm golden-hour light."
+    }
+   ]
+  },
+  "order": [
+   "P02",
+   "P17",
+   "P06",
+   "P14",
+   "P13",
+   "P03",
+   "P11",
+   "P18",
+   "P15",
+   "P10",
+   "P16",
+   "P05",
+   "P09",
+   "P07",
+   "P01",
+   "P04",
+   "P12",
+   "P08"
+  ],
+  "picks": [
+   {
+    "key": "P03",
+    "label": "人物 - 女人 / Beauty 05",
+    "on_topic": true,
+    "strength": 120,
+    "reason": "A beauty portrait of a woman with strong warm sunlight on the face; the Beauty 05 preset brightens the face, adds fine skin and fabric texture detail, deepens the blacks, and adds a subtle vignette and fine film grain that suits a close-up portrait."
+   },
+   {
+    "key": "P04",
+    "label": "人物 - 女人 / Beauty 02",
+    "on_topic": true,
+    "strength": 100,
+    "reason": "Beauty 02 lifts the overall exposure, opens the shadows, and adds texture and clarity while keeping the skin natural, matching the soft outdoor light and the checkered fabric detail of the hat and face cover."
+   },
+   {
+    "key": "P06",
+    "label": "電影 - 自然場景 / CINEMATIC 05",
+    "on_topic": false,
+    "strength": 90,
+    "reason": "CINEMATIC 05 gives a natural cinematic grade with lifted highlights, deeper blacks, and muted greens that harmonize with the blurred green field background and the warm golden-hour light."
+   }
+  ]
+ },
+ "overlap": 1,
+ "top1_same": false
+}

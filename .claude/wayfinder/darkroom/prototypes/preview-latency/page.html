@@ -1,0 +1,142 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>LR preview latency</title>
+<style>body{font:13px system-ui;margin:8px;background:#222;color:#ddd}canvas{max-width:100%;background:#000;display:block}
+button{margin:2px}pre{white-space:pre-wrap;font-size:12px}</style></head>
+<body>
+<div>
+ transport <select id="tr"><option>http</option><option>ws</option></select>
+ enc <select id="enc"><option>gpu</option><option>pil</option><option>cv2</option><option>tvcpu</option></select>
+ <button onclick="ui('single')">single x30</button>
+ <button onclick="ui('drag')">drag 6s @60Hz</button>
+ <input id="sl" type="range" min="-100" max="100" value="0" oninput="manual(this.value)"> exposure (manual)
+</div>
+<canvas id="cv"></canvas>
+<pre id="out"></pre>
+<script>
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+const now = () => performance.now();
+const raf = () => new Promise(r => requestAnimationFrame(() => r(now())));
+let ws = null, wsWaiter = null, wsPendingMeta = null;
+let seq = 0, drawnSeq = -1;
+
+window.STREAM = 'default';   // 'default' | 'hi' | 'lo'
+function params(v, enc) {
+  return {seq: ++seq, enc, q: 85, stream: window.STREAM, exposure: v * 1.0, clarity: 0.4 + 0.3 * v, shadows: 0.3, highlights: -0.3,
+          vibrance: 0.2, temp: 0.1 * v, hsl_s: [0.1, 0, 0, 0.2, 0, -0.1, 0, 0]};
+}
+
+async function openWs() {
+  if (ws && ws.readyState === 1) return;
+  ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/lr_preview/ws');
+  ws.binaryType = 'arraybuffer';
+  ws.onmessage = ev => {
+    if (typeof ev.data === 'string') { wsPendingMeta = JSON.parse(ev.data); return; }
+    const w = wsWaiter; wsWaiter = null; w({buf: ev.data, meta: wsPendingMeta, tRecv: now()});
+  };
+  await new Promise(r => ws.onopen = r);
+}
+
+async function request(tr, p) {
+  if (tr === 'ws') {
+    const pr = new Promise(r => wsWaiter = r);
+    ws.send(JSON.stringify(p));
+    return pr;
+  }
+  const res = await fetch('/lr_preview', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(p)});
+  const buf = await res.arrayBuffer();
+  return {buf, meta: JSON.parse(res.headers.get('X-Timing')), tRecv: now()};
+}
+
+// decode + draw; returns timestamps. Stale frames (older seq than already drawn) are dropped.
+async function show(r, s) {
+  const bmp = await createImageBitmap(new Blob([r.buf], {type: 'image/jpeg'}));
+  const tDec = now();
+  if (s < drawnSeq) { bmp.close(); return null; }
+  drawnSeq = s;
+  if (cv.width !== bmp.width) { cv.width = bmp.width; cv.height = bmp.height; }
+  ctx.drawImage(bmp, 0, 0);
+  bmp.close();
+  const tDraw = now();
+  const tPaint = await raf();
+  return {tDec, tDraw, tPaint};
+}
+
+function rec(tSend, tChange, r, d) {
+  const m = r.meta;
+  return {rtt: d.tPaint - tSend, lag: d.tPaint - tChange, server: m.server_ms, compute: m.compute_ms, encode: m.encode_ms,
+          wait: m.wait_ms, net: r.tRecv - tSend - m.server_ms, decode: d.tDec - r.tRecv, draw: d.tDraw - d.tDec,
+          toPaint: d.tPaint - d.tDraw, bytes: m.bytes, w: m.w, h: m.h};
+}
+
+async function runSingle({tr = 'http', enc = 'gpu', n = 30, gap = 250} = {}) {
+  if (tr === 'ws') await openWs();
+  const out = [];
+  for (let i = 0; i < n + 3; i++) {
+    const v = Math.sin(i) * 0.8;
+    const p = params(v, enc);
+    await raf();                         // start aligned to a frame, like a real click
+    const t0 = now();
+    const r = await request(tr, p);
+    const d = await show(r, p.seq);
+    if (i >= 3 && d) out.push(rec(t0, t0, r, d));   // first 3 = warm-up
+    await new Promise(z => setTimeout(z, gap));
+  }
+  return summarize(out, {mode: 'single', tr, enc, n});
+}
+
+async function runDrag({tr = 'http', enc = 'gpu', seconds = 6, hz = 60} = {}) {
+  if (tr === 'ws') await openWs();
+  let latest = null, inflight = false, done = false, sentChanges = 0, changes = 0;
+  const out = [], showing = [];
+  const tStart = now();
+  const loopSend = async () => {
+    while (!done) {
+      if (!latest || latest.sent) { await new Promise(z => setTimeout(z, 1)); continue; }
+      const cur = latest; cur.sent = true; sentChanges++;
+      const t0 = now();
+      const r = await request(tr, cur.p);
+      // next request goes out immediately; decode/draw of this one overlaps with it
+      showing.push(show(r, cur.p.seq).then(d => { if (d) out.push(rec(t0, cur.t, r, d)); }));
+    }
+  };
+  const iv = setInterval(() => {
+    const t = now(), v = Math.sin((t - tStart) / 1000 * 2 * Math.PI * 0.5) * 0.8;
+    latest = {p: params(v, enc), t, sent: false}; changes++;   // latest-wins: overwrite pending
+  }, 1000 / hz);
+  const sender = loopSend();
+  await new Promise(z => setTimeout(z, seconds * 1000));
+  clearInterval(iv); done = true;
+  await sender; await Promise.all(showing);
+  const dur = (now() - tStart) / 1000;
+  const s = summarize(out, {mode: 'drag', tr, enc, seconds, hz});
+  s.slider_events = changes; s.requests = sentChanges; s.frames_drawn = out.length;
+  s.fps = +(out.length / dur).toFixed(1);
+  return s;
+}
+
+function pct(a, q) { const b = [...a].sort((x, y) => x - y); return b[Math.min(b.length - 1, Math.floor(q * (b.length - 1) + 0.5))]; }
+function summarize(rows, meta) {
+  const keys = ['rtt', 'lag', 'server', 'compute', 'encode', 'wait', 'net', 'decode', 'draw', 'toPaint', 'bytes'];
+  const s = {...meta, count: rows.length, size: rows.length ? rows[0].w + 'x' + rows[0].h : ''};
+  for (const k of keys) {
+    const a = rows.map(r => r[k]);
+    s[k] = {p50: +pct(a, .5).toFixed(1), p95: +pct(a, .95).toFixed(1)};
+  }
+  return s;
+}
+
+async function ui(kind) {
+  const tr = document.getElementById('tr').value, enc = document.getElementById('enc').value;
+  const s = kind === 'single' ? await runSingle({tr, enc}) : await runDrag({tr, enc});
+  document.getElementById('out').textContent = JSON.stringify(s, null, 1);
+}
+let mInflight = false, mPending = null;
+async function manual(v) {
+  mPending = params(v / 100, document.getElementById('enc').value);
+  if (mInflight) return;
+  mInflight = true;
+  while (mPending) { const p = mPending; mPending = null; const r = await request('http', p); await show(r, p.seq); }
+  mInflight = false;
+}
+window.runSingle = runSingle; window.runDrag = runDrag;
+</script></body></html>

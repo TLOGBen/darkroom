@@ -1,0 +1,186 @@
+{
+ "photo": "food_bluecast_dark",
+ "describe": {
+  "content": "{\"subject\": \"interior dining scene\", \"main_subject\": \"a table set for two with plates, cutlery, mugs, two glasses of red juice, and a small stained-glass table lamp, positioned in the lower center of the frame in front of a large three-pane window, with wooden chairs at the left and right edges\", \"lighting\": \"cool, dim daylight coming through the window from behind the table, with weak ambient fill indoors, overcast evening or shaded daytime\", \"color_tone\": \"cool blue-green palette with a slight blue cast, overall underexposed and murky\", \"contrast\": \"low\", \"issues\": [\"overall underexposure with crushed shadow detail in the interior foreground\", \"cool blue color cast dulling the warm wood tones of the window frame and table lamp\", \"dim, flat ambient light lacking a clear directional key light\"], \"style_directions\": [\"a warm, inviting evening grade that lifts the interior exposure and restores shadow detail on the table setting\", \"a cozy, soft cinematic warm grade with gentle highlight roll-off and subtle film grain\", \"a natural, balanced daylight grade with neutral white balance and open shadows\", \"a soft, dreamy low-contrast warm grade emphasizing the lamp's glow as a practical light source\"]}",
+  "reasoning": "",
+  "finish": "stop",
+  "wall_s": 4.72,
+  "prompt_n": 1098,
+  "prompt_tps": 2387.714361514742,
+  "gen_n": 263,
+  "gen_tps": 63.337851594578765,
+  "strict_ok": true,
+  "lenient_ok": true,
+  "schema_ok": true,
+  "parsed": {
+   "subject": "interior dining scene",
+   "main_subject": "a table set for two with plates, cutlery, mugs, two glasses of red juice, and a small stained-glass table lamp, positioned in the lower center of the frame in front of a large three-pane window, with wooden chairs at the left and right edges",
+   "lighting": "cool, dim daylight coming through the window from behind the table, with weak ambient fill indoors, overcast evening or shaded daytime",
+   "color_tone": "cool blue-green palette with a slight blue cast, overall underexposed and murky",
+   "contrast": "low",
+   "issues": [
+    "overall underexposure with crushed shadow detail in the interior foreground",
+    "cool blue color cast dulling the warm wood tones of the window frame and table lamp",
+    "dim, flat ambient light lacking a clear directional key light"
+   ],
+   "style_directions": [
+    "a warm, inviting evening grade that lifts the interior exposure and restores shadow detail on the table setting",
+    "a cozy, soft cinematic warm grade with gentle highlight roll-off and subtle film grain",
+    "a natural, balanced daylight grade with neutral white balance and open shadows",
+    "a soft, dreamy low-contrast warm grade emphasizing the lamp's glow as a practical light source"
+   ]
+  }
+ },
+ "pick1": {
+  "content": "{\"picks\": [{\"id\": 3, \"strength\": 120, \"reason\": \"Brightens the dim interior with warm white balance and dehazing, lifting the table setting and curtains into a clean, appetizing classic food-photography look while keeping the garden view natural.\"}, {\"id\": 12, \"strength\": 100, \"reason\": \"Classic balanced grade that adds gentle saturation and contrast, recovering clean whites and deep blacks so the tableware, lamp, and curtains read crisp and inviting.\"}, {\"id\": 6, \"strength\": 90, \"reason\": \"Cinematic cool grade with lifted shadows and cyan-blue tint that enhances the moody window-side atmosphere, giving the scene filmic depth while preserving the view outside.\"}]}",
+  "reasoning": "",
+  "finish": "stop",
+  "wall_s": 4.9,
+  "prompt_n": 10544,
+  "prompt_tps": 4946.138503136369,
+  "gen_n": 164,
+  "gen_tps": 60.71932658914211,
+  "strict_ok": true,
+  "lenient_ok": true,
+  "schema_ok": true,
+  "parsed": {
+   "picks": [
+    {
+     "id": 3,
+     "strength": 120,
+     "reason": "Brightens the dim interior with warm white balance and dehazing, lifting the table setting and curtains into a clean, appetizing classic food-photography look while keeping the garden view natural."
+    },
+    {
+     "id": 12,
+     "strength": 100,
+     "reason": "Classic balanced grade that adds gentle saturation and contrast, recovering clean whites and deep blacks so the tableware, lamp, and curtains read crisp and inviting."
+    },
+    {
+     "id": 6,
+     "strength": 90,
+     "reason": "Cinematic cool grade with lifted shadows and cyan-blue tint that enhances the moody window-side atmosphere, giving the scene filmic depth while preserving the view outside."
+    }
+   ]
+  },
+  "order": [
+   "P01",
+   "P02",
+   "P03",
+   "P04",
+   "P05",
+   "P06",
+   "P07",
+   "P08",
+   "P09",
+   "P10",
+   "P11",
+   "P12",
+   "P13",
+   "P14",
+   "P15",
+   "P16",
+   "P17",
+   "P18"
+  ],
+  "picks": [
+   {
+    "key": "P03",
+    "label": "物件 - 食物 - 經典 / food 05",
+    "on_topic": true,
+    "strength": 120,
+    "reason": "Brightens the dim interior with warm white balance and dehazing, lifting the table setting and curtains into a clean, appetizing classic food-photography look while keeping the garden view natural."
+   },
+   {
+    "key": "P12",
+    "label": "風格 - 經典款 / 經典款 1",
+    "on_topic": false,
+    "strength": 100,
+    "reason": "Classic balanced grade that adds gentle saturation and contrast, recovering clean whites and deep blacks so the tableware, lamp, and curtains read crisp and inviting."
+   },
+   {
+    "key": "P06",
+    "label": "電影 - 電影燈光 / Cinematic Light - 05",
+    "on_topic": false,
+    "strength": 90,
+    "reason": "Cinematic cool grade with lifted shadows and cyan-blue tint that enhances the moody window-side atmosphere, giving the scene filmic depth while preserving the view outside."
+   }
+  ]
+ },
+ "pick2": {
+  "content": "{\"picks\": [{\"id\": 7, \"strength\": 100, \"reason\": \"The food preset brightens the dim interior, lifts the lifted highlights on the tableware, adds texture and clarity to the tabletop objects, and warms the magenta-tinted ambient light, matching the dark underexposed dining scene.\"}, {\"id\": 18, \"strength\": 100, \"reason\": \"Dark Food Tone 1 adds the grit and local contrast the dim, soft image lacks, deepens the blacks of the curtains and shadows, and boosts vibrance to bring out the red drinks and green garden, matching the low-light, murky exposure.\"}, {\"id\": 15, \"strength\": 80, \"reason\": \"Film 11 adds a gentle film grain and soft, dreamy midtones that suit the quiet, moody lakeside window scene, brightens the underexposed interior, and gives a subtle vintage film character without over-processing.\"}]}",
+  "reasoning": "",
+  "finish": "stop",
+  "wall_s": 5.7,
+  "prompt_n": 10544,
+  "prompt_tps": 4927.342263362331,
+  "gen_n": 209,
+  "gen_tps": 60.93614916934947,
+  "strict_ok": true,
+  "lenient_ok": true,
+  "schema_ok": true,
+  "parsed": {
+   "picks": [
+    {
+     "id": 7,
+     "strength": 100,
+     "reason": "The food preset brightens the dim interior, lifts the lifted highlights on the tableware, adds texture and clarity to the tabletop objects, and warms the magenta-tinted ambient light, matching the dark underexposed dining scene."
+    },
+    {
+     "id": 18,
+     "strength": 100,
+     "reason": "Dark Food Tone 1 adds the grit and local contrast the dim, soft image lacks, deepens the blacks of the curtains and shadows, and boosts vibrance to bring out the red drinks and green garden, matching the low-light, murky exposure."
+    },
+    {
+     "id": 15,
+     "strength": 80,
+     "reason": "Film 11 adds a gentle film grain and soft, dreamy midtones that suit the quiet, moody lakeside window scene, brightens the underexposed interior, and gives a subtle vintage film character without over-processing."
+    }
+   ]
+  },
+  "order": [
+   "P14",
+   "P16",
+   "P08",
+   "P11",
+   "P10",
+   "P06",
+   "P03",
+   "P17",
+   "P15",
+   "P13",
+   "P04",
+   "P18",
+   "P01",
+   "P12",
+   "P09",
+   "P05",
+   "P07",
+   "P02"
+  ],
+  "picks": [
+   {
+    "key": "P03",
+    "label": "物件 - 食物 - 經典 / food 05",
+    "on_topic": true,
+    "strength": 100,
+    "reason": "The food preset brightens the dim interior, lifts the lifted highlights on the tableware, adds texture and clarity to the tabletop objects, and warms the magenta-tinted ambient light, matching the dark underexposed dining scene."
+   },
+   {
+    "key": "P02",
+    "label": "物件 - 食物 - 暗色主題 / Dark Food - Tone 1",
+    "on_topic": true,
+    "strength": 100,
+    "reason": "Dark Food Tone 1 adds the grit and local contrast the dim, soft image lacks, deepens the blacks of the curtains and shadows, and boosts vibrance to bring out the red drinks and green garden, matching the low-light, murky exposure."
+   },
+   {
+    "key": "P09",
+    "label": "器材 - 膠捲 - 經典 / 11 Film 11",
+    "on_topic": false,
+    "strength": 80,
+    "reason": "Film 11 adds a gentle film grain and soft, dreamy midtones that suit the quiet, moody lakeside window scene, brightens the underexposed interior, and gives a subtle vintage film character without over-processing."
+   }
+  ]
+ },
+ "overlap": 1,
+ "top1_same": true
+}

@@ -1,0 +1,12 @@
+device cuda 2.14.0+cu130
+portrait_studio	896x1152	69 ms (cuda)
+landscape_lighthouse	1376x768	44 ms (cuda)
+portrait_laughing	1280x1515	60 ms (cuda)
+portrait_oldman	1280x853	42 ms (cuda)
+fog_karst	1280x853	43 ms (cuda)
+device cuda 2.14.0+cu130
+portrait_studio	896x1152	43 ms (cuda)
+landscape_lighthouse	1376x768	38 ms (cuda)
+portrait_laughing	1280x1515	51 ms (cuda)
+portrait_oldman	1280x853	35 ms (cuda)
+fog_karst	1280x853	37 ms (cuda)

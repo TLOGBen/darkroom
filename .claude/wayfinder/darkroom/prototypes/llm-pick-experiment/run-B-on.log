@@ -1,0 +1,29 @@
+[B-think-on] loaded in 4.6s (pid 26216)
+  portrait_studio describe 22.44s gen 1387 @ 63.3 strict=True schema=True
+  portrait_studio pick1 77.75s prompt 7714 @ 4877 gen 4583 @ 60.2 schema=True -> ['P01', 'P02', 'P06']
+  portrait_studio pick2 69.06s prompt 7714 @ 4822 gen 4136 @ 61.4 schema=True -> ['P03', 'P06', 'P01']
+  landscape_lighthouse describe 21.13s gen 1310 @ 63.2 strict=True schema=True
+  landscape_lighthouse pick1 97.98s prompt 8622 @ 5058 gen 5886 @ 61.2 schema=True -> ['P01', 'P09', 'P10']
+  landscape_lighthouse pick2 116.76s prompt 8622 @ 5078 gen 7012 @ 61.0 schema=False -> []
+  night_street describe 28.11s gen 1734 @ 63.1 strict=True schema=True
+  night_street pick1 93.2s prompt 8971 @ 4796 gen 5562 @ 61.0 schema=True -> ['P02', 'P08', 'P09']
+  night_street pick2 61.92s prompt 8971 @ 4793 gen 3635 @ 60.7 schema=True -> ['P01', 'P03', 'P09']
+  street_rain describe 33.32s gen 2066 @ 62.9 strict=True schema=True
+  street_rain pick1 114.97s prompt 8240 @ 4995 gen 6903 @ 61.0 schema=True -> ['P03', 'P06', 'P10']
+  street_rain pick2 92.34s prompt 8240 @ 5001 gen 5536 @ 61.2 schema=True -> ['P02', 'P08', 'P03']
+  food_breakfast describe 26.7s gen 1643 @ 62.9 strict=True schema=True
+  food_breakfast pick1 109.85s prompt 9181 @ 4882 gen 6564 @ 60.8 schema=True -> ['P03', 'P02', 'P07']
+  food_breakfast pick2 67.23s prompt 9181 @ 4795 gen 3919 @ 60.2 schema=True -> ['P04', 'P01', 'P03']
+  interior_cafe describe 30.33s gen 1888 @ 63.3 strict=True schema=True
+  interior_cafe pick1 86.4s prompt 9475 @ 4994 gen 5149 @ 61.0 schema=True -> ['P03', 'P02', 'P09']
+  interior_cafe pick2 125.93s prompt 9475 @ 4977 gen 7519 @ 60.7 schema=True -> ['P03', 'P04', 'P10']
+  sunset_kite describe 31.79s gen 2002 @ 63.8 strict=True schema=True
+  sunset_kite pick1 90.68s prompt 8988 @ 5247 gen 5426 @ 61.0 schema=True -> ['P01', 'P03', 'P12']
+  sunset_kite pick2 56.34s prompt 8988 @ 5201 gen 3331 @ 61.2 schema=True -> ['P02', 'P01', 'P03']
+  portrait_balaclava describe 32.13s gen 1980 @ 62.9 strict=True schema=True
+  portrait_balaclava pick1 59.11s prompt 10306 @ 4786 gen 3470 @ 61.0 schema=True -> ['P03', 'P04', 'P06']
+  portrait_balaclava pick2 78.06s prompt 10306 @ 4766 gen 4578 @ 60.4 schema=True -> ['P06', 'P03', 'P04']
+  food_bluecast_dark describe 30.96s gen 1908 @ 62.9 strict=True schema=True
+  food_bluecast_dark pick1 113.74s prompt 10542 @ 4938 gen 6731 @ 60.3 schema=True -> ['P02', 'P03', 'P14']
+  food_bluecast_dark pick2 82.94s prompt 10542 @ 4932 gen 4902 @ 60.8 schema=True -> ['P03', 'P13', 'P02']
+[B-think-on] server pid 26216 stopped

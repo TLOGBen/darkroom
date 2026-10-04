@@ -1,0 +1,189 @@
+{
+ "photo": "portrait_studio",
+ "describe": {
+  "content": "{\"subject\": \"studio portrait\", \"main_subject\": \"a young Black man with short curly black hair, head bowed in a three-quarter profile facing the left of the frame, wearing a dark green (teal) textured high-collar zip jacket with quilted curved panel stitching, positioned centrally and occupying most of the vertical frame\", \"lighting\": \"soft diffused studio light from the front-left (camera left), cool neutral quality, gentle falloff\", \"color_tone\": \"cool muted palette with a slight blue-grey cast, deep teal garment against a grey-blue gradient backdrop\", \"contrast\": \"medium\", \"issues\": [\"underexposed shadow side on the face and jacket\", \"somewhat flat, dull tonal range\"], \"style_directions\": [\"lift the shadows to open up the dark side of the face and jacket while preserving detail\", \"add a subtle warm accent light or gentle rim light on the hair and shoulder edge for separation\", \"enhance skin texture and fabric texture clarity\", \"grade toward a cleaner, more dimensional teal-grey palette with balanced white balance\"]}",
+  "reasoning": "",
+  "finish": "stop",
+  "wall_s": 4.47,
+  "prompt_n": 1040,
+  "prompt_tps": 1328.9410129086175,
+  "gen_n": 220,
+  "gen_tps": 60.12869187422505,
+  "strict_ok": true,
+  "lenient_ok": true,
+  "schema_ok": true,
+  "parsed": {
+   "subject": "studio portrait",
+   "main_subject": "a young Black man with short curly black hair, head bowed in a three-quarter profile facing the left of the frame, wearing a dark green (teal) textured high-collar zip jacket with quilted curved panel stitching, positioned centrally and occupying most of the vertical frame",
+   "lighting": "soft diffused studio light from the front-left (camera left), cool neutral quality, gentle falloff",
+   "color_tone": "cool muted palette with a slight blue-grey cast, deep teal garment against a grey-blue gradient backdrop",
+   "contrast": "medium",
+   "issues": [
+    "underexposed shadow side on the face and jacket",
+    "somewhat flat, dull tonal range"
+   ],
+   "style_directions": [
+    "lift the shadows to open up the dark side of the face and jacket while preserving detail",
+    "add a subtle warm accent light or gentle rim light on the hair and shoulder edge for separation",
+    "enhance skin texture and fabric texture clarity",
+    "grade toward a cleaner, more dimensional teal-grey palette with balanced white balance"
+   ]
+  }
+ },
+ "pick1": {
+  "content": "{\"picks\": [{\"id\": 6, \"strength\": 90, \"reason\": \"The Cinematic Light preset's lifted matte blacks, deep shadow open-up, and cool blue/cyan shadow grade with slightly green white balance complement the photo's existing dark studio mood and teal jacket, reinforcing its moody, directional studio lighting without fighting the content.\"}, {\"id\": 1, \"strength\": 70, \"reason\": \"The 人像聚焦 9 preset's strong saturation and punchy contrast with cyan-tinted shadows will make the deep teal jacket and skin tones pop against the gray studio backdrop, matching the portrait's mood.\"}, {\"id\": 9, \"reason\": \"The Kodak Portra 9 film preset's soft dreamy midtones, fine film grain, and gentle shadow lift will add a tasteful analog film character that suits a moody studio portrait, harmonizing with its soft directional light.\"}], \"strengths\": [90, 70, 55]}",
+  "reasoning": "",
+  "finish": "stop",
+  "wall_s": 5.01,
+  "prompt_n": 7716,
+  "prompt_tps": 4849.633700554603,
+  "gen_n": 210,
+  "gen_tps": 61.55620567548216,
+  "strict_ok": true,
+  "lenient_ok": true,
+  "schema_ok": false,
+  "parsed": {
+   "picks": [
+    {
+     "id": 6,
+     "strength": 90,
+     "reason": "The Cinematic Light preset's lifted matte blacks, deep shadow open-up, and cool blue/cyan shadow grade with slightly green white balance complement the photo's existing dark studio mood and teal jacket, reinforcing its moody, directional studio lighting without fighting the content."
+    },
+    {
+     "id": 1,
+     "strength": 70,
+     "reason": "The 人像聚焦 9 preset's strong saturation and punchy contrast with cyan-tinted shadows will make the deep teal jacket and skin tones pop against the gray studio backdrop, matching the portrait's mood."
+    },
+    {
+     "id": 9,
+     "reason": "The Kodak Portra 9 film preset's soft dreamy midtones, fine film grain, and gentle shadow lift will add a tasteful analog film character that suits a moody studio portrait, harmonizing with its soft directional light."
+    }
+   ],
+   "strengths": [
+    90,
+    70,
+    55
+   ]
+  },
+  "order": [
+   "P01",
+   "P02",
+   "P03",
+   "P04",
+   "P05",
+   "P06",
+   "P07",
+   "P08",
+   "P09",
+   "P10",
+   "P11",
+   "P12",
+   "P13",
+   "P14",
+   "P15",
+   "P16",
+   "P17",
+   "P18"
+  ],
+  "picks": [
+   {
+    "key": "P06",
+    "label": "電影 - 電影燈光 / Cinematic Light - 03",
+    "on_topic": false,
+    "strength": 90,
+    "reason": "The Cinematic Light preset's lifted matte blacks, deep shadow open-up, and cool blue/cyan shadow grade with slightly green white balance complement the photo's existing dark studio mood and teal jacket, reinforcing its moody, directional studio lighting without fighting the content."
+   },
+   {
+    "key": "P01",
+    "label": "風格 - 人像聚焦 / 人像聚焦 9",
+    "on_topic": true,
+    "strength": 70,
+    "reason": "The 人像聚焦 9 preset's strong saturation and punchy contrast with cyan-tinted shadows will make the deep teal jacket and skin tones pop against the gray studio backdrop, matching the portrait's mood."
+   },
+   {
+    "key": "P09",
+    "label": "器材 - 膠捲 - 柯達負片 / Kodak Portra 9",
+    "on_topic": false,
+    "strength": null,
+    "reason": "The Kodak Portra 9 film preset's soft dreamy midtones, fine film grain, and gentle shadow lift will add a tasteful analog film character that suits a moody studio portrait, harmonizing with its soft directional light."
+   }
+  ]
+ },
+ "pick2": {
+  "content": "{\"picks\": [{\"id\": 8, \"strength\": 120, \"reason\": \"Kodak Portra 9 film preset gives this low-key studio portrait a natural filmic finish with lifted matte blacks, open shadows, soft dreamy midtones, fine film grain, and a gentle orange-red shift that flatters the subject's skin tone, matching the photo's soft studio lighting and moody gray backdrop.\"}, {\"id\": 5, \"strength\": 110, \"reason\": \"Cinematic Light - 03 adds a tasteful teal-cyan grade with split toning (blue shadows, cyan highlights), deeper contrast, and lifted blacks that enhance the dramatic studio mood, complementing the existing cool gray background and the subject's dark green garment without clashing.\"}, {\"id\": 15, \"strength\": 90, \"reason\": \"質感棚拍 1 reinforces the existing quality-studio-shot look with slightly deeper contrast, clearer color, and dark corners, harmonizing with the photo's already clean studio lighting and neutral backdrop.\"}]}",
+  "reasoning": "",
+  "finish": "stop",
+  "wall_s": 5.33,
+  "prompt_n": 7716,
+  "prompt_tps": 4865.587821148661,
+  "gen_n": 226,
+  "gen_tps": 61.659309569196004,
+  "strict_ok": true,
+  "lenient_ok": true,
+  "schema_ok": true,
+  "parsed": {
+   "picks": [
+    {
+     "id": 8,
+     "strength": 120,
+     "reason": "Kodak Portra 9 film preset gives this low-key studio portrait a natural filmic finish with lifted matte blacks, open shadows, soft dreamy midtones, fine film grain, and a gentle orange-red shift that flatters the subject's skin tone, matching the photo's soft studio lighting and moody gray backdrop."
+    },
+    {
+     "id": 5,
+     "strength": 110,
+     "reason": "Cinematic Light - 03 adds a tasteful teal-cyan grade with split toning (blue shadows, cyan highlights), deeper contrast, and lifted blacks that enhance the dramatic studio mood, complementing the existing cool gray background and the subject's dark green garment without clashing."
+    },
+    {
+     "id": 15,
+     "strength": 90,
+     "reason": "質感棚拍 1 reinforces the existing quality-studio-shot look with slightly deeper contrast, clearer color, and dark corners, harmonizing with the photo's already clean studio lighting and neutral backdrop."
+    }
+   ]
+  },
+  "order": [
+   "P11",
+   "P03",
+   "P13",
+   "P18",
+   "P06",
+   "P05",
+   "P16",
+   "P09",
+   "P10",
+   "P01",
+   "P07",
+   "P15",
+   "P02",
+   "P17",
+   "P04",
+   "P14",
+   "P12",
+   "P08"
+  ],
+  "picks": [
+   {
+    "key": "P09",
+    "label": "器材 - 膠捲 - 柯達負片 / Kodak Portra 9",
+    "on_topic": false,
+    "strength": 120,
+    "reason": "Kodak Portra 9 film preset gives this low-key studio portrait a natural filmic finish with lifted matte blacks, open shadows, soft dreamy midtones, fine film grain, and a gentle orange-red shift that flatters the subject's skin tone, matching the photo's soft studio lighting and moody gray backdrop."
+   },
+   {
+    "key": "P06",
+    "label": "電影 - 電影燈光 / Cinematic Light - 03",
+    "on_topic": false,
+    "strength": 110,
+    "reason": "Cinematic Light - 03 adds a tasteful teal-cyan grade with split toning (blue shadows, cyan highlights), deeper contrast, and lifted blacks that enhance the dramatic studio mood, complementing the existing cool gray background and the subject's dark green garment without clashing."
+   },
+   {
+    "key": "P04",
+    "label": "風格 - 質感棚拍 / 質感棚拍 1",
+    "on_topic": true,
+    "strength": 90,
+    "reason": "質感棚拍 1 reinforces the existing quality-studio-shot look with slightly deeper contrast, clearer color, and dark corners, harmonizing with the photo's already clean studio lighting and neutral backdrop."
+   }
+  ]
+ },
+ "overlap": 2,
+ "top1_same": false
+}

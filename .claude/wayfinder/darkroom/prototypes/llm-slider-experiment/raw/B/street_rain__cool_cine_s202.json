@@ -1,0 +1,70 @@
+{
+ "content": "{\"diagnosis\": {\"subject\": \"a narrow rainy backstreet alley (looks like a London alley, Gilly Street) with pedestrians walking away holding umbrellas, shop signs, hanging lamps, and wet reflective pavement\", \"white_balance\": \"cool / blue\", \"exposure\": \"slightly underexposed\", \"contrast\": \"low\", \"main_problems\": [\"the image is underexposed and dull, with flat, low-contrast tones\", \"a cool blue cast that feels washed out rather than intentionally cinematic\", \"shadows are crushed and murky with lost detail in the dark storefronts\", \"highlights on the lamps and signs are slightly clipped\", \"midtones are flat and muddy, giving a hazy, low-clarity impression\"]}, \"adjustments\": {\"Exposure2012\": 0.7, \"Contrast2012\": 18, \"Highlights2012\": -12, \"Shadows2012\": 10, \"Whites2012\": -8, \"Blacks2012\": -14, \"IncrementalTemperature\": -16, \"IncrementalTint\": -6, \"Vibrance\": 8, \"Saturation\": 0, \"Clarity2012\": 12, \"Dehaze\": 6, \"Texture\": 8, \"HueAdjustmentRed\": -6, \"SaturationAdjustmentRed\": -4, \"LuminanceAdjustmentRed\": -4, \"HueAdjustmentOrange\": -8, \"SaturationAdjustmentOrange\": -6, \"LuminanceAdjustmentOrange\": -5, \"HueAdjustmentYellow\": -10, \"SaturationAdjustmentYellow\": -8, \"LuminanceAdjustmentYellow\": -8, \"HueAdjustmentGreen\": -4, \"SaturationAdjustmentGreen\": -3, \"LuminanceAdjustmentGreen\": -3, \"HueAdjustmentAqua\": -6, \"SaturationAdjustmentAqua\": -5, \"LuminanceAdjustmentAqua\": -4, \"HueAdjustmentBlue\": -12, \"SaturationAdjustmentBlue\": -10, \"LuminanceAdjustmentBlue\": -10}, \"intent\": \"a cool-toned, cinematic film look with clean deep blues and cyans, controlled contrast, recovered shadow and highlight detail, and no warm or yellow cast anywhere in the frame.\"}",
+ "reasoning": "",
+ "finish": "stop",
+ "wall_s": 8.69,
+ "prompt_n": 4,
+ "prompt_tps": 116.5365342034728,
+ "gen_n": 523,
+ "gen_tps": 60.66613508256347,
+ "photo": "street_rain",
+ "run": "cool_cine_s202",
+ "seed": 202,
+ "wish": {
+  "tag": "cool_cine",
+  "want": "a cool-toned, cinematic film look",
+  "avoid": "warm or yellow tones"
+ },
+ "parse_ok": true,
+ "errors": [],
+ "valid": true,
+ "parsed": {
+  "diagnosis": {
+   "subject": "a narrow rainy backstreet alley (looks like a London alley, Gilly Street) with pedestrians walking away holding umbrellas, shop signs, hanging lamps, and wet reflective pavement",
+   "white_balance": "cool / blue",
+   "exposure": "slightly underexposed",
+   "contrast": "low",
+   "main_problems": [
+    "the image is underexposed and dull, with flat, low-contrast tones",
+    "a cool blue cast that feels washed out rather than intentionally cinematic",
+    "shadows are crushed and murky with lost detail in the dark storefronts",
+    "highlights on the lamps and signs are slightly clipped",
+    "midtones are flat and muddy, giving a hazy, low-clarity impression"
+   ]
+  },
+  "adjustments": {
+   "Exposure2012": 0.7,
+   "Contrast2012": 18,
+   "Highlights2012": -12,
+   "Shadows2012": 10,
+   "Whites2012": -8,
+   "Blacks2012": -14,
+   "IncrementalTemperature": -16,
+   "IncrementalTint": -6,
+   "Vibrance": 8,
+   "Saturation": 0,
+   "Clarity2012": 12,
+   "Dehaze": 6,
+   "Texture": 8,
+   "HueAdjustmentRed": -6,
+   "SaturationAdjustmentRed": -4,
+   "LuminanceAdjustmentRed": -4,
+   "HueAdjustmentOrange": -8,
+   "SaturationAdjustmentOrange": -6,
+   "LuminanceAdjustmentOrange": -5,
+   "HueAdjustmentYellow": -10,
+   "SaturationAdjustmentYellow": -8,
+   "LuminanceAdjustmentYellow": -8,
+   "HueAdjustmentGreen": -4,
+   "SaturationAdjustmentGreen": -3,
+   "LuminanceAdjustmentGreen": -3,
+   "HueAdjustmentAqua": -6,
+   "SaturationAdjustmentAqua": -5,
+   "LuminanceAdjustmentAqua": -4,
+   "HueAdjustmentBlue": -12,
+   "SaturationAdjustmentBlue": -10,
+   "LuminanceAdjustmentBlue": -10
+  },
+  "intent": "a cool-toned, cinematic film look with clean deep blues and cyans, controlled contrast, recovered shadow and highlight detail, and no warm or yellow cast anywhere in the frame."
+ }
+}

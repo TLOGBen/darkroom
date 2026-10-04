@@ -1,0 +1,70 @@
+{
+ "content": "{ \"diagnosis\": { \"subject\": \"A narrow cobblestone street in a historic district at night, leading up to a brightly lit castle on a hill.\", \"white_balance\": \"cool / blue\", \"exposure\": \"underexposed\", \"contrast\": \"low\", \"main_problems\": [ \"Strong blue color cast in the shadows and night sky.\", \"Overall image is too dark.\", \"Shadows are crushed, losing detail in the stone textures.\", \"Image feels a bit flat and muddy.\", \"Lack of punch in the midtones.\" ] }, \"adjustments\": { \"Exposure2012\": 0.50, \"Contrast2012\": 15, \"Highlights2012\": -30, \"Shadows2012\": 60, \"Whites2012\": 10, \"Blacks2012\": -20, \"IncrementalTemperature\": -15, \"IncrementalTint\": 5, \"Vibrance\": 10, \"Saturation\": 0, \"Clarity2012\": 10, \"Dehaze\": 15, \"Texture\": 0, \"HueAdjustmentRed\": 0, \"SaturationAdjustmentRed\": 0, \"LuminanceAdjustmentRed\": 0, \"HueAdjustmentOrange\": 0, \"SaturationAdjustmentOrange\": 0, \"LuminanceAdjustmentOrange\": 0, \"HueAdjustmentYellow\": 0, \"SaturationAdjustmentYellow\": 0, \"LuminanceAdjustmentYellow\": 0, \"HueAdjustmentGreen\": 0, \"SaturationAdjustmentGreen\": 0, \"LuminanceAdjustmentGreen\": 0, \"HueAdjustmentAqua\": 0, \"SaturationAdjustmentAqua\": 0, \"LuminanceAdjustmentAqua\": 0, \"HueAdjustmentBlue\": 0, \"SaturationAdjustmentBlue\": -10, \"LuminanceAdjustmentBlue\": -20 }, \"intent\": \"To reveal the rich textures in the night-time architecture by brightening the shadows, while restoring contrast and clarity for a crisp, vibrant look.\" }",
+ "reasoning": "",
+ "finish": "stop",
+ "wall_s": 9.52,
+ "prompt_n": 563,
+ "prompt_tps": 478.41197814430535,
+ "gen_n": 481,
+ "gen_tps": 57.83449574645357,
+ "photo": "night_street",
+ "run": "lift_shadows_s101",
+ "seed": 101,
+ "wish": {
+  "tag": "lift_shadows",
+  "want": "recover the shadows so the dark areas show detail",
+  "avoid": "a flat, washed-out, matte look"
+ },
+ "parse_ok": true,
+ "errors": [],
+ "valid": true,
+ "parsed": {
+  "diagnosis": {
+   "subject": "A narrow cobblestone street in a historic district at night, leading up to a brightly lit castle on a hill.",
+   "white_balance": "cool / blue",
+   "exposure": "underexposed",
+   "contrast": "low",
+   "main_problems": [
+    "Strong blue color cast in the shadows and night sky.",
+    "Overall image is too dark.",
+    "Shadows are crushed, losing detail in the stone textures.",
+    "Image feels a bit flat and muddy.",
+    "Lack of punch in the midtones."
+   ]
+  },
+  "adjustments": {
+   "Exposure2012": 0.5,
+   "Contrast2012": 15,
+   "Highlights2012": -30,
+   "Shadows2012": 60,
+   "Whites2012": 10,
+   "Blacks2012": -20,
+   "IncrementalTemperature": -15,
+   "IncrementalTint": 5,
+   "Vibrance": 10,
+   "Saturation": 0,
+   "Clarity2012": 10,
+   "Dehaze": 15,
+   "Texture": 0,
+   "HueAdjustmentRed": 0,
+   "SaturationAdjustmentRed": 0,
+   "LuminanceAdjustmentRed": 0,
+   "HueAdjustmentOrange": 0,
+   "SaturationAdjustmentOrange": 0,
+   "LuminanceAdjustmentOrange": 0,
+   "HueAdjustmentYellow": 0,
+   "SaturationAdjustmentYellow": 0,
+   "LuminanceAdjustmentYellow": 0,
+   "HueAdjustmentGreen": 0,
+   "SaturationAdjustmentGreen": 0,
+   "LuminanceAdjustmentGreen": 0,
+   "HueAdjustmentAqua": 0,
+   "SaturationAdjustmentAqua": 0,
+   "LuminanceAdjustmentAqua": 0,
+   "HueAdjustmentBlue": 0,
+   "SaturationAdjustmentBlue": -10,
+   "LuminanceAdjustmentBlue": -20
+  },
+  "intent": "To reveal the rich textures in the night-time architecture by brightening the shadows, while restoring contrast and clarity for a crisp, vibrant look."
+ }
+}

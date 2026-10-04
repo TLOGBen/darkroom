@@ -1,0 +1,69 @@
+{
+ "content": "{\"diagnosis\": {\"subject\": \"a full English breakfast on a white square plate on a dark weathered wooden table: two fried eggs with runny orange yolks on top of toast, streaky bacon pieces at the top, baked beans in tomato sauce at the lower left, two grilled sausages on the right, and a knife and fork wrapped in a white napkin at the right edge of the plate\", \"white_balance\": \"neutral\", \"exposure\": \"slightly underexposed\", \"contrast\": \"high\", \"main_problems\": [\"the dark, weathered wooden table and deep shadows make the scene feel heavy and gloomy; the overall mood is dull and under-lit\", \"the whites of the plate and eggs look a touch cool/dark rather than clean bright white\", \"the contrast is too strong for an airy look, with crushed shadows on the table and beans\", \"there is no haze cut or brightness lift, so the photo reads dense rather than fresh and airy\"]}, \"adjustments\": {\"Exposure2012\": 1.2, \"Contrast2012\": -30, \"Highlights2012\": -20, \"Shadows2012\": 40, \"Whites2012\": 10, \"Blacks2012\": -20, \"IncrementalTemperature\": 15, \"IncrementalTint\": 5, \"Vibrance\": 10, \"Saturation\": -10, \"Clarity2012\": 10, \"Dehaze\": 15, \"Texture\": 5, \"HueAdjustmentRed\": 0, \"SaturationAdjustmentRed\": 0, \"LuminanceAdjustmentRed\": 0, \"HueAdjustmentOrange\": 0, \"SaturationAdjustmentOrange\": 0, \"LuminanceAdjustmentOrange\": 0, \"HueAdjustmentYellow\": 0, \"SaturationAdjustmentYellow\": 0, \"LuminanceAdjustmentYellow\": 0, \"HueAdjustmentGreen\": 0, \"SaturationAdjustmentGreen\": 0, \"LuminanceAdjustmentGreen\": 0, \"HueAdjustmentAqua\": 0, \"SaturationAdjustmentAqua\": 0, \"LuminanceAdjustmentAqua\": 0, \"HueAdjustmentBlue\": 0, \"SaturationAdjustmentBlue\": 0, \"LuminanceAdjustmentBlue\": 0}, \"intent\": \"a warm, bright, airy Japanese-style fresh look with lifted shadows, clean bright whites, soft contrast and a gentle warm cast, while keeping saturation natural and never oversaturated.\"}",
+ "reasoning": "",
+ "finish": "stop",
+ "wall_s": 9.53,
+ "prompt_n": 563,
+ "prompt_tps": 3867.2363341621904,
+ "gen_n": 573,
+ "gen_tps": 61.15752156791633,
+ "photo": "food_breakfast",
+ "run": "warm_airy_s101",
+ "seed": 101,
+ "wish": {
+  "tag": "warm_airy",
+  "want": "a warm, bright, airy Japanese-style fresh look (日系清新)",
+  "avoid": "oversaturated colours"
+ },
+ "parse_ok": true,
+ "errors": [],
+ "valid": true,
+ "parsed": {
+  "diagnosis": {
+   "subject": "a full English breakfast on a white square plate on a dark weathered wooden table: two fried eggs with runny orange yolks on top of toast, streaky bacon pieces at the top, baked beans in tomato sauce at the lower left, two grilled sausages on the right, and a knife and fork wrapped in a white napkin at the right edge of the plate",
+   "white_balance": "neutral",
+   "exposure": "slightly underexposed",
+   "contrast": "high",
+   "main_problems": [
+    "the dark, weathered wooden table and deep shadows make the scene feel heavy and gloomy; the overall mood is dull and under-lit",
+    "the whites of the plate and eggs look a touch cool/dark rather than clean bright white",
+    "the contrast is too strong for an airy look, with crushed shadows on the table and beans",
+    "there is no haze cut or brightness lift, so the photo reads dense rather than fresh and airy"
+   ]
+  },
+  "adjustments": {
+   "Exposure2012": 1.2,
+   "Contrast2012": -30,
+   "Highlights2012": -20,
+   "Shadows2012": 40,
+   "Whites2012": 10,
+   "Blacks2012": -20,
+   "IncrementalTemperature": 15,
+   "IncrementalTint": 5,
+   "Vibrance": 10,
+   "Saturation": -10,
+   "Clarity2012": 10,
+   "Dehaze": 15,
+   "Texture": 5,
+   "HueAdjustmentRed": 0,
+   "SaturationAdjustmentRed": 0,
+   "LuminanceAdjustmentRed": 0,
+   "HueAdjustmentOrange": 0,
+   "SaturationAdjustmentOrange": 0,
+   "LuminanceAdjustmentOrange": 0,
+   "HueAdjustmentYellow": 0,
+   "SaturationAdjustmentYellow": 0,
+   "LuminanceAdjustmentYellow": 0,
+   "HueAdjustmentGreen": 0,
+   "SaturationAdjustmentGreen": 0,
+   "LuminanceAdjustmentGreen": 0,
+   "HueAdjustmentAqua": 0,
+   "SaturationAdjustmentAqua": 0,
+   "LuminanceAdjustmentAqua": 0,
+   "HueAdjustmentBlue": 0,
+   "SaturationAdjustmentBlue": 0,
+   "LuminanceAdjustmentBlue": 0
+  },
+  "intent": "a warm, bright, airy Japanese-style fresh look with lifted shadows, clean bright whites, soft contrast and a gentle warm cast, while keeping saturation natural and never oversaturated."
+ }
+}

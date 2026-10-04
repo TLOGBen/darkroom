@@ -1,0 +1,69 @@
+{
+ "content": "{ \"diagnosis\": { \"subject\": \"A rainy street scene in a city alleyway (likely Dublin, based on 'Golly Gosh' and 'Hanley's Cornish Pasties'), with pedestrians using umbrellas.\", \"white_balance\": \"neutral\", \"exposure\": \"underexposed\", \"contrast\": \"low\", \"main_problems\": [ \"The image is too dark (underexposed).\", \"It looks flat and muddy due to low contrast.\", \"It lacks 'pop' or 'punch' in the shadows and highlights.\", \"The mood is a bit dull and needs to be lifted to a cinematic feel.\" ] }, \"adjustments\": { \"Exposure2012\": 0.6, \"Contrast2012\": 25, \"Highlights2012\": -20, \"Shadows2012\": 30, \"Whites2012\": 10, \"Blacks2012\": -15, \"IncrementalTemperature\": -8, \"IncrementalTint\": -5, \"Vibrance\": 15, \"Saturation\": 0, \"Clarity2012\": 10, \"Dehaze\": 10, \"Texture\": 0, \"HueAdjustmentRed\": 0, \"SaturationAdjustmentRed\": 0, \"LuminanceAdjustmentRed\": 0, \"HueAdjustmentOrange\": 0, \"SaturationAdjustmentOrange\": -5, \"LuminanceAdjustmentOrange\": 0, \"HueAdjustmentYellow\": 0, \"SaturationAdjustmentYellow\": 0, \"LuminanceAdjustmentYellow\": 0, \"HueAdjustmentGreen\": 0, \"SaturationAdjustmentGreen\": 0, \"LuminanceAdjustmentGreen\": 0, \"HueAdjustmentAqua\": 0, \"SaturationAdjustmentAqua\": 0, \"LuminanceAdjustmentAqua\": 0, \"HueAdjustmentBlue\": 0, \"SaturationAdjustmentBlue\": 0, \"LuminanceAdjustmentBlue\": 0 }, \"intent\": \"Brighten and punch up the image to a cool-toned, cinematic film look.\"}",
+ "reasoning": "",
+ "finish": "stop",
+ "wall_s": 9.69,
+ "prompt_n": 558,
+ "prompt_tps": 496.0599681383705,
+ "gen_n": 483,
+ "gen_tps": 56.54293890723145,
+ "photo": "street_rain",
+ "run": "cool_cine_s101",
+ "seed": 101,
+ "wish": {
+  "tag": "cool_cine",
+  "want": "a cool-toned, cinematic film look",
+  "avoid": "warm or yellow tones"
+ },
+ "parse_ok": true,
+ "errors": [],
+ "valid": true,
+ "parsed": {
+  "diagnosis": {
+   "subject": "A rainy street scene in a city alleyway (likely Dublin, based on 'Golly Gosh' and 'Hanley's Cornish Pasties'), with pedestrians using umbrellas.",
+   "white_balance": "neutral",
+   "exposure": "underexposed",
+   "contrast": "low",
+   "main_problems": [
+    "The image is too dark (underexposed).",
+    "It looks flat and muddy due to low contrast.",
+    "It lacks 'pop' or 'punch' in the shadows and highlights.",
+    "The mood is a bit dull and needs to be lifted to a cinematic feel."
+   ]
+  },
+  "adjustments": {
+   "Exposure2012": 0.6,
+   "Contrast2012": 25,
+   "Highlights2012": -20,
+   "Shadows2012": 30,
+   "Whites2012": 10,
+   "Blacks2012": -15,
+   "IncrementalTemperature": -8,
+   "IncrementalTint": -5,
+   "Vibrance": 15,
+   "Saturation": 0,
+   "Clarity2012": 10,
+   "Dehaze": 10,
+   "Texture": 0,
+   "HueAdjustmentRed": 0,
+   "SaturationAdjustmentRed": 0,
+   "LuminanceAdjustmentRed": 0,
+   "HueAdjustmentOrange": 0,
+   "SaturationAdjustmentOrange": -5,
+   "LuminanceAdjustmentOrange": 0,
+   "HueAdjustmentYellow": 0,
+   "SaturationAdjustmentYellow": 0,
+   "LuminanceAdjustmentYellow": 0,
+   "HueAdjustmentGreen": 0,
+   "SaturationAdjustmentGreen": 0,
+   "LuminanceAdjustmentGreen": 0,
+   "HueAdjustmentAqua": 0,
+   "SaturationAdjustmentAqua": 0,
+   "LuminanceAdjustmentAqua": 0,
+   "HueAdjustmentBlue": 0,
+   "SaturationAdjustmentBlue": 0,
+   "LuminanceAdjustmentBlue": 0
+  },
+  "intent": "Brighten and punch up the image to a cool-toned, cinematic film look."
+ }
+}

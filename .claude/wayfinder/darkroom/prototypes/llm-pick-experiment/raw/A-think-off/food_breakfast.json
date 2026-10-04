@@ -1,0 +1,185 @@
+{
+ "photo": "food_breakfast",
+ "describe": {
+  "content": "{\n  \"subject\": \"food photography\",\n  \"main_subject\": \"a full English breakfast on a white plate, centered and shot from a top-down perspective\",\n  \"lighting\": \"natural daylight, diffused, coming from above and slightly to the left, creating soft shadows\",\n  \"color_tone\": \"warm and natural, with accurate white balance highlighting the golden browns of the sausages and bacon and the bright red of the baked beans\",\n  \"contrast\": \"medium\",\n  \"issues\": [\"The wooden table in the background is quite dark and loses texture detail in the shadows\", \"The white plate has some minor reflections that could be managed\"],\n  \"style_directions\": [\n    \"Enhance warmth and richness to make the food appear more appetizing and 'homestyle'\",\n    \"Brighten the background table slightly to reveal more wood grain texture and provide better separation for the plate\",\n    \"Boost the saturation and clarity of the reds and oranges (beans, egg yolks) to make the colors pop\",\n    \"Apply a subtle vignette to draw the viewer's eye towards the center of the plate\"\n  ]\n}",
+  "reasoning": "",
+  "finish": "stop",
+  "wall_s": 6.37,
+  "prompt_n": 1034,
+  "prompt_tps": 447.0873813694278,
+  "gen_n": 247,
+  "gen_tps": 62.076614149682875,
+  "strict_ok": true,
+  "lenient_ok": true,
+  "schema_ok": true,
+  "parsed": {
+   "subject": "food photography",
+   "main_subject": "a full English breakfast on a white plate, centered and shot from a top-down perspective",
+   "lighting": "natural daylight, diffused, coming from above and slightly to the left, creating soft shadows",
+   "color_tone": "warm and natural, with accurate white balance highlighting the golden browns of the sausages and bacon and the bright red of the baked beans",
+   "contrast": "medium",
+   "issues": [
+    "The wooden table in the background is quite dark and loses texture detail in the shadows",
+    "The white plate has some minor reflections that could be managed"
+   ],
+   "style_directions": [
+    "Enhance warmth and richness to make the food appear more appetizing and 'homestyle'",
+    "Brighten the background table slightly to reveal more wood grain texture and provide better separation for the plate",
+    "Boost the saturation and clarity of the reds and oranges (beans, egg yolks) to make the colors pop",
+    "Apply a subtle vignette to draw the viewer's eye towards the center of the plate"
+   ]
+  }
+ },
+ "pick1": {
+  "content": "{\n  \"picks\": [\n    {\n      \"id\": 1,\n      \"strength\": 100,\n      \"reason\": \"This preset is specifically designed for food ('美食專家8'); it opens the dark shadows of the wooden table and brightens the egg yolks, making the breakfast look appetizing and fresh.\"\n    },\n    {\n      \"id\": 4,\n      \"strength\": 100,\n      \"reason\": \"The 'Brunch 05' preset provides a warm, inviting color grading with yellow shadows that complements the toast and beans, while its contrast reduction softens the harsh midday light.\"\n    },\n    {\n      \"id\": 14,\n      \"strength\": 85,\n      \"reason\": \"With '03 Autumn 03', the lifted blacks and muted greens create a flattering, naturalistic look that enhances the savory tones of the food without oversaturating the reds.\"\n    }\n  ]\n}",
+  "reasoning": "",
+  "finish": "stop",
+  "wall_s": 17.58,
+  "prompt_n": 9183,
+  "prompt_tps": 658.7902149529955,
+  "gen_n": 219,
+  "gen_tps": 61.129339306810124,
+  "strict_ok": true,
+  "lenient_ok": true,
+  "schema_ok": true,
+  "parsed": {
+   "picks": [
+    {
+     "id": 1,
+     "strength": 100,
+     "reason": "This preset is specifically designed for food ('美食專家8'); it opens the dark shadows of the wooden table and brightens the egg yolks, making the breakfast look appetizing and fresh."
+    },
+    {
+     "id": 4,
+     "strength": 100,
+     "reason": "The 'Brunch 05' preset provides a warm, inviting color grading with yellow shadows that complements the toast and beans, while its contrast reduction softens the harsh midday light."
+    },
+    {
+     "id": 14,
+     "strength": 85,
+     "reason": "With '03 Autumn 03', the lifted blacks and muted greens create a flattering, naturalistic look that enhances the savory tones of the food without oversaturating the reds."
+    }
+   ]
+  },
+  "order": [
+   "P01",
+   "P02",
+   "P03",
+   "P04",
+   "P05",
+   "P06",
+   "P07",
+   "P08",
+   "P09",
+   "P10",
+   "P11",
+   "P12",
+   "P13",
+   "P14",
+   "P15",
+   "P16",
+   "P17",
+   "P18"
+  ],
+  "picks": [
+   {
+    "key": "P01",
+    "label": "物件 - 食物 - 美食專家 / 美食專家8",
+    "on_topic": true,
+    "strength": 100,
+    "reason": "This preset is specifically designed for food ('美食專家8'); it opens the dark shadows of the wooden table and brightens the egg yolks, making the breakfast look appetizing and fresh."
+   },
+   {
+    "key": "P04",
+    "label": "物件 - 食物 - 午餐 / Brunch 05",
+    "on_topic": true,
+    "strength": 100,
+    "reason": "The 'Brunch 05' preset provides a warm, inviting color grading with yellow shadows that complements the toast and beans, while its contrast reduction softens the harsh midday light."
+   },
+   {
+    "key": "P14",
+    "label": "時間 - 秋季 / 03 Autumn 03",
+    "on_topic": false,
+    "strength": 85,
+    "reason": "With '03 Autumn 03', the lifted blacks and muted greens create a flattering, naturalistic look that enhances the savory tones of the food without oversaturating the reds."
+   }
+  ]
+ },
+ "pick2": {
+  "content": "{\n \"picks\": [\n  {\n   \"id\": 15,\n   \"strength\": 100,\n   \"reason\": \"This preset is specifically designed for food photography, enhancing the appetizing warmth of the sausages and beans while lifting shadows and muting the dull white plate.\"\n  },\n  {\n   \"id\": 11,\n   \"strength\": 85,\n   \"reason\": \"The 'Minimal Blogger' style complements the clean white plate by boosting reds and oranges to make the food pop against a brightened, clean background.\"\n  },\n  {\n   \"id\": 16,\n   \"strength\": 100,\n   \"reason\": \"This preset adds essential clarity and texture to the food items (bacon, sausages, beans) without oversaturating the image, and includes a subtle vignette to frame the subject.\"\n  }\n ]\n}",
+  "reasoning": "",
+  "finish": "stop",
+  "wall_s": 18.22,
+  "prompt_n": 9183,
+  "prompt_tps": 627.1793851879941,
+  "gen_n": 204,
+  "gen_tps": 58.460080836180744,
+  "strict_ok": true,
+  "lenient_ok": true,
+  "schema_ok": true,
+  "parsed": {
+   "picks": [
+    {
+     "id": 15,
+     "strength": 100,
+     "reason": "This preset is specifically designed for food photography, enhancing the appetizing warmth of the sausages and beans while lifting shadows and muting the dull white plate."
+    },
+    {
+     "id": 11,
+     "strength": 85,
+     "reason": "The 'Minimal Blogger' style complements the clean white plate by boosting reds and oranges to make the food pop against a brightened, clean background."
+    },
+    {
+     "id": 16,
+     "strength": 100,
+     "reason": "This preset adds essential clarity and texture to the food items (bacon, sausages, beans) without oversaturating the image, and includes a subtle vignette to frame the subject."
+    }
+   ]
+  },
+  "order": [
+   "P08",
+   "P04",
+   "P01",
+   "P17",
+   "P07",
+   "P09",
+   "P12",
+   "P06",
+   "P14",
+   "P16",
+   "P18",
+   "P15",
+   "P11",
+   "P10",
+   "P03",
+   "P02",
+   "P13",
+   "P05"
+  ],
+  "picks": [
+   {
+    "key": "P03",
+    "label": "物件 - 食物 - 午餐 / Brunch 03",
+    "on_topic": true,
+    "strength": 100,
+    "reason": "This preset is specifically designed for food photography, enhancing the appetizing warmth of the sausages and beans while lifting shadows and muting the dull white plate."
+   },
+   {
+    "key": "P18",
+    "label": "風格 - 部落客2 / 02 Minimal Blogger 02",
+    "on_topic": false,
+    "strength": 85,
+    "reason": "The 'Minimal Blogger' style complements the clean white plate by boosting reds and oranges to make the food pop against a brightened, clean background."
+   },
+   {
+    "key": "P02",
+    "label": "物件 - 食物 - 美食專家 / 美食專家13",
+    "on_topic": true,
+    "strength": 100,
+    "reason": "This preset adds essential clarity and texture to the food items (bacon, sausages, beans) without oversaturating the image, and includes a subtle vignette to frame the subject."
+   }
+  ]
+ },
+ "overlap": 0,
+ "top1_same": false
+}

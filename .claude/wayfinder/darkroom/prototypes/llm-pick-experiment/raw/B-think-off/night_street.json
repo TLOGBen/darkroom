@@ -1,0 +1,186 @@
+{
+ "photo": "night_street",
+ "describe": {
+  "content": "{\"subject\": \"night street\", \"main_subject\": \"a cobblestone alley in Old Quebec flanked by stone buildings, with the illuminated Fairmont Le Château Frontenac castle on the hilltop in the upper center of the frame\", \"lighting\": \"nighttime artificial lighting, warm sodium-lamp light from wall-mounted lanterns on the right side and cool white light from windows, dark night sky\", \"color_tone\": \"overall warm golden palette on the stone walls with a cool blue-purple night sky, purple/magenta accent lighting on the castle towers\", \"contrast\": \"high\", \"issues\": [\"underexposed shadow areas on the left stone wall\", \"slightly blown highlights on the lamp fixtures\", \"muddy dark shadows in the alley depth\"], \"style_directions\": [\"deepen the night mood with clean deep blacks and rich shadow detail\", \"enhance the warm-cool color contrast between golden street lighting and cool blue night sky\", \"boost the glow and presence of the purple castle illumination as a focal accent\", \"refine the cobblestone texture with crisp detail and gentle highlight rolloff on the wet-looking stone\"]}",
+  "reasoning": "",
+  "finish": "stop",
+  "wall_s": 4.3,
+  "prompt_n": 1130,
+  "prompt_tps": 2365.9619729191572,
+  "gen_n": 235,
+  "gen_tps": 63.00557599347542,
+  "strict_ok": true,
+  "lenient_ok": true,
+  "schema_ok": true,
+  "parsed": {
+   "subject": "night street",
+   "main_subject": "a cobblestone alley in Old Quebec flanked by stone buildings, with the illuminated Fairmont Le Château Frontenac castle on the hilltop in the upper center of the frame",
+   "lighting": "nighttime artificial lighting, warm sodium-lamp light from wall-mounted lanterns on the right side and cool white light from windows, dark night sky",
+   "color_tone": "overall warm golden palette on the stone walls with a cool blue-purple night sky, purple/magenta accent lighting on the castle towers",
+   "contrast": "high",
+   "issues": [
+    "underexposed shadow areas on the left stone wall",
+    "slightly blown highlights on the lamp fixtures",
+    "muddy dark shadows in the alley depth"
+   ],
+   "style_directions": [
+    "deepen the night mood with clean deep blacks and rich shadow detail",
+    "enhance the warm-cool color contrast between golden street lighting and cool blue night sky",
+    "boost the glow and presence of the purple castle illumination as a focal accent",
+    "refine the cobblestone texture with crisp detail and gentle highlight rolloff on the wet-looking stone"
+   ]
+  }
+ },
+ "pick1": {
+  "content": "{\"picks\": [{\"id\": 8, \"strength\": 120, \"reason\": \"This neon preset's strong saturation and split-toning (violet shadows, blue highlights) will amplify the purple-lit castle and the warm window lights of this night street scene, exactly matching its neon-city content.\"}, {\"id\": 3, \"strength\": 110, \"reason\": \"This night preset lifts shadows and raises highlights to brighten the dark cobblestone street and building facades while adding saturation to the existing orange and blue lights, matching the night-scene content.\"}, {\"id\": 6, \"strength\": 90, \"reason\": \"This analog-film preset slightly darkens the overall exposure and adds fine grain and muted color, complementing the deep night sky and the warm tungsten lamp light without fighting the scene.\"}]}",
+  "reasoning": "",
+  "finish": "stop",
+  "wall_s": 4.87,
+  "prompt_n": 8973,
+  "prompt_tps": 4802.139850214767,
+  "gen_n": 181,
+  "gen_tps": 60.84332910359523,
+  "strict_ok": true,
+  "lenient_ok": true,
+  "schema_ok": true,
+  "parsed": {
+   "picks": [
+    {
+     "id": 8,
+     "strength": 120,
+     "reason": "This neon preset's strong saturation and split-toning (violet shadows, blue highlights) will amplify the purple-lit castle and the warm window lights of this night street scene, exactly matching its neon-city content."
+    },
+    {
+     "id": 3,
+     "strength": 110,
+     "reason": "This night preset lifts shadows and raises highlights to brighten the dark cobblestone street and building facades while adding saturation to the existing orange and blue lights, matching the night-scene content."
+    },
+    {
+     "id": 6,
+     "strength": 90,
+     "reason": "This analog-film preset slightly darkens the overall exposure and adds fine grain and muted color, complementing the deep night sky and the warm tungsten lamp light without fighting the scene."
+    }
+   ]
+  },
+  "order": [
+   "P01",
+   "P02",
+   "P03",
+   "P04",
+   "P05",
+   "P06",
+   "P07",
+   "P08",
+   "P09",
+   "P10",
+   "P11",
+   "P12",
+   "P13",
+   "P14",
+   "P15",
+   "P16",
+   "P17",
+   "P18"
+  ],
+  "picks": [
+   {
+    "key": "P08",
+    "label": "城市 - 燈光 - 摩登霓虹 / 摩登霓虹3",
+    "on_topic": false,
+    "strength": 120,
+    "reason": "This neon preset's strong saturation and split-toning (violet shadows, blue highlights) will amplify the purple-lit castle and the warm window lights of this night street scene, exactly matching its neon-city content."
+   },
+   {
+    "key": "P03",
+    "label": "時間 - 黑夜 / N 04",
+    "on_topic": true,
+    "strength": 110,
+    "reason": "This night preset lifts shadows and raises highlights to brighten the dark cobblestone street and building facades while adding saturation to the existing orange and blue lights, matching the night-scene content."
+   },
+   {
+    "key": "P06",
+    "label": "電影 - 模擬經典 / Analog 05",
+    "on_topic": false,
+    "strength": 90,
+    "reason": "This analog-film preset slightly darkens the overall exposure and adds fine grain and muted color, complementing the deep night sky and the warm tungsten lamp light without fighting the scene."
+   }
+  ]
+ },
+ "pick2": {
+  "content": "{\"picks\": [{\"id\": 4, \"strength\": 120, \"reason\": \"NEON Light 05's lifted blacks, opened shadows, and cyan-blue shadow tint match this night street scene by brightening the dark cobblestones and stone walls while keeping the neon glow of the castle and lamps vivid.\"}, {\"id\": 16, \"strength\": 90, \"reason\": \"N 06's brighter whites, lifted blacks, and saturated blues amplify the illuminated windows, glowing signs, and the purple-lit castle against the night sky without crushing the dark areas.\"}, {\"id\": 8, \"strength\": 100, \"reason\": \"N 04's moderate saturation and vibrance boost, lifted blacks, and opened shadows reinforce the existing warm streetlamp glow and colorful signage in this night street photo.\"}]}",
+  "reasoning": "",
+  "finish": "stop",
+  "wall_s": 4.94,
+  "prompt_n": 8973,
+  "prompt_tps": 4794.654865535393,
+  "gen_n": 181,
+  "gen_tps": 61.32016176258673,
+  "strict_ok": true,
+  "lenient_ok": true,
+  "schema_ok": true,
+  "parsed": {
+   "picks": [
+    {
+     "id": 4,
+     "strength": 120,
+     "reason": "NEON Light 05's lifted blacks, opened shadows, and cyan-blue shadow tint match this night street scene by brightening the dark cobblestones and stone walls while keeping the neon glow of the castle and lamps vivid."
+    },
+    {
+     "id": 16,
+     "strength": 90,
+     "reason": "N 06's brighter whites, lifted blacks, and saturated blues amplify the illuminated windows, glowing signs, and the purple-lit castle against the night sky without crushing the dark areas."
+    },
+    {
+     "id": 8,
+     "strength": 100,
+     "reason": "N 04's moderate saturation and vibrance boost, lifted blacks, and opened shadows reinforce the existing warm streetlamp glow and colorful signage in this night street photo."
+    }
+   ]
+  },
+  "order": [
+   "P16",
+   "P18",
+   "P15",
+   "P01",
+   "P11",
+   "P05",
+   "P12",
+   "P03",
+   "P06",
+   "P07",
+   "P14",
+   "P09",
+   "P17",
+   "P13",
+   "P02",
+   "P04",
+   "P08",
+   "P10"
+  ],
+  "picks": [
+   {
+    "key": "P01",
+    "label": "城市 - 燈光 - 霓虹 / NEON Light 05",
+    "on_topic": true,
+    "strength": 120,
+    "reason": "NEON Light 05's lifted blacks, opened shadows, and cyan-blue shadow tint match this night street scene by brightening the dark cobblestones and stone walls while keeping the neon glow of the castle and lamps vivid."
+   },
+   {
+    "key": "P04",
+    "label": "時間 - 黑夜 / N 06",
+    "on_topic": true,
+    "strength": 90,
+    "reason": "N 06's brighter whites, lifted blacks, and saturated blues amplify the illuminated windows, glowing signs, and the purple-lit castle against the night sky without crushing the dark areas."
+   },
+   {
+    "key": "P03",
+    "label": "時間 - 黑夜 / N 04",
+    "on_topic": true,
+    "strength": 100,
+    "reason": "N 04's moderate saturation and vibrance boost, lifted blacks, and opened shadows reinforce the existing warm streetlamp glow and colorful signage in this night street photo."
+   }
+  ]
+ },
+ "overlap": 1,
+ "top1_same": false
+}

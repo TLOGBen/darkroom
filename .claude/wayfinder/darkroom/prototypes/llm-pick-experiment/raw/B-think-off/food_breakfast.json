@@ -1,0 +1,186 @@
+{
+ "photo": "food_breakfast",
+ "describe": {
+  "content": "{\"subject\": \"food photography\", \"main_subject\": \"a full English breakfast on a white square plate centered in the frame, containing baked beans, two fried eggs, grilled sausages, bacon, and toast, with a knife and fork wrapped in a white napkin at the right edge and weathered dark wooden planks as the background\", \"lighting\": \"soft overcast natural daylight, diffuse and even, coming from above, no harsh directional shadows\", \"color_tone\": \"natural, slightly muted daylight white balance with warm tones in the food (orange yolks, reddish-brown beans, browned bacon) against cool grey-brown wood\", \"contrast\": \"medium\", \"issues\": [\"shadows beneath the plate and food are soft and slightly murky, lacking definition\", \"highlight detail on the white plate is flat with no bright specular interest\", \"overall exposure is a touch dull and the wood background reads dark and textured with no highlight separation\"], \"style_directions\": [\"enhance appetizing food color richness with a warm, fresh food-photography grade: boost the saturation of the orange egg yolks, red bean sauce, and golden toast while keeping the bacon's caramelized highlights clean\", \"add bright, clean highlights on the white plate rim and glossy sheen on the eggs, sausages, and bacon to make the food look freshly cooked and appealing\", \"lift the shadow detail under the plate and on the wooden table slightly to open up the dark areas while preserving the wood grain texture\", \"apply a subtle warm, bright, editorial food-magazine grade with crisp detail and gentle contrast to make the dish look vibrant and mouth-watering\"]}",
+  "reasoning": "",
+  "finish": "stop",
+  "wall_s": 5.89,
+  "prompt_n": 1034,
+  "prompt_tps": 2409.913741868872,
+  "gen_n": 340,
+  "gen_tps": 63.23230092457188,
+  "strict_ok": true,
+  "lenient_ok": true,
+  "schema_ok": true,
+  "parsed": {
+   "subject": "food photography",
+   "main_subject": "a full English breakfast on a white square plate centered in the frame, containing baked beans, two fried eggs, grilled sausages, bacon, and toast, with a knife and fork wrapped in a white napkin at the right edge and weathered dark wooden planks as the background",
+   "lighting": "soft overcast natural daylight, diffuse and even, coming from above, no harsh directional shadows",
+   "color_tone": "natural, slightly muted daylight white balance with warm tones in the food (orange yolks, reddish-brown beans, browned bacon) against cool grey-brown wood",
+   "contrast": "medium",
+   "issues": [
+    "shadows beneath the plate and food are soft and slightly murky, lacking definition",
+    "highlight detail on the white plate is flat with no bright specular interest",
+    "overall exposure is a touch dull and the wood background reads dark and textured with no highlight separation"
+   ],
+   "style_directions": [
+    "enhance appetizing food color richness with a warm, fresh food-photography grade: boost the saturation of the orange egg yolks, red bean sauce, and golden toast while keeping the bacon's caramelized highlights clean",
+    "add bright, clean highlights on the white plate rim and glossy sheen on the eggs, sausages, and bacon to make the food look freshly cooked and appealing",
+    "lift the shadow detail under the plate and on the wooden table slightly to open up the dark areas while preserving the wood grain texture",
+    "apply a subtle warm, bright, editorial food-magazine grade with crisp detail and gentle contrast to make the dish look vibrant and mouth-watering"
+   ]
+  }
+ },
+ "pick1": {
+  "content": "{\"picks\": [{\"id\": 3, \"strength\": 90, \"reason\": \"Brunch 03 brightens the dark wooden table and lifts the shadows while recovering the blown egg whites, adds fine food texture and clarity, and its warm white balance and orange-tinted shadows complement the golden fried eggs, baked beans, and crispy bacon, making the dish look appetizing and well-exposed.\"}, {\"id\": 8, \"strength\": 70, \"reason\": \"11 Metro 11 adds strong, punchy contrast and clarity that makes the food textures (bacon crispness, bean gloss, sausage sheen) stand out, and its blue-tinted shadows and dimmed whites give a clean, editorial food-photography finish without washing out the colors.\"}, {\"id\": 15, \"strength\": 65, \"reason\": \"Product 04 deepens the blacks and recovers the highlights on the glossy sauce and egg whites, giving the dish a polished, professional product-photography look with rich, clean color separation while keeping the existing warm daylight.\"}]}",
+  "reasoning": "",
+  "finish": "stop",
+  "wall_s": 5.73,
+  "prompt_n": 9183,
+  "prompt_tps": 4897.581715694928,
+  "gen_n": 233,
+  "gen_tps": 61.332209614458336,
+  "strict_ok": true,
+  "lenient_ok": true,
+  "schema_ok": true,
+  "parsed": {
+   "picks": [
+    {
+     "id": 3,
+     "strength": 90,
+     "reason": "Brunch 03 brightens the dark wooden table and lifts the shadows while recovering the blown egg whites, adds fine food texture and clarity, and its warm white balance and orange-tinted shadows complement the golden fried eggs, baked beans, and crispy bacon, making the dish look appetizing and well-exposed."
+    },
+    {
+     "id": 8,
+     "strength": 70,
+     "reason": "11 Metro 11 adds strong, punchy contrast and clarity that makes the food textures (bacon crispness, bean gloss, sausage sheen) stand out, and its blue-tinted shadows and dimmed whites give a clean, editorial food-photography finish without washing out the colors."
+    },
+    {
+     "id": 15,
+     "strength": 65,
+     "reason": "Product 04 deepens the blacks and recovers the highlights on the glossy sauce and egg whites, giving the dish a polished, professional product-photography look with rich, clean color separation while keeping the existing warm daylight."
+    }
+   ]
+  },
+  "order": [
+   "P01",
+   "P02",
+   "P03",
+   "P04",
+   "P05",
+   "P06",
+   "P07",
+   "P08",
+   "P09",
+   "P10",
+   "P11",
+   "P12",
+   "P13",
+   "P14",
+   "P15",
+   "P16",
+   "P17",
+   "P18"
+  ],
+  "picks": [
+   {
+    "key": "P03",
+    "label": "物件 - 食物 - 午餐 / Brunch 03",
+    "on_topic": true,
+    "strength": 90,
+    "reason": "Brunch 03 brightens the dark wooden table and lifts the shadows while recovering the blown egg whites, adds fine food texture and clarity, and its warm white balance and orange-tinted shadows complement the golden fried eggs, baked beans, and crispy bacon, making the dish look appetizing and well-exposed."
+   },
+   {
+    "key": "P08",
+    "label": "城市 - 燈光 - 地鐵 / 11 Metro 11",
+    "on_topic": false,
+    "strength": 70,
+    "reason": "11 Metro 11 adds strong, punchy contrast and clarity that makes the food textures (bacon crispness, bean gloss, sausage sheen) stand out, and its blue-tinted shadows and dimmed whites give a clean, editorial food-photography finish without washing out the colors."
+   },
+   {
+    "key": "P15",
+    "label": "物件 - 經典 / Product 04",
+    "on_topic": false,
+    "strength": 65,
+    "reason": "Product 04 deepens the blacks and recovers the highlights on the glossy sauce and egg whites, giving the dish a polished, professional product-photography look with rich, clean color separation while keeping the existing warm daylight."
+   }
+  ]
+ },
+ "pick2": {
+  "content": "{\"picks\": [{\"id\": 15, \"strength\": 120, \"reason\": \"Brunch 03 directly matches the food subject, delivering a punchy, appetizing breakfast look with deeper blacks, recovered highlights on the egg whites and beans, and richer color separation.\"}, {\"id\": 3, \"strength\": 100, \"reason\": \"美食專家8 is a food-expert preset that makes the orange yolks, golden toast, and glossy beans pop with brighter whites, lifted oranges, and tasteful saturation.\"}, {\"id\": 8, \"strength\": 90, \"reason\": \"Retro Film 08 adds a warm, filmic character that suits the rustic dark-wood table and cooked textures, with warm white balance, film grain, and deeper shadow depth.\"}]}",
+  "reasoning": "",
+  "finish": "stop",
+  "wall_s": 4.81,
+  "prompt_n": 9183,
+  "prompt_tps": 4902.882038249207,
+  "gen_n": 174,
+  "gen_tps": 61.35125972222419,
+  "strict_ok": true,
+  "lenient_ok": true,
+  "schema_ok": true,
+  "parsed": {
+   "picks": [
+    {
+     "id": 15,
+     "strength": 120,
+     "reason": "Brunch 03 directly matches the food subject, delivering a punchy, appetizing breakfast look with deeper blacks, recovered highlights on the egg whites and beans, and richer color separation."
+    },
+    {
+     "id": 3,
+     "strength": 100,
+     "reason": "美食專家8 is a food-expert preset that makes the orange yolks, golden toast, and glossy beans pop with brighter whites, lifted oranges, and tasteful saturation."
+    },
+    {
+     "id": 8,
+     "strength": 90,
+     "reason": "Retro Film 08 adds a warm, filmic character that suits the rustic dark-wood table and cooked textures, with warm white balance, film grain, and deeper shadow depth."
+    }
+   ]
+  },
+  "order": [
+   "P08",
+   "P04",
+   "P01",
+   "P17",
+   "P07",
+   "P09",
+   "P12",
+   "P06",
+   "P14",
+   "P16",
+   "P18",
+   "P15",
+   "P11",
+   "P10",
+   "P03",
+   "P02",
+   "P13",
+   "P05"
+  ],
+  "picks": [
+   {
+    "key": "P03",
+    "label": "物件 - 食物 - 午餐 / Brunch 03",
+    "on_topic": true,
+    "strength": 120,
+    "reason": "Brunch 03 directly matches the food subject, delivering a punchy, appetizing breakfast look with deeper blacks, recovered highlights on the egg whites and beans, and richer color separation."
+   },
+   {
+    "key": "P01",
+    "label": "物件 - 食物 - 美食專家 / 美食專家8",
+    "on_topic": true,
+    "strength": 100,
+    "reason": "美食專家8 is a food-expert preset that makes the orange yolks, golden toast, and glossy beans pop with brighter whites, lifted oranges, and tasteful saturation."
+   },
+   {
+    "key": "P06",
+    "label": "電影 - 復古電影經典 / Retro Film 08",
+    "on_topic": false,
+    "strength": 90,
+    "reason": "Retro Film 08 adds a warm, filmic character that suits the rustic dark-wood table and cooked textures, with warm white balance, film grain, and deeper shadow depth."
+   }
+  ]
+ },
+ "overlap": 1,
+ "top1_same": true
+}

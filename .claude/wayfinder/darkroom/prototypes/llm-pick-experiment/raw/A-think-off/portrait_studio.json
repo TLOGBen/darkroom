@@ -1,0 +1,186 @@
+{
+ "photo": "portrait_studio",
+ "describe": {
+  "content": "{\n  \"subject\": \"studio portrait\",\n  \"main_subject\": \"a young man in profile facing left, occupying the central and right portions of the frame\",\n  \"lighting\": \"soft directional light from the left, creating gentle shadows on the right side of the subject; studio setting with even, diffused quality\",\n  \"color_tone\": \"cool teal and desaturated green palette, slightly muted white balance with a subtle cyan cast\",\n  \"contrast\": \"medium\",\n  \"issues\": [\"slightly flat lighting on the face\", \"shadows under the chin and neck are deep but not crushed\", \"background gradient is subtle but could be enhanced for depth\"],\n  \"style_directions\": [\"enhance skin texture while maintaining smoothness\", \"boost teal saturation subtly to make the jacket pop\", \"add slight vignette to draw focus to the subject\", \"increase micro-contrast on clothing textures for tactile detail\"]\n}",
+  "reasoning": "",
+  "finish": "stop",
+  "wall_s": 8.39,
+  "prompt_n": 1040,
+  "prompt_tps": 205.16600099505513,
+  "gen_n": 198,
+  "gen_tps": 60.115042492485614,
+  "strict_ok": true,
+  "lenient_ok": true,
+  "schema_ok": true,
+  "parsed": {
+   "subject": "studio portrait",
+   "main_subject": "a young man in profile facing left, occupying the central and right portions of the frame",
+   "lighting": "soft directional light from the left, creating gentle shadows on the right side of the subject; studio setting with even, diffused quality",
+   "color_tone": "cool teal and desaturated green palette, slightly muted white balance with a subtle cyan cast",
+   "contrast": "medium",
+   "issues": [
+    "slightly flat lighting on the face",
+    "shadows under the chin and neck are deep but not crushed",
+    "background gradient is subtle but could be enhanced for depth"
+   ],
+   "style_directions": [
+    "enhance skin texture while maintaining smoothness",
+    "boost teal saturation subtly to make the jacket pop",
+    "add slight vignette to draw focus to the subject",
+    "increase micro-contrast on clothing textures for tactile detail"
+   ]
+  }
+ },
+ "pick1": {
+  "content": "{\n  \"picks\": [\n    {\n      \"id\": 6,\n      \"strength\": 100,\n      \"reason\": \"This preset perfectly complements the teal jacket by muting warm tones and adding a cinematic blue-green split tone, while lifting the shadows to reveal fabric texture.\"\n    },\n    {\n      \"id\": 10,\n      \"strength\": 85,\n      \"reason\": \"The 90s aesthetic adds a subtle green tint and lowers exposure to create a moody, editorial look that enhances the dark background and skin tones.\"\n    },\n    {\n      \"id\": 16,\n      \"strength\": 110,\n      \"reason\": \"This fitness preset brightens the exposure and lifts the blacks to create a high-end, modern commercial look, while the yellow shadow tint warms up the skin naturally.\"\n    }\n  ]\n}",
+  "reasoning": "",
+  "finish": "stop",
+  "wall_s": 15.41,
+  "prompt_n": 7716,
+  "prompt_tps": 642.00243521608,
+  "gen_n": 200,
+  "gen_tps": 59.51480183963542,
+  "strict_ok": true,
+  "lenient_ok": true,
+  "schema_ok": true,
+  "parsed": {
+   "picks": [
+    {
+     "id": 6,
+     "strength": 100,
+     "reason": "This preset perfectly complements the teal jacket by muting warm tones and adding a cinematic blue-green split tone, while lifting the shadows to reveal fabric texture."
+    },
+    {
+     "id": 10,
+     "strength": 85,
+     "reason": "The 90s aesthetic adds a subtle green tint and lowers exposure to create a moody, editorial look that enhances the dark background and skin tones."
+    },
+    {
+     "id": 16,
+     "strength": 110,
+     "reason": "This fitness preset brightens the exposure and lifts the blacks to create a high-end, modern commercial look, while the yellow shadow tint warms up the skin naturally."
+    }
+   ]
+  },
+  "order": [
+   "P01",
+   "P02",
+   "P03",
+   "P04",
+   "P05",
+   "P06",
+   "P07",
+   "P08",
+   "P09",
+   "P10",
+   "P11",
+   "P12",
+   "P13",
+   "P14",
+   "P15",
+   "P16",
+   "P17",
+   "P18"
+  ],
+  "picks": [
+   {
+    "key": "P06",
+    "label": "電影 - 電影燈光 / Cinematic Light - 03",
+    "on_topic": false,
+    "strength": 100,
+    "reason": "This preset perfectly complements the teal jacket by muting warm tones and adding a cinematic blue-green split tone, while lifting the shadows to reveal fabric texture."
+   },
+   {
+    "key": "P10",
+    "label": "復古 - 90 年代 / 90's Vibes 01",
+    "on_topic": false,
+    "strength": 85,
+    "reason": "The 90s aesthetic adds a subtle green tint and lowers exposure to create a moody, editorial look that enhances the dark background and skin tones."
+   },
+   {
+    "key": "P16",
+    "label": "人物 - 運動者 / 02 Fitness 02",
+    "on_topic": false,
+    "strength": 110,
+    "reason": "This fitness preset brightens the exposure and lifts the blacks to create a high-end, modern commercial look, while the yellow shadow tint warms up the skin naturally."
+   }
+  ]
+ },
+ "pick2": {
+  "content": "{\n  \"picks\": [\n    {\n      \"id\": 15,\n      \"strength\": 130,\n      \"reason\": \"This preset enhances the rich teal color of the garment and adds a subtle vignette to draw focus to the subject's face, which is already well-lit.\"\n    },\n    {\n      \"id\": 5,\n      \"strength\": 110,\n      \"reason\": \"The 'Cinematic Light' preset adds a cool, moody tone that complements the teal fabric and creates a dreamy, soft look by lifting the blacks and muting colors.\"\n    },\n    {\n      \"id\": 12,\n      \"strength\": 100,\n      \"reason\": \"This preset adds significant texture and clarity, making the embossed details on the sweatshirt pop, while the split-toning adds a professional, moody finish.\"\n    }\n  ]\n}",
+  "reasoning": "",
+  "finish": "stop",
+  "wall_s": 15.53,
+  "prompt_n": 7716,
+  "prompt_tps": 643.3489632001224,
+  "gen_n": 208,
+  "gen_tps": 60.57213453568532,
+  "strict_ok": true,
+  "lenient_ok": true,
+  "schema_ok": true,
+  "parsed": {
+   "picks": [
+    {
+     "id": 15,
+     "strength": 130,
+     "reason": "This preset enhances the rich teal color of the garment and adds a subtle vignette to draw focus to the subject's face, which is already well-lit."
+    },
+    {
+     "id": 5,
+     "strength": 110,
+     "reason": "The 'Cinematic Light' preset adds a cool, moody tone that complements the teal fabric and creates a dreamy, soft look by lifting the blacks and muting colors."
+    },
+    {
+     "id": 12,
+     "strength": 100,
+     "reason": "This preset adds significant texture and clarity, making the embossed details on the sweatshirt pop, while the split-toning adds a professional, moody finish."
+    }
+   ]
+  },
+  "order": [
+   "P11",
+   "P03",
+   "P13",
+   "P18",
+   "P06",
+   "P05",
+   "P16",
+   "P09",
+   "P10",
+   "P01",
+   "P07",
+   "P15",
+   "P02",
+   "P17",
+   "P04",
+   "P14",
+   "P12",
+   "P08"
+  ],
+  "picks": [
+   {
+    "key": "P04",
+    "label": "風格 - 質感棚拍 / 質感棚拍 1",
+    "on_topic": true,
+    "strength": 130,
+    "reason": "This preset enhances the rich teal color of the garment and adds a subtle vignette to draw focus to the subject's face, which is already well-lit."
+   },
+   {
+    "key": "P06",
+    "label": "電影 - 電影燈光 / Cinematic Light - 03",
+    "on_topic": false,
+    "strength": 110,
+    "reason": "The 'Cinematic Light' preset adds a cool, moody tone that complements the teal fabric and creates a dreamy, soft look by lifting the blacks and muting colors."
+   },
+   {
+    "key": "P15",
+    "label": "物件 - 食物 - 經典 / food 03",
+    "on_topic": false,
+    "strength": 100,
+    "reason": "This preset adds significant texture and clarity, making the embossed details on the sweatshirt pop, while the split-toning adds a professional, moody finish."
+   }
+  ]
+ },
+ "overlap": 1,
+ "top1_same": false
+}

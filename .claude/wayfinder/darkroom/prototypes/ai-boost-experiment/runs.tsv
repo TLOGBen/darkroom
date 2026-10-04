@@ -1,0 +1,18 @@
+tag	prompt_id	status	comfy_s	wall_s	steps	output
+aib-A-portrait_laughing-pe0-s1	f77b8adb-6ea2-4708-b0f7-cfd8550875d8	success	47s	50	8 steps 1.61s/it; 8 steps 2.19s/it	outputs/comfyui/qw/2026-10-04-aib-A-portrait_laughing-pe0-s1_00001_.png
+aib-A-portrait_laughing-pe1-s1	fdbf8c80-a5fe-419f-aca9-17e17d418ad3	success	83s	85	8 steps 1.61s/it; 8 steps 2.19s/it; 8 steps 1.62s/it; 8 steps 2.15s/it	outputs/comfyui/qw/2026-10-04-aib-A-portrait_laughing-pe1-s1_00001_.png
+aib-A-portrait_oldman-pe0-s1	6879774b-7394-46c3-ab4e-ece4135d059d	success	24s	25	8 steps 1.62s/it; 8 steps 2.15s/it; 8 steps 1.60s/it; 8 steps 2.12s/it	outputs/comfyui/qw/2026-10-04-aib-A-portrait_oldman-pe0-s1_00001_.png
+aib-A-portrait_oldman-pe1-s1	ad9d0370-7ca5-41cf-898a-b80f10b5801e	success	69s	70	8 steps 1.60s/it; 8 steps 2.12s/it; 8 steps 2.13s/it	outputs/comfyui/qw/2026-10-04-aib-A-portrait_oldman-pe1-s1_00001_.png
+aib-A-portrait_studio-pe0-s1	5d98c9c0-82a2-472f-9566-d2651c4f0770	success	24s	25	8 steps 1.60s/it; 8 steps 2.13s/it; 8 steps 1.59s/it; 8 steps 2.10s/it	outputs/comfyui/qw/2026-10-04-aib-A-portrait_studio-pe0-s1_00001_.png
+aib-A-portrait_studio-pe1-s1	5a11ee3c-3c2f-46c0-ba8d-6616d0e3b85e	success	73s	75	8 steps 1.59s/it; 8 steps 2.10s/it; 8 steps 1.60s/it; 8 steps 2.13s/it	outputs/comfyui/qw/2026-10-04-aib-A-portrait_studio-pe1-s1_00001_.png
+aib-A-landscape_lighthouse-pe0-s1	83198b85-0f6b-44f2-81ba-f5618cdb8d13	success	24s	25	8 steps 1.60s/it; 8 steps 2.13s/it; 8 steps 1.62s/it	outputs/comfyui/qw/2026-10-04-aib-A-landscape_lighthouse-pe0-s1_00001_.png
+aib-A-landscape_lighthouse-pe1-s1	5aa61b21-9e57-4b70-9f85-f2d1583b2e6f	success	76s	80	8 steps 1.62s/it; 8 steps 2.13s/it; 8 steps 1.61s/it; 8 steps 2.15s/it	outputs/comfyui/qw/2026-10-04-aib-A-landscape_lighthouse-pe1-s1_00001_.png
+aib-A-fog_karst-pe0-s1	f13bf8f0-0ec4-443f-a293-53940bf8814b	success	24s	25	8 steps 1.61s/it; 8 steps 2.15s/it; 8 steps 1.60s/it; 8 steps 2.11s/it	outputs/comfyui/qw/2026-10-04-aib-A-fog_karst-pe0-s1_00001_.png
+aib-A-fog_karst-pe1-s1	959513ce-170b-4778-9126-6ba89570b368	success	73s	75	8 steps 1.60s/it; 8 steps 2.11s/it; 8 steps 1.62s/it; 8 steps 2.15s/it	outputs/comfyui/qw/2026-10-04-aib-A-fog_karst-pe1-s1_00001_.png
+aib-A-portrait_laughing-pe0-s0	0595514e-3ec9-471a-ad80-92021a3ab5a4	success	78s	80	8 steps 1.62s/it; 8 steps 2.15s/it; 32 steps 2.11s/it	outputs/comfyui/qw/2026-10-04-aib-A-portrait_laughing-pe0-s0_00001_.png
+aib-Aneg-portrait_oldman-pe0-s1	04052658-790c-490a-af9e-b2d6527ceec9	success	25s	25	32 steps 2.11s/it; 8 steps 1.58s/it; 8 steps 2.10s/it	outputs/comfyui/qw/2026-10-04-aib-Aneg-portrait_oldman-pe0-s1_00001_.png
+aib-B-portrait_laughing-pe1-s0	d6526304-1404-4f95-8675-8175d3b92e9c	success	153s	156	8 steps 1.58s/it; 8 steps 2.10s/it; 32 steps 2.12s/it	outputs/comfyui/qw/2026-10-04-aib-B-portrait_laughing-pe1-s0_00001_.png
+aib-B-portrait_oldman-pe1-s0	4bdb8e19-e102-4f78-9b4b-e425ee4a073c	success	149s	151	32 steps 2.12s/it	outputs/comfyui/qw/2026-10-04-aib-B-portrait_oldman-pe1-s0_00001_.png
+aib-B-portrait_studio-pe1-s0	56044084-8a04-44c3-b7ad-b491bb3c10f1	success	127s	130	32 steps 2.12s/it	outputs/comfyui/qw/2026-10-04-aib-B-portrait_studio-pe1-s0_00001_.png
+aib-B-landscape_lighthouse-pe1-s0	3a3edcc6-54d2-4b72-8e92-b64f943e8a56	success	134s	136	32 steps 2.12s/it; 32 steps 2.13s/it	outputs/comfyui/qw/2026-10-04-aib-B-landscape_lighthouse-pe1-s0_00001_.png
+aib-B-fog_karst-pe1-s0	9f4a310e-e93b-4ee5-a8b5-a5e535dc2612	success	145s	146	32 steps 2.13s/it; 32 steps 2.12s/it	outputs/comfyui/qw/2026-10-04-aib-B-fog_karst-pe1-s0_00001_.png

@@ -1,0 +1,69 @@
+{
+ "content": "{\"diagnosis\": {\"subject\": \"a night street scene in a historic stone village (Old Quebec style): cobblestone lane flanked by stone buildings with lit windows and wall lamps, and on the hill above a grand castle/chateau illuminated in purple/magenta light under a deep blue night sky\", \"white_balance\": \"cool / blue\", \"exposure\": \"slightly overexposed\", \"contrast\": \"high\", \"main_problems\": [\"shadows are crushed and dark with little visible detail — the lower stone walls, the cobblestone street foreground, the shadowed alley, the dark sky areas fall into near-black\", \"the overall look is already heavy and dark, so recovering shadow detail is the key fix\", \"the bright wall lamps and lit windows are hot spots that need highlight control\", \"no visible haze or cast; the white balance is cool blue night tones that should be respected (night scene — do not warm it into daylight)\"]}, \"adjustments\": {\"Exposure2012\": 0.3, \"Contrast2012\": 0, \"Highlights2012\": -20, \"Shadows2012\": 40, \"Whites2012\": 0, \"Blacks2012\": 0, \"IncrementalTemperature\": 0, \"IncrementalTint\": 0, \"Vibrance\": 0, \"Saturation\": 0, \"Clarity2012\": 0, \"Dehaze\": 0, \"Texture\": 0, \"HueAdjustmentRed\": 0, \"SaturationAdjustmentRed\": 0, \"LuminanceAdjustmentRed\": 0, \"HueAdjustmentOrange\": 0, \"SaturationAdjustmentOrange\": 0, \"LuminanceAdjustmentOrange\": 0, \"HueAdjustmentYellow\": 0, \"SaturationAdjustmentYellow\": 0, \"LuminanceAdjustmentYellow\": 0, \"HueAdjustmentGreen\": 0, \"SaturationAdjustmentGreen\": 0, \"LuminanceAdjustmentGreen\": 0, \"HueAdjustmentAqua\": 0, \"SaturationAdjustmentAqua\": 0, \"LuminanceAdjustmentAqua\": 0, \"HueAdjustmentBlue\": 0, \"SaturationAdjustmentBlue\": 0, \"LuminanceAdjustmentBlue\": 0}, \"intent\": \"recover the crushed shadow detail in the night street scene so the dark stone walls, cobblestones and alley reveal visible texture while keeping the deep blue night atmosphere, with controlled highlights on the lamps and a rich, detailed, non-flat result.\"}",
+ "reasoning": "",
+ "finish": "stop",
+ "wall_s": 9.4,
+ "prompt_n": 4,
+ "prompt_tps": 115.44677903486492,
+ "gen_n": 570,
+ "gen_tps": 61.03793233950564,
+ "photo": "night_street",
+ "run": "lift_shadows_s202",
+ "seed": 202,
+ "wish": {
+  "tag": "lift_shadows",
+  "want": "recover the shadows so the dark areas show detail",
+  "avoid": "a flat, washed-out, matte look"
+ },
+ "parse_ok": true,
+ "errors": [],
+ "valid": true,
+ "parsed": {
+  "diagnosis": {
+   "subject": "a night street scene in a historic stone village (Old Quebec style): cobblestone lane flanked by stone buildings with lit windows and wall lamps, and on the hill above a grand castle/chateau illuminated in purple/magenta light under a deep blue night sky",
+   "white_balance": "cool / blue",
+   "exposure": "slightly overexposed",
+   "contrast": "high",
+   "main_problems": [
+    "shadows are crushed and dark with little visible detail — the lower stone walls, the cobblestone street foreground, the shadowed alley, the dark sky areas fall into near-black",
+    "the overall look is already heavy and dark, so recovering shadow detail is the key fix",
+    "the bright wall lamps and lit windows are hot spots that need highlight control",
+    "no visible haze or cast; the white balance is cool blue night tones that should be respected (night scene — do not warm it into daylight)"
+   ]
+  },
+  "adjustments": {
+   "Exposure2012": 0.3,
+   "Contrast2012": 0,
+   "Highlights2012": -20,
+   "Shadows2012": 40,
+   "Whites2012": 0,
+   "Blacks2012": 0,
+   "IncrementalTemperature": 0,
+   "IncrementalTint": 0,
+   "Vibrance": 0,
+   "Saturation": 0,
+   "Clarity2012": 0,
+   "Dehaze": 0,
+   "Texture": 0,
+   "HueAdjustmentRed": 0,
+   "SaturationAdjustmentRed": 0,
+   "LuminanceAdjustmentRed": 0,
+   "HueAdjustmentOrange": 0,
+   "SaturationAdjustmentOrange": 0,
+   "LuminanceAdjustmentOrange": 0,
+   "HueAdjustmentYellow": 0,
+   "SaturationAdjustmentYellow": 0,
+   "LuminanceAdjustmentYellow": 0,
+   "HueAdjustmentGreen": 0,
+   "SaturationAdjustmentGreen": 0,
+   "LuminanceAdjustmentGreen": 0,
+   "HueAdjustmentAqua": 0,
+   "SaturationAdjustmentAqua": 0,
+   "LuminanceAdjustmentAqua": 0,
+   "HueAdjustmentBlue": 0,
+   "SaturationAdjustmentBlue": 0,
+   "LuminanceAdjustmentBlue": 0
+  },
+  "intent": "recover the crushed shadow detail in the night street scene so the dark stone walls, cobblestones and alley reveal visible texture while keeping the deep blue night atmosphere, with controlled highlights on the lamps and a rich, detailed, non-flat result."
+ }
+}

@@ -1,0 +1,185 @@
+{
+ "photo": "interior_cafe",
+ "describe": {
+  "content": "{\"subject\": \"interior architectural photograph\", \"main_subject\": \"ornate vaulted ceiling with ribbed arches, decorative painted bands, star-shaped ornamental bosses, and hanging chandeliers with white glass shades, viewed from below looking upward\", \"lighting\": \"soft warm indoor ambient light, diffuse overhead illumination from the chandeliers and unseen windows, even with no harsh directional shadows\", \"color_tone\": \"warm cream and beige palette with muted sage-green, teal, and terracotta decorative accents, neutral-to-warm white balance\", \"contrast\": \"low\", \"issues\": [\"flat even lighting with no depth\", \"somewhat dull muted colors\"], \"style_directions\": [\"cinematic warm grade with gentle highlight roll-off\", \"enhanced detail and clarity with subtle teal-and-warm-orange contrast\", \"vintage film look with soft halation and faded warm tones\", \"richer saturation bringing out the teal, sage-green, and terracotta decorative bands while preserving the cream ceiling\"]}",
+  "reasoning": "",
+  "finish": "stop",
+  "wall_s": 3.74,
+  "prompt_n": 906,
+  "prompt_tps": 2500.0206955355593,
+  "gen_n": 207,
+  "gen_tps": 62.86761149158902,
+  "strict_ok": true,
+  "lenient_ok": true,
+  "schema_ok": true,
+  "parsed": {
+   "subject": "interior architectural photograph",
+   "main_subject": "ornate vaulted ceiling with ribbed arches, decorative painted bands, star-shaped ornamental bosses, and hanging chandeliers with white glass shades, viewed from below looking upward",
+   "lighting": "soft warm indoor ambient light, diffuse overhead illumination from the chandeliers and unseen windows, even with no harsh directional shadows",
+   "color_tone": "warm cream and beige palette with muted sage-green, teal, and terracotta decorative accents, neutral-to-warm white balance",
+   "contrast": "low",
+   "issues": [
+    "flat even lighting with no depth",
+    "somewhat dull muted colors"
+   ],
+   "style_directions": [
+    "cinematic warm grade with gentle highlight roll-off",
+    "enhanced detail and clarity with subtle teal-and-warm-orange contrast",
+    "vintage film look with soft halation and faded warm tones",
+    "richer saturation bringing out the teal, sage-green, and terracotta decorative bands while preserving the cream ceiling"
+   ]
+  }
+ },
+ "pick1": {
+  "content": "{\"picks\": [{\"id\": 3, \"strength\": 120, \"reason\": \"The dark-academia preset matches the photo's historic European architecture, deepening the warm brown tones of the vaulted ceiling, arches and chandeliers with darker exposure, lifted matte blacks and muted greens and blues while keeping the warm interior character.\"}, {\"id\": 9, \"strength\": 100, \"reason\": \"The retro film preset adds a nostalgic filmic quality with warm white balance, added haze/glow, soft dreamy midtones, fine film grain and a yellow-tinted shadow grade that suits the aged plaster ceiling and vintage chandeliers.\"}, {\"id\": 8, \"strength\": 90, \"reason\": \"The city preset corrects the flat, washed look by adding punchier contrast, deeper blacks, more saturated colors and fine surface texture on the ceiling moldings and chandelier metal, keeping the overall darker exposure balanced.\"}]}",
+  "reasoning": "",
+  "finish": "stop",
+  "wall_s": 5.28,
+  "prompt_n": 9477,
+  "prompt_tps": 5042.561410491209,
+  "gen_n": 204,
+  "gen_tps": 61.02607376579275,
+  "strict_ok": true,
+  "lenient_ok": true,
+  "schema_ok": true,
+  "parsed": {
+   "picks": [
+    {
+     "id": 3,
+     "strength": 120,
+     "reason": "The dark-academia preset matches the photo's historic European architecture, deepening the warm brown tones of the vaulted ceiling, arches and chandeliers with darker exposure, lifted matte blacks and muted greens and blues while keeping the warm interior character."
+    },
+    {
+     "id": 9,
+     "strength": 100,
+     "reason": "The retro film preset adds a nostalgic filmic quality with warm white balance, added haze/glow, soft dreamy midtones, fine film grain and a yellow-tinted shadow grade that suits the aged plaster ceiling and vintage chandeliers."
+    },
+    {
+     "id": 8,
+     "strength": 90,
+     "reason": "The city preset corrects the flat, washed look by adding punchier contrast, deeper blacks, more saturated colors and fine surface texture on the ceiling moldings and chandelier metal, keeping the overall darker exposure balanced."
+    }
+   ]
+  },
+  "order": [
+   "P01",
+   "P02",
+   "P03",
+   "P04",
+   "P05",
+   "P06",
+   "P07",
+   "P08",
+   "P09",
+   "P10",
+   "P11",
+   "P12",
+   "P13",
+   "P14",
+   "P15",
+   "P16",
+   "P17",
+   "P18"
+  ],
+  "picks": [
+   {
+    "key": "P03",
+    "label": "顏色 - 經典歐式建築棕 / Dark Academia 05",
+    "on_topic": true,
+    "strength": 120,
+    "reason": "The dark-academia preset matches the photo's historic European architecture, deepening the warm brown tones of the vaulted ceiling, arches and chandeliers with darker exposure, lifted matte blacks and muted greens and blues while keeping the warm interior character."
+   },
+   {
+    "key": "P09",
+    "label": "器材 - 膠捲 - 復古膠卷 / 復古膠卷3",
+    "on_topic": false,
+    "strength": 100,
+    "reason": "The retro film preset adds a nostalgic filmic quality with warm white balance, added haze/glow, soft dreamy midtones, fine film grain and a yellow-tinted shadow grade that suits the aged plaster ceiling and vintage chandeliers."
+   },
+   {
+    "key": "P08",
+    "label": "城市 - 城市 / City 03",
+    "on_topic": false,
+    "strength": 90,
+    "reason": "The city preset corrects the flat, washed look by adding punchier contrast, deeper blacks, more saturated colors and fine surface texture on the ceiling moldings and chandelier metal, keeping the overall darker exposure balanced."
+   }
+  ]
+ },
+ "pick2": {
+  "content": "{\"picks\": [{\"id\": 1, \"strength\": 100, \"reason\": \"The dark-academia brown grading with pulled-down highlights, lifted matte blacks, and orange-tinted shadows matches this photo's warm beige vaulted ceiling, gilded arches, and bronze chandeliers, giving a classic European architectural brown mood.\"}, {\"id\": 5, \"strength\": 100, \"reason\": \"The vintage film look with warmer white balance, added haze and glow, fine film grain, and faded matte blacks suits the ornate interior architecture, adding a nostalgic analog character to the chandeliers and painted vault.\"}, {\"id\": 11, \"strength\": 80, \"reason\": \"The city preset's punchier contrast, brighter saturation, and orange-tinted shadows give the arched vaults and gilded columns richer, more vivid color while staying harmonious with the warm interior.\"}]}",
+  "reasoning": "",
+  "finish": "stop",
+  "wall_s": 5.16,
+  "prompt_n": 9477,
+  "prompt_tps": 5034.0998246537565,
+  "gen_n": 197,
+  "gen_tps": 61.6043598285513,
+  "strict_ok": true,
+  "lenient_ok": true,
+  "schema_ok": true,
+  "parsed": {
+   "picks": [
+    {
+     "id": 1,
+     "strength": 100,
+     "reason": "The dark-academia brown grading with pulled-down highlights, lifted matte blacks, and orange-tinted shadows matches this photo's warm beige vaulted ceiling, gilded arches, and bronze chandeliers, giving a classic European architectural brown mood."
+    },
+    {
+     "id": 5,
+     "strength": 100,
+     "reason": "The vintage film look with warmer white balance, added haze and glow, fine film grain, and faded matte blacks suits the ornate interior architecture, adding a nostalgic analog character to the chandeliers and painted vault."
+    },
+    {
+     "id": 11,
+     "strength": 80,
+     "reason": "The city preset's punchier contrast, brighter saturation, and orange-tinted shadows give the arched vaults and gilded columns richer, more vivid color while staying harmonious with the warm interior."
+    }
+   ]
+  },
+  "order": [
+   "P03",
+   "P07",
+   "P05",
+   "P04",
+   "P09",
+   "P13",
+   "P02",
+   "P11",
+   "P06",
+   "P10",
+   "P08",
+   "P01",
+   "P16",
+   "P17",
+   "P12",
+   "P14",
+   "P15",
+   "P18"
+  ],
+  "picks": [
+   {
+    "key": "P03",
+    "label": "顏色 - 經典歐式建築棕 / Dark Academia 05",
+    "on_topic": true,
+    "strength": 100,
+    "reason": "The dark-academia brown grading with pulled-down highlights, lifted matte blacks, and orange-tinted shadows matches this photo's warm beige vaulted ceiling, gilded arches, and bronze chandeliers, giving a classic European architectural brown mood."
+   },
+   {
+    "key": "P09",
+    "label": "器材 - 膠捲 - 復古膠卷 / 復古膠卷3",
+    "on_topic": false,
+    "strength": 100,
+    "reason": "The vintage film look with warmer white balance, added haze and glow, fine film grain, and faded matte blacks suits the ornate interior architecture, adding a nostalgic analog character to the chandeliers and painted vault."
+   },
+   {
+    "key": "P08",
+    "label": "城市 - 城市 / City 03",
+    "on_topic": false,
+    "strength": 80,
+    "reason": "The city preset's punchier contrast, brighter saturation, and orange-tinted shadows give the arched vaults and gilded columns richer, more vivid color while staying harmonious with the warm interior."
+   }
+  ]
+ },
+ "overlap": 3,
+ "top1_same": true
+}

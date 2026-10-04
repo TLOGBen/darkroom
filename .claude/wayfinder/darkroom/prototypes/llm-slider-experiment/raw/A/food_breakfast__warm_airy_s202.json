@@ -1,0 +1,70 @@
+{
+ "content": "{\n  \"diagnosis\": {\n    \"subject\": \"A plate of breakfast food on a wooden table.\",\n    \"white_balance\": \"neutral\",\n    \"exposure\": \"slightly underexposed\",\n    \"contrast\": \"low\",\n    \"main_problems\": [\n      \"The image is a bit dark and flat.\",\n      \"The shadows on the wood table and under the plate are crushed.\",\n      \"The white plate is not pure white, slightly dull.\",\n      \"The food lacks 'pop' and vibrancy.\",\n      \"The image feels a bit muddy.\"\n    ]\n  },\n  \"adjustments\": {\n    \"Exposure2012\": 0.6,\n    \"Contrast2012\": 15,\n    \"Highlights2012\": -20,\n    \"Shadows2012\": 20,\n    \"Whites2012\": 25,\n    \"Blacks2012\": -15,\n    \"IncrementalTemperature\": 5,\n    \"IncrementalTint\": -5,\n    \"Vibrance\": 20,\n    \"Saturation\": 5,\n    \"Clarity2012\": 10,\n    \"Dehaze\": 5,\n    \"Texture\": 10,\n    \"HueAdjustmentRed\": 0,\n    \"SaturationAdjustmentRed\": 0,\n    \"LuminanceAdjustmentRed\": 0,\n    \"HueAdjustmentOrange\": 0,\n    \"SaturationAdjustmentOrange\": 0,\n    \"LuminanceAdjustmentOrange\": 0,\n    \"HueAdjustmentYellow\": 0,\n    \"SaturationAdjustmentYellow\": 0,\n    \"LuminanceAdjustmentYellow\": 0,\n    \"HueAdjustmentGreen\": 0,\n    \"SaturationAdjustmentGreen\": 0,\n    \"LuminanceAdjustmentGreen\": 0,\n    \"HueAdjustmentAqua\": 0,\n    \"SaturationAdjustmentAqua\": 0,\n    \"LuminanceAdjustmentAqua\": 0,\n    \"HueAdjustmentBlue\": 0,\n    \"SaturationAdjustmentBlue\": 0,\n    \"LuminanceAdjustmentBlue\": 0\n  },\n  \"intent\": \"Create a bright, airy, and appetizing Japanese-style fresh look by lifting exposure, softening shadows, adding warmth, and boosting clarity without oversaturating.\"\n}",
+ "reasoning": "",
+ "finish": "stop",
+ "wall_s": 9.64,
+ "prompt_n": 4,
+ "prompt_tps": 59.42741683875856,
+ "gen_n": 566,
+ "gen_tps": 59.2053965142587,
+ "photo": "food_breakfast",
+ "run": "warm_airy_s202",
+ "seed": 202,
+ "wish": {
+  "tag": "warm_airy",
+  "want": "a warm, bright, airy Japanese-style fresh look (日系清新)",
+  "avoid": "oversaturated colours"
+ },
+ "parse_ok": true,
+ "errors": [],
+ "valid": true,
+ "parsed": {
+  "diagnosis": {
+   "subject": "A plate of breakfast food on a wooden table.",
+   "white_balance": "neutral",
+   "exposure": "slightly underexposed",
+   "contrast": "low",
+   "main_problems": [
+    "The image is a bit dark and flat.",
+    "The shadows on the wood table and under the plate are crushed.",
+    "The white plate is not pure white, slightly dull.",
+    "The food lacks 'pop' and vibrancy.",
+    "The image feels a bit muddy."
+   ]
+  },
+  "adjustments": {
+   "Exposure2012": 0.6,
+   "Contrast2012": 15,
+   "Highlights2012": -20,
+   "Shadows2012": 20,
+   "Whites2012": 25,
+   "Blacks2012": -15,
+   "IncrementalTemperature": 5,
+   "IncrementalTint": -5,
+   "Vibrance": 20,
+   "Saturation": 5,
+   "Clarity2012": 10,
+   "Dehaze": 5,
+   "Texture": 10,
+   "HueAdjustmentRed": 0,
+   "SaturationAdjustmentRed": 0,
+   "LuminanceAdjustmentRed": 0,
+   "HueAdjustmentOrange": 0,
+   "SaturationAdjustmentOrange": 0,
+   "LuminanceAdjustmentOrange": 0,
+   "HueAdjustmentYellow": 0,
+   "SaturationAdjustmentYellow": 0,
+   "LuminanceAdjustmentYellow": 0,
+   "HueAdjustmentGreen": 0,
+   "SaturationAdjustmentGreen": 0,
+   "LuminanceAdjustmentGreen": 0,
+   "HueAdjustmentAqua": 0,
+   "SaturationAdjustmentAqua": 0,
+   "LuminanceAdjustmentAqua": 0,
+   "HueAdjustmentBlue": 0,
+   "SaturationAdjustmentBlue": 0,
+   "LuminanceAdjustmentBlue": 0
+  },
+  "intent": "Create a bright, airy, and appetizing Japanese-style fresh look by lifting exposure, softening shadows, adding warmth, and boosting clarity without oversaturating."
+ }
+}

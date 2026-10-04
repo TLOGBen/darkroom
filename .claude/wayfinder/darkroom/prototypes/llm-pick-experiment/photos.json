@@ -1,0 +1,72 @@
+[
+ {
+  "id": "portrait_studio",
+  "file": "portrait_studio.png",
+  "subject": "portrait (studio, AI-generated)",
+  "source": "runtimes/comfyui/v0.38.0-portable-nvidia/ComfyUI_windows_portable/ComfyUI/input/portrait_model_denim.png",
+  "license": "local (generated in this repo)"
+ },
+ {
+  "id": "landscape_lighthouse",
+  "file": "landscape_lighthouse.png",
+  "subject": "landscape (stormy coast, AI-generated)",
+  "source": "outputs/comfyui/qw/2026-10-04-lr-latency-busy_00001_.png",
+  "license": "local (generated in this repo)"
+ },
+ {
+  "id": "night_street",
+  "file": "night_street.jpg",
+  "subject": "night street",
+  "source": "https://commons.wikimedia.org/wiki/File:Petit_Champlain_at_night,_Quebec_city.jpg",
+  "license": "CC0, by Wilfredor"
+ },
+ {
+  "id": "street_rain",
+  "file": "street_rain.jpg",
+  "subject": "street (rainy day)",
+  "source": "https://commons.wikimedia.org/wiki/File:Rainy_day_at_Merchant%27s_Arch,_Temple_Bar,_Dublin.jpg",
+  "license": "CC BY 4.0, by David Kernan"
+ },
+ {
+  "id": "food_breakfast",
+  "file": "food_breakfast.jpg",
+  "subject": "food",
+  "source": "https://commons.wikimedia.org/wiki/File:Full_English_breakfast_at_the_Chalet_Cafe,_Cowfold,_West_Sussex,_England.jpg",
+  "license": "CC BY-SA 4.0, by Acabashi"
+ },
+ {
+  "id": "interior_cafe",
+  "file": "interior_cafe.jpg",
+  "subject": "interior (cafe)",
+  "source": "https://commons.wikimedia.org/wiki/File:Vault_Caf%C3%A9_Central_Vienna_Wien.jpg",
+  "license": "CC0, by Jebulon"
+ },
+ {
+  "id": "sunset_kite",
+  "file": "sunset_kite.jpg",
+  "subject": "sunset / backlit",
+  "source": "https://commons.wikimedia.org/wiki/File:Kitesurfer_at_sunset,_Workum,_may_2017.jpg",
+  "license": "CC BY-SA 4.0, by Villy Fink Isaksen"
+ },
+ {
+  "id": "portrait_balaclava",
+  "file": "portrait_balaclava.jpg",
+  "subject": "portrait (real, outdoor)",
+  "source": "https://commons.wikimedia.org/wiki/File:Portrait_of_a_young_woman_wearing_a_gray_balaclava.jpg",
+  "license": "CC BY-SA 4.0, by Basile Morin"
+ },
+ {
+  "id": "food_bluecast_dark",
+  "file": "food_bluecast_dark.jpg",
+  "subject": "food (synthetic problem: blue cast + underexposed + flat)",
+  "source": "derived from https://commons.wikimedia.org/wiki/File:Breakfast_in_%C3%8Ele_d%27Orl%C3%A9ans_072.jpg by fetch_photos.py",
+  "license": "CC0, by Wilfredor (modified)"
+ },
+ {
+  "id": "_src_food2",
+  "file": "_src_food2.jpg",
+  "subject": "source for synthetic",
+  "source": "https://commons.wikimedia.org/wiki/File:Breakfast_in_%C3%8Ele_d%27Orl%C3%A9ans_072.jpg",
+  "license": "CC0, by Wilfredor"
+ }
+]

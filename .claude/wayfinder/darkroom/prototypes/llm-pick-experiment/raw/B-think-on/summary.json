@@ -1,0 +1,25 @@
+{
+ "config": "B-think-on",
+ "model": "PE-I2I Heretic Q8_0",
+ "think": "on",
+ "load_s": 4.6,
+ "sampling": {
+  "temperature": 0.7,
+  "top_p": 0.9,
+  "top_k": 20,
+  "min_p": 0.0,
+  "seed": 42
+ },
+ "chat_template_has_thinking": true,
+ "photos": [
+  "portrait_studio",
+  "landscape_lighthouse",
+  "night_street",
+  "street_rain",
+  "food_breakfast",
+  "interior_cafe",
+  "sunset_kite",
+  "portrait_balaclava",
+  "food_bluecast_dark"
+ ]
+}

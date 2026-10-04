@@ -1,0 +1,3 @@
+[A-think-on] loaded in 10.7s (pid 39360)
+  portrait_studio describe 24.59s gen 1104 @ 55.9 strict=True schema=True
+  portrait_studio pick1 221.3s prompt 7714 @ 620 gen 12000 @ 57.5 schema=False -> []

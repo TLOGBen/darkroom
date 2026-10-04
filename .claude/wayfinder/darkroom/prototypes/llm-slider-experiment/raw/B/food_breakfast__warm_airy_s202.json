@@ -1,0 +1,68 @@
+{
+ "content": "{\"diagnosis\": {\"subject\": \"a full English breakfast on a white square plate — fried eggs (two sunny-side-up with orange yolks), baked beans in tomato sauce, two grilled sausages, bacon strips, and toast, served on a weathered dark wooden table with a knife and fork resting on a white napkin at the right edge\", \"white_balance\": \"neutral\", \"exposure\": \"slightly underexposed\", \"contrast\": \"normal\", \"main_problems\": [\"overall exposure is a touch dark and dull, with the wooden table and bean sauce reading somewhat muted\", \"colors are slightly muted and the whites of the plate and egg whites look a little gray rather than clean white\", \"the warm, bright, airy Japanese-style fresh (日系清新) look requested by the user calls for a gentle warm cast and airy brightness\"]}, \"adjustments\": {\"Exposure2012\": 0.7, \"Contrast2012\": 10, \"Highlights2012\": -10, \"Shadows2012\": 15, \"Whites2012\": -10, \"Blacks2012\": -10, \"IncrementalTemperature\": 8, \"IncrementalTint\": 0, \"Vibrance\": 15, \"Saturation\": 0, \"Clarity2012\": 8, \"Dehaze\": 5, \"Texture\": 0, \"HueAdjustmentRed\": 0, \"SaturationAdjustmentRed\": 0, \"LuminanceAdjustmentRed\": 0, \"HueAdjustmentOrange\": 0, \"SaturationAdjustmentOrange\": 0, \"LuminanceAdjustmentOrange\": 0, \"HueAdjustmentYellow\": 0, \"SaturationAdjustmentYellow\": 0, \"LuminanceAdjustmentYellow\": 0, \"HueAdjustmentGreen\": 0, \"SaturationAdjustmentGreen\": 0, \"LuminanceAdjustmentGreen\": 0, \"HueAdjustmentAqua\": 0, \"SaturationAdjustmentAqua\": 0, \"LuminanceAdjustmentAqua\": 0, \"HueAdjustmentBlue\": 0, \"SaturationAdjustmentBlue\": 0, \"LuminanceAdjustmentBlue\": 0}, \"intent\": \"A warm, bright, airy Japanese-style fresh look with clean white plate and egg whites, gently lifted exposure, soft warm color temperature, and restrained saturation that keeps colors natural rather than oversaturated.\"}",
+ "reasoning": "",
+ "finish": "stop",
+ "wall_s": 8.84,
+ "prompt_n": 4,
+ "prompt_tps": 115.94875065221173,
+ "gen_n": 542,
+ "gen_tps": 61.728704966000144,
+ "photo": "food_breakfast",
+ "run": "warm_airy_s202",
+ "seed": 202,
+ "wish": {
+  "tag": "warm_airy",
+  "want": "a warm, bright, airy Japanese-style fresh look (日系清新)",
+  "avoid": "oversaturated colours"
+ },
+ "parse_ok": true,
+ "errors": [],
+ "valid": true,
+ "parsed": {
+  "diagnosis": {
+   "subject": "a full English breakfast on a white square plate — fried eggs (two sunny-side-up with orange yolks), baked beans in tomato sauce, two grilled sausages, bacon strips, and toast, served on a weathered dark wooden table with a knife and fork resting on a white napkin at the right edge",
+   "white_balance": "neutral",
+   "exposure": "slightly underexposed",
+   "contrast": "normal",
+   "main_problems": [
+    "overall exposure is a touch dark and dull, with the wooden table and bean sauce reading somewhat muted",
+    "colors are slightly muted and the whites of the plate and egg whites look a little gray rather than clean white",
+    "the warm, bright, airy Japanese-style fresh (日系清新) look requested by the user calls for a gentle warm cast and airy brightness"
+   ]
+  },
+  "adjustments": {
+   "Exposure2012": 0.7,
+   "Contrast2012": 10,
+   "Highlights2012": -10,
+   "Shadows2012": 15,
+   "Whites2012": -10,
+   "Blacks2012": -10,
+   "IncrementalTemperature": 8,
+   "IncrementalTint": 0,
+   "Vibrance": 15,
+   "Saturation": 0,
+   "Clarity2012": 8,
+   "Dehaze": 5,
+   "Texture": 0,
+   "HueAdjustmentRed": 0,
+   "SaturationAdjustmentRed": 0,
+   "LuminanceAdjustmentRed": 0,
+   "HueAdjustmentOrange": 0,
+   "SaturationAdjustmentOrange": 0,
+   "LuminanceAdjustmentOrange": 0,
+   "HueAdjustmentYellow": 0,
+   "SaturationAdjustmentYellow": 0,
+   "LuminanceAdjustmentYellow": 0,
+   "HueAdjustmentGreen": 0,
+   "SaturationAdjustmentGreen": 0,
+   "LuminanceAdjustmentGreen": 0,
+   "HueAdjustmentAqua": 0,
+   "SaturationAdjustmentAqua": 0,
+   "LuminanceAdjustmentAqua": 0,
+   "HueAdjustmentBlue": 0,
+   "SaturationAdjustmentBlue": 0,
+   "LuminanceAdjustmentBlue": 0
+  },
+  "intent": "A warm, bright, airy Japanese-style fresh look with clean white plate and egg whites, gently lifted exposure, soft warm color temperature, and restrained saturation that keeps colors natural rather than oversaturated."
+ }
+}

@@ -1,0 +1,185 @@
+{
+ "photo": "street_rain",
+ "describe": {
+  "content": "{\n  \"subject\": \"street photography\",\n  \"main_subject\": \"pedestrians walking down a narrow, wet alleyway\",\n  \"lighting\": \"overcast daylight with mixed ambient and artificial light from shop signs and street lamps\",\n  \"color_tone\": \"cool, desaturated, with a slight greenish-blue cast\",\n  \"contrast\": \"medium\",\n  \"issues\": [\"slightly underexposed midtones\", \"low color vibrancy\"],\n  \"style_directions\": [\n    \"add warmth to balance the cool cast\",\n    \"boost saturation selectively for signs and umbrellas\",\n    \"enhance reflections on the wet pavement\",\n    \"introduce subtle film grain for texture\"\n  ]\n}",
+  "reasoning": "",
+  "finish": "stop",
+  "wall_s": 5.05,
+  "prompt_n": 874,
+  "prompt_tps": 386.19712048952476,
+  "gen_n": 160,
+  "gen_tps": 60.17482489693642,
+  "strict_ok": true,
+  "lenient_ok": true,
+  "schema_ok": true,
+  "parsed": {
+   "subject": "street photography",
+   "main_subject": "pedestrians walking down a narrow, wet alleyway",
+   "lighting": "overcast daylight with mixed ambient and artificial light from shop signs and street lamps",
+   "color_tone": "cool, desaturated, with a slight greenish-blue cast",
+   "contrast": "medium",
+   "issues": [
+    "slightly underexposed midtones",
+    "low color vibrancy"
+   ],
+   "style_directions": [
+    "add warmth to balance the cool cast",
+    "boost saturation selectively for signs and umbrellas",
+    "enhance reflections on the wet pavement",
+    "introduce subtle film grain for texture"
+   ]
+  }
+ },
+ "pick1": {
+  "content": "{\n \"picks\": [\n  {\n   \"id\": 1,\n   \"strength\": 110,\n   \"reason\": \"Perfectly enhances the moody, cinematic atmosphere of the rainy street while preserving the contrast of the wet cobblestones.\"\n  },\n  {\n   \"id\": 18,\n   \"strength\": 80,\n   \"reason\": \"Brings out the rich colors of the neon signs and umbrellas while adding a subtle, atmospheric blue cast to the shadows.\"\n  },\n  {\n   \"id\": 10,\n   \"strength\": 90,\n   \"reason\": \"Adds a beautiful retro film look with a faded matte finish that complements the vintage architecture and worn textures.\"\n  }\n ]\n}",
+  "reasoning": "",
+  "finish": "stop",
+  "wall_s": 17.08,
+  "prompt_n": 8242,
+  "prompt_tps": 595.1732331778533,
+  "gen_n": 172,
+  "gen_tps": 54.49660750650932,
+  "strict_ok": true,
+  "lenient_ok": true,
+  "schema_ok": true,
+  "parsed": {
+   "picks": [
+    {
+     "id": 1,
+     "strength": 110,
+     "reason": "Perfectly enhances the moody, cinematic atmosphere of the rainy street while preserving the contrast of the wet cobblestones."
+    },
+    {
+     "id": 18,
+     "strength": 80,
+     "reason": "Brings out the rich colors of the neon signs and umbrellas while adding a subtle, atmospheric blue cast to the shadows."
+    },
+    {
+     "id": 10,
+     "strength": 90,
+     "reason": "Adds a beautiful retro film look with a faded matte finish that complements the vintage architecture and worn textures."
+    }
+   ]
+  },
+  "order": [
+   "P01",
+   "P02",
+   "P03",
+   "P04",
+   "P05",
+   "P06",
+   "P07",
+   "P08",
+   "P09",
+   "P10",
+   "P11",
+   "P12",
+   "P13",
+   "P14",
+   "P15",
+   "P16",
+   "P17",
+   "P18"
+  ],
+  "picks": [
+   {
+    "key": "P01",
+    "label": "電影 - 室外街道 / 12 Cinematic Street 12",
+    "on_topic": true,
+    "strength": 110,
+    "reason": "Perfectly enhances the moody, cinematic atmosphere of the rainy street while preserving the contrast of the wet cobblestones."
+   },
+   {
+    "key": "P18",
+    "label": "城市 - 燈光 - 霓虹 / NEON Light 14",
+    "on_topic": false,
+    "strength": 80,
+    "reason": "Brings out the rich colors of the neon signs and umbrellas while adding a subtle, atmospheric blue cast to the shadows."
+   },
+   {
+    "key": "P10",
+    "label": "復古 - 滄桑歲月 / 滄桑歲月7",
+    "on_topic": false,
+    "strength": 90,
+    "reason": "Adds a beautiful retro film look with a faded matte finish that complements the vintage architecture and worn textures."
+   }
+  ]
+ },
+ "pick2": {
+  "content": "{\n \"picks\": [\n  {\n   \"id\": 14,\n   \"strength\": 100,\n   \"reason\": \"This preset is specifically designed for neon street scenes; its cool blue shadows and deep blacks perfectly match the rainy, atmospheric mood while boosting the warm highlights of the shop signs.\"\n  },\n  {\n   \"id\": 1,\n   \"strength\": 120,\n   \"reason\": \"The 'Light 02' preset provides a balanced, rich look with strong highlight recovery and vibrant yet controlled colors, ideal for the complex lighting and textures of this urban alleyway.\"\n  },\n  {\n   \"id\": 16,\n   \"strength\": 110,\n   \"reason\": \"This vintage preset adds a subtle, moody film character that enhances the historic feel of the street signs and the rain-slicked pavement without overpowering the scene's natural tones.\"\n  }\n ]\n}",
+  "reasoning": "",
+  "finish": "stop",
+  "wall_s": 16.56,
+  "prompt_n": 8242,
+  "prompt_tps": 638.1183174487655,
+  "gen_n": 211,
+  "gen_tps": 60.18687163831245,
+  "strict_ok": true,
+  "lenient_ok": true,
+  "schema_ok": true,
+  "parsed": {
+   "picks": [
+    {
+     "id": 14,
+     "strength": 100,
+     "reason": "This preset is specifically designed for neon street scenes; its cool blue shadows and deep blacks perfectly match the rainy, atmospheric mood while boosting the warm highlights of the shop signs."
+    },
+    {
+     "id": 1,
+     "strength": 120,
+     "reason": "The 'Light 02' preset provides a balanced, rich look with strong highlight recovery and vibrant yet controlled colors, ideal for the complex lighting and textures of this urban alleyway."
+    },
+    {
+     "id": 16,
+     "strength": 110,
+     "reason": "This vintage preset adds a subtle, moody film character that enhances the historic feel of the street signs and the rain-slicked pavement without overpowering the scene's natural tones."
+    }
+   ]
+  },
+  "order": [
+   "P14",
+   "P05",
+   "P09",
+   "P02",
+   "P06",
+   "P07",
+   "P16",
+   "P15",
+   "P08",
+   "P13",
+   "P12",
+   "P11",
+   "P17",
+   "P18",
+   "P04",
+   "P10",
+   "P01",
+   "P03"
+  ],
+  "picks": [
+   {
+    "key": "P18",
+    "label": "城市 - 燈光 - 霓虹 / NEON Light 14",
+    "on_topic": false,
+    "strength": 100,
+    "reason": "This preset is specifically designed for neon street scenes; its cool blue shadows and deep blacks perfectly match the rainy, atmospheric mood while boosting the warm highlights of the shop signs."
+   },
+   {
+    "key": "P14",
+    "label": "時間 - 光明白日 / Light 02",
+    "on_topic": false,
+    "strength": 120,
+    "reason": "The 'Light 02' preset provides a balanced, rich look with strong highlight recovery and vibrant yet controlled colors, ideal for the complex lighting and textures of this urban alleyway."
+   },
+   {
+    "key": "P10",
+    "label": "復古 - 滄桑歲月 / 滄桑歲月7",
+    "on_topic": false,
+    "strength": 110,
+    "reason": "This vintage preset adds a subtle, moody film character that enhances the historic feel of the street signs and the rain-slicked pavement without overpowering the scene's natural tones."
+   }
+  ]
+ },
+ "overlap": 2,
+ "top1_same": false
+}

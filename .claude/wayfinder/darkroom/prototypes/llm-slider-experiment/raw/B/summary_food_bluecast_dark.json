@@ -1,0 +1,45 @@
+{
+ "model": "PE-I2I Heretic Q8_0",
+ "load_s": 5.1,
+ "vram_before": 1546,
+ "vram_loaded": 12137,
+ "vram_after_runs": 12199,
+ "sampling": {
+  "temperature": 0.7,
+  "top_p": 0.9,
+  "top_k": 20,
+  "min_p": 0.0
+ },
+ "seeds": [
+  101,
+  202
+ ],
+ "runs": [
+  {
+   "photo": "food_bluecast_dark",
+   "run": "base_s101",
+   "seed": 101,
+   "wall_s": 9.51,
+   "prompt_n": 1673,
+   "prompt_tps": 2445.974376481218,
+   "gen_n": 529,
+   "gen_tps": 60.15972406739894,
+   "parse_ok": true,
+   "valid": true,
+   "finish": "stop"
+  },
+  {
+   "photo": "food_bluecast_dark",
+   "run": "base_s202",
+   "seed": 202,
+   "wall_s": 10.21,
+   "prompt_n": 4,
+   "prompt_tps": 115.71395510298542,
+   "gen_n": 613,
+   "gen_tps": 60.367841380143005,
+   "parse_ok": true,
+   "valid": true,
+   "finish": "stop"
+  }
+ ]
+}

@@ -1,0 +1,185 @@
+{
+ "photo": "sunset_kite",
+ "describe": {
+  "content": "{\n  \"subject\": \"landscape\",\n  \"main_subject\": \"a kitesurfer silhouetted against a dramatic sunset\",\n  \"lighting\": \"backlit sunset, with the sun low on the horizon, creating a strong silhouette and warm glow\",\n  \"color_tone\": \"warm, dominated by oranges, yellows, and reds in the sky; cool blues and purples in the water and shadows\",\n  \"contrast\": \"high\",\n  \"issues\": [\n    \"slightly overexposed highlights in the sky\",\n    \"cool color cast in the foreground sand and water shadows\"\n  ],\n  \"style_directions\": [\n    \"Enhance the warm sunset tones with a golden hour preset\",\n    \"Add a subtle teal and orange contrast to make the colors pop\",\n    \"Boost the vibrance of the sky while keeping the silhouettes dark and dramatic\",\n    \"Reduce the blue color cast in the shadows to make the scene feel more unified and warm\"\n  ]\n}",
+  "reasoning": "",
+  "finish": "stop",
+  "wall_s": 5.29,
+  "prompt_n": 650,
+  "prompt_tps": 428.9041828055612,
+  "gen_n": 222,
+  "gen_tps": 60.89360399484085,
+  "strict_ok": true,
+  "lenient_ok": true,
+  "schema_ok": true,
+  "parsed": {
+   "subject": "landscape",
+   "main_subject": "a kitesurfer silhouetted against a dramatic sunset",
+   "lighting": "backlit sunset, with the sun low on the horizon, creating a strong silhouette and warm glow",
+   "color_tone": "warm, dominated by oranges, yellows, and reds in the sky; cool blues and purples in the water and shadows",
+   "contrast": "high",
+   "issues": [
+    "slightly overexposed highlights in the sky",
+    "cool color cast in the foreground sand and water shadows"
+   ],
+   "style_directions": [
+    "Enhance the warm sunset tones with a golden hour preset",
+    "Add a subtle teal and orange contrast to make the colors pop",
+    "Boost the vibrance of the sky while keeping the silhouettes dark and dramatic",
+    "Reduce the blue color cast in the shadows to make the scene feel more unified and warm"
+   ]
+  }
+ },
+ "pick1": {
+  "content": "{\n  \"picks\": [\n    {\n      \"id\": 1,\n      \"strength\": 100,\n      \"reason\": \"This preset is specifically designed for sunsets, enhancing the orange tones and adding a cinematic split-toning effect that perfectly complements the existing golden light.\"\n    },\n    {\n      \"id\": 6,\n      \"strength\": 75,\n      \"reason\": \"The cool, teal shadows and soft highlights create a beautiful contrast with the warm sun, while the slight vignette draws focus to the kitesurfer and the horizon.\"\n    },\n    {\n      \"id\": 12,\n      \"strength\": 80,\n      \"reason\": \"This preset provides excellent highlight recovery and a 'faded' matte look that softens the harshness of the sun while preserving the rich colors of the sky.\"\n    }\n  ]\n}",
+  "reasoning": "",
+  "finish": "stop",
+  "wall_s": 16.82,
+  "prompt_n": 8990,
+  "prompt_tps": 665.2717912772287,
+  "gen_n": 199,
+  "gen_tps": 61.36092963667821,
+  "strict_ok": true,
+  "lenient_ok": true,
+  "schema_ok": true,
+  "parsed": {
+   "picks": [
+    {
+     "id": 1,
+     "strength": 100,
+     "reason": "This preset is specifically designed for sunsets, enhancing the orange tones and adding a cinematic split-toning effect that perfectly complements the existing golden light."
+    },
+    {
+     "id": 6,
+     "strength": 75,
+     "reason": "The cool, teal shadows and soft highlights create a beautiful contrast with the warm sun, while the slight vignette draws focus to the kitesurfer and the horizon."
+    },
+    {
+     "id": 12,
+     "strength": 80,
+     "reason": "This preset provides excellent highlight recovery and a 'faded' matte look that softens the harshness of the sun while preserving the rich colors of the sky."
+    }
+   ]
+  },
+  "order": [
+   "P01",
+   "P02",
+   "P03",
+   "P04",
+   "P05",
+   "P06",
+   "P07",
+   "P08",
+   "P09",
+   "P10",
+   "P11",
+   "P12",
+   "P13",
+   "P14",
+   "P15",
+   "P16",
+   "P17",
+   "P18"
+  ],
+  "picks": [
+   {
+    "key": "P01",
+    "label": "顏色 - 黃金日落 / 黃金日落 2",
+    "on_topic": true,
+    "strength": 100,
+    "reason": "This preset is specifically designed for sunsets, enhancing the orange tones and adding a cinematic split-toning effect that perfectly complements the existing golden light."
+   },
+   {
+    "key": "P06",
+    "label": "電影 - 電影燈光 / Cinematic Light - 05",
+    "on_topic": false,
+    "strength": 75,
+    "reason": "The cool, teal shadows and soft highlights create a beautiful contrast with the warm sun, while the slight vignette draws focus to the kitesurfer and the horizon."
+   },
+   {
+    "key": "P12",
+    "label": "風格 - 探索 / Explore 07",
+    "on_topic": false,
+    "strength": 80,
+    "reason": "This preset provides excellent highlight recovery and a 'faded' matte look that softens the harshness of the sun while preserving the rich colors of the sky."
+   }
+  ]
+ },
+ "pick2": {
+  "content": "{\n \"picks\": [\n  {\n   \"id\": 4,\n   \"strength\": 100,\n   \"reason\": \"Specifically designed for golden hour sunsets, this preset enhances the warm tones of the sky while keeping the ocean and sand tones natural.\"\n  },\n  {\n   \"id\": 13,\n   \"strength\": 100,\n   \"reason\": \"The 'Orange Sunset' preset perfectly complements the intense orange sky, adding a nice vintage pop without muting the sunset colors.\"\n  },\n  {\n   \"id\": 1,\n   \"strength\": 80,\n   \"reason\": \"This cinematic preset lifts the shadows to reveal the silhouetted figures clearly while recovering the bright sun highlights.\"\n  }\n ]\n}",
+  "reasoning": "",
+  "finish": "stop",
+  "wall_s": 16.36,
+  "prompt_n": 8990,
+  "prompt_tps": 678.5982711067272,
+  "gen_n": 177,
+  "gen_tps": 59.306105091766085,
+  "strict_ok": true,
+  "lenient_ok": true,
+  "schema_ok": true,
+  "parsed": {
+   "picks": [
+    {
+     "id": 4,
+     "strength": 100,
+     "reason": "Specifically designed for golden hour sunsets, this preset enhances the warm tones of the sky while keeping the ocean and sand tones natural."
+    },
+    {
+     "id": 13,
+     "strength": 100,
+     "reason": "The 'Orange Sunset' preset perfectly complements the intense orange sky, adding a nice vintage pop without muting the sunset colors."
+    },
+    {
+     "id": 1,
+     "strength": 80,
+     "reason": "This cinematic preset lifts the shadows to reveal the silhouetted figures clearly while recovering the bright sun highlights."
+    }
+   ]
+  },
+  "order": [
+   "P06",
+   "P17",
+   "P03",
+   "P01",
+   "P14",
+   "P08",
+   "P02",
+   "P16",
+   "P04",
+   "P11",
+   "P18",
+   "P15",
+   "P05",
+   "P10",
+   "P13",
+   "P12",
+   "P09",
+   "P07"
+  ],
+  "picks": [
+   {
+    "key": "P01",
+    "label": "顏色 - 黃金日落 / 黃金日落 2",
+    "on_topic": true,
+    "strength": 100,
+    "reason": "Specifically designed for golden hour sunsets, this preset enhances the warm tones of the sky while keeping the ocean and sand tones natural."
+   },
+   {
+    "key": "P05",
+    "label": "顏色 - 橙霞遠征 / 橙霞遠征 6",
+    "on_topic": false,
+    "strength": 100,
+    "reason": "The 'Orange Sunset' preset perfectly complements the intense orange sky, adding a nice vintage pop without muting the sunset colors."
+   },
+   {
+    "key": "P06",
+    "label": "電影 - 電影燈光 / Cinematic Light - 05",
+    "on_topic": false,
+    "strength": 80,
+    "reason": "This cinematic preset lifts the shadows to reveal the silhouetted figures clearly while recovering the bright sun highlights."
+   }
+  ]
+ },
+ "overlap": 2,
+ "top1_same": true
+}

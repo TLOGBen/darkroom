@@ -1,0 +1,186 @@
+{
+ "photo": "landscape_lighthouse",
+ "describe": {
+  "content": "{\n  \"subject\": \"landscape\",\n  \"main_subject\": \"A white lighthouse with a red lantern room, situated atop a rugged, rocky island in the center of the frame.\",\n  \"lighting\": \"Dramatic sidelighting from a low sun breaking through a gap in the clouds behind the lighthouse, creating a strong beam of light. The foreground is in shadow, while the lighthouse and upper rocks are brightly lit.\",\n  \"color_tone\": \"Warm and moody. The palette is dominated by dark, cool greys and blues in the sky and sea, contrasted with warm, golden highlights on the rocks and lighthouse. The white balance is neutral to slightly warm.\",\n  \"contrast\": \"high\",\n  \"issues\": [\n    \"Heavy vignetting and dark, crushed shadows in the foreground rocks.\",\n    \"The dark clouds in the upper portion of the sky are flat and lack detail.\",\n    \"The white of the lighthouse is slightly warm-toned and could be corrected for a cleaner look.\"\n  ],\n  \"style_directions\": [\n    \"Dramatic and moody: Further darken the foreground shadows to create a stronger vignette effect and enhance the sense of isolation. Boost the contrast in the sky to add more drama to the clouds.\",\n    \"Warm and golden: Enhance the warm tones on the sunlit rocks and lighthouse to create a strong contrast against the cool, dark sea and sky.\",\n    \"Clean and crisp: Correct the white balance to make the lighthouse and clouds a true white. Increase clarity and texture on the rocks to make them pop.\",\n    \"Cinematic and desaturated: Reduce the saturation of the overall image, especially the blues and greens, while keeping the warm highlights on the rocks to create a more stylized, filmic look.\"\n  ]\n}",
+  "reasoning": "",
+  "finish": "stop",
+  "wall_s": 8.51,
+  "prompt_n": 778,
+  "prompt_tps": 399.6753280111786,
+  "gen_n": 389,
+  "gen_tps": 60.140222819525555,
+  "strict_ok": true,
+  "lenient_ok": true,
+  "schema_ok": true,
+  "parsed": {
+   "subject": "landscape",
+   "main_subject": "A white lighthouse with a red lantern room, situated atop a rugged, rocky island in the center of the frame.",
+   "lighting": "Dramatic sidelighting from a low sun breaking through a gap in the clouds behind the lighthouse, creating a strong beam of light. The foreground is in shadow, while the lighthouse and upper rocks are brightly lit.",
+   "color_tone": "Warm and moody. The palette is dominated by dark, cool greys and blues in the sky and sea, contrasted with warm, golden highlights on the rocks and lighthouse. The white balance is neutral to slightly warm.",
+   "contrast": "high",
+   "issues": [
+    "Heavy vignetting and dark, crushed shadows in the foreground rocks.",
+    "The dark clouds in the upper portion of the sky are flat and lack detail.",
+    "The white of the lighthouse is slightly warm-toned and could be corrected for a cleaner look."
+   ],
+   "style_directions": [
+    "Dramatic and moody: Further darken the foreground shadows to create a stronger vignette effect and enhance the sense of isolation. Boost the contrast in the sky to add more drama to the clouds.",
+    "Warm and golden: Enhance the warm tones on the sunlit rocks and lighthouse to create a strong contrast against the cool, dark sea and sky.",
+    "Clean and crisp: Correct the white balance to make the lighthouse and clouds a true white. Increase clarity and texture on the rocks to make them pop.",
+    "Cinematic and desaturated: Reduce the saturation of the overall image, especially the blues and greens, while keeping the warm highlights on the rocks to create a more stylized, filmic look."
+   ]
+  }
+ },
+ "pick1": {
+  "content": "{\n  \"picks\": [\n    {\n      \"id\": 1,\n      \"strength\": 100,\n      \"reason\": \"This preset perfectly complements the dramatic lighting by opening up the deep shadows on the rocks while simultaneously boosting the brightness of the clouds and the ocean highlights.\"\n    },\n    {\n      \"id\": 4,\n      \"strength\": 100,\n      \"reason\": \"The split toning adds a cinematic orange/cyan contrast that enhances the moody atmosphere, while the film grain adds texture to the rocky surface.\"\n    },\n    {\n      \"id\": 10,\n      \"strength\": 120,\n      \"reason\": \"The strong dehaze helps cut through the mist around the lighthouse, and the subtle violet highlights add a unique, premium color grade to the sky.\"\n    }\n  ]\n}",
+  "reasoning": "",
+  "finish": "stop",
+  "wall_s": 16.23,
+  "prompt_n": 8624,
+  "prompt_tps": 665.1821422042797,
+  "gen_n": 194,
+  "gen_tps": 60.67079898726919,
+  "strict_ok": true,
+  "lenient_ok": true,
+  "schema_ok": true,
+  "parsed": {
+   "picks": [
+    {
+     "id": 1,
+     "strength": 100,
+     "reason": "This preset perfectly complements the dramatic lighting by opening up the deep shadows on the rocks while simultaneously boosting the brightness of the clouds and the ocean highlights."
+    },
+    {
+     "id": 4,
+     "strength": 100,
+     "reason": "The split toning adds a cinematic orange/cyan contrast that enhances the moody atmosphere, while the film grain adds texture to the rocky surface."
+    },
+    {
+     "id": 10,
+     "strength": 120,
+     "reason": "The strong dehaze helps cut through the mist around the lighthouse, and the subtle violet highlights add a unique, premium color grade to the sky."
+    }
+   ]
+  },
+  "order": [
+   "P01",
+   "P02",
+   "P03",
+   "P04",
+   "P05",
+   "P06",
+   "P07",
+   "P08",
+   "P09",
+   "P10",
+   "P11",
+   "P12",
+   "P13",
+   "P14",
+   "P15",
+   "P16",
+   "P17",
+   "P18"
+  ],
+  "picks": [
+   {
+    "key": "P01",
+    "label": "自然 - 海洋魄力 / 海洋魄力 4",
+    "on_topic": true,
+    "strength": 100,
+    "reason": "This preset perfectly complements the dramatic lighting by opening up the deep shadows on the rocks while simultaneously boosting the brightness of the clouds and the ocean highlights."
+   },
+   {
+    "key": "P04",
+    "label": "風格 - 戲劇性 / Dramatic - Tone 5",
+    "on_topic": true,
+    "strength": 100,
+    "reason": "The split toning adds a cinematic orange/cyan contrast that enhances the moody atmosphere, while the film grain adds texture to the rocky surface."
+   },
+   {
+    "key": "P10",
+    "label": "復古 - 滄桑歲月 / 滄桑歲月2",
+    "on_topic": false,
+    "strength": 120,
+    "reason": "The strong dehaze helps cut through the mist around the lighthouse, and the subtle violet highlights add a unique, premium color grade to the sky."
+   }
+  ]
+ },
+ "pick2": {
+  "content": "{\n \"picks\": [\n  {\n   \"id\": 1,\n   \"strength\": 100,\n   \"reason\": \"Perfectly matches the dramatic lighting by lifting shadows to reveal rock details while recovering highlights and adding a cyan tint to the shadows to enhance the moody, stormy atmosphere.\"\n  },\n  {\n   \"id\": 12,\n   \"strength\": 120,\n   \"reason\": \"Excellent for coastal scenes, this preset boosts shadows and highlights for high dynamic range while using a cyan/teal split toning that complements the ocean and storm clouds.\"\n  },\n  {\n   \"id\": 16,\n   \"strength\": 60,\n   \"reason\": \"A minimalistic choice that reduces color saturation and brightens luminance, which works well to make the white lighthouse and dark rocks stand out against the muted, foggy background.\"\n  }\n ]\n}",
+  "reasoning": "",
+  "finish": "stop",
+  "wall_s": 16.46,
+  "prompt_n": 8624,
+  "prompt_tps": 665.8551942534474,
+  "gen_n": 207,
+  "gen_tps": 61.30259077842386,
+  "strict_ok": true,
+  "lenient_ok": true,
+  "schema_ok": true,
+  "parsed": {
+   "picks": [
+    {
+     "id": 1,
+     "strength": 100,
+     "reason": "Perfectly matches the dramatic lighting by lifting shadows to reveal rock details while recovering highlights and adding a cyan tint to the shadows to enhance the moody, stormy atmosphere."
+    },
+    {
+     "id": 12,
+     "strength": 120,
+     "reason": "Excellent for coastal scenes, this preset boosts shadows and highlights for high dynamic range while using a cyan/teal split toning that complements the ocean and storm clouds."
+    },
+    {
+     "id": 16,
+     "strength": 60,
+     "reason": "A minimalistic choice that reduces color saturation and brightens luminance, which works well to make the white lighthouse and dark rocks stand out against the muted, foggy background."
+    }
+   ]
+  },
+  "order": [
+   "P02",
+   "P18",
+   "P08",
+   "P12",
+   "P03",
+   "P17",
+   "P06",
+   "P11",
+   "P14",
+   "P16",
+   "P07",
+   "P01",
+   "P10",
+   "P09",
+   "P04",
+   "P05",
+   "P13",
+   "P15"
+  ],
+  "picks": [
+   {
+    "key": "P02",
+    "label": "自然 - 海洋魄力 / 海洋魄力 3",
+    "on_topic": true,
+    "strength": 100,
+    "reason": "Perfectly matches the dramatic lighting by lifting shadows to reveal rock details while recovering highlights and adding a cyan tint to the shadows to enhance the moody, stormy atmosphere."
+   },
+   {
+    "key": "P01",
+    "label": "自然 - 海洋魄力 / 海洋魄力 4",
+    "on_topic": true,
+    "strength": 120,
+    "reason": "Excellent for coastal scenes, this preset boosts shadows and highlights for high dynamic range while using a cyan/teal split toning that complements the ocean and storm clouds."
+   },
+   {
+    "key": "P05",
+    "label": "顏色 - 簡約琢白 / 簡約琢白 4",
+    "on_topic": false,
+    "strength": 60,
+    "reason": "A minimalistic choice that reduces color saturation and brightens luminance, which works well to make the white lighthouse and dark rocks stand out against the muted, foggy background."
+   }
+  ]
+ },
+ "overlap": 1,
+ "top1_same": false
+}

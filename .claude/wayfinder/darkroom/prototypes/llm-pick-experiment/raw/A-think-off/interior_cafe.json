@@ -1,0 +1,187 @@
+{
+ "photo": "interior_cafe",
+ "describe": {
+  "content": "{\n  \"subject\": \"architecture\",\n  \"main_subject\": \"vaulted ceiling with decorative ribs, painted details, and chandeliers\",\n  \"lighting\": \"indoor ambient, soft and diffuse, evenly distributed with no harsh shadows\",\n  \"color_tone\": \"warm beige palette with muted greens, blues, and gold accents; slight warm color cast\",\n  \"contrast\": \"low\",\n  \"issues\": [\n    \"flat contrast\",\n    \"slightly dull colors\",\n    \"minor detail loss in shadows of arches\",\n    \"white balance leans warm\"\n  ],\n  \"style_directions\": [\n    \"subtle contrast enhancement to emphasize architectural lines\",\n    \"color grading to enrich greens and golds without oversaturating\",\n    \"warm but neutral white balance adjustment for accurate tones\",\n    \"gentle clarity and structure boost to bring out decorative details\"\n  ]\n}",
+  "reasoning": "",
+  "finish": "stop",
+  "wall_s": 5.5,
+  "prompt_n": 906,
+  "prompt_tps": 415.5894673298973,
+  "gen_n": 200,
+  "gen_tps": 61.88773130150832,
+  "strict_ok": true,
+  "lenient_ok": true,
+  "schema_ok": true,
+  "parsed": {
+   "subject": "architecture",
+   "main_subject": "vaulted ceiling with decorative ribs, painted details, and chandeliers",
+   "lighting": "indoor ambient, soft and diffuse, evenly distributed with no harsh shadows",
+   "color_tone": "warm beige palette with muted greens, blues, and gold accents; slight warm color cast",
+   "contrast": "low",
+   "issues": [
+    "flat contrast",
+    "slightly dull colors",
+    "minor detail loss in shadows of arches",
+    "white balance leans warm"
+   ],
+   "style_directions": [
+    "subtle contrast enhancement to emphasize architectural lines",
+    "color grading to enrich greens and golds without oversaturating",
+    "warm but neutral white balance adjustment for accurate tones",
+    "gentle clarity and structure boost to bring out decorative details"
+   ]
+  }
+ },
+ "pick1": {
+  "content": "{\n \"picks\": [\n  {\n   \"id\": 3,\n   \"strength\": 100,\n   \"reason\": \"This preset perfectly captures the 'Dark Academia' aesthetic, muting the greens and yellows to a classic, sophisticated olive-and-ochre palette that suits the historic architecture.\"\n  },\n  {\n   \"id\": 4,\n   \"strength\": 110,\n   \"reason\": \"Similar to Candidate 3 but with richer reds and oranges, this preset enhances the warm, golden tones of the interior while keeping the greens muted and elegant.\"\n  },\n  {\n   \"id\": 14,\n   \"strength\": 80,\n   \"reason\": \"A lighter option that brightens the dim interior, lifting shadows to reveal more detail in the arches while maintaining a warm, airy atmosphere.\"\n  }\n ]\n}",
+  "reasoning": "",
+  "finish": "stop",
+  "wall_s": 17.81,
+  "prompt_n": 9477,
+  "prompt_tps": 654.3430335873305,
+  "gen_n": 197,
+  "gen_tps": 59.9489760806644,
+  "strict_ok": true,
+  "lenient_ok": true,
+  "schema_ok": true,
+  "parsed": {
+   "picks": [
+    {
+     "id": 3,
+     "strength": 100,
+     "reason": "This preset perfectly captures the 'Dark Academia' aesthetic, muting the greens and yellows to a classic, sophisticated olive-and-ochre palette that suits the historic architecture."
+    },
+    {
+     "id": 4,
+     "strength": 110,
+     "reason": "Similar to Candidate 3 but with richer reds and oranges, this preset enhances the warm, golden tones of the interior while keeping the greens muted and elegant."
+    },
+    {
+     "id": 14,
+     "strength": 80,
+     "reason": "A lighter option that brightens the dim interior, lifting shadows to reveal more detail in the arches while maintaining a warm, airy atmosphere."
+    }
+   ]
+  },
+  "order": [
+   "P01",
+   "P02",
+   "P03",
+   "P04",
+   "P05",
+   "P06",
+   "P07",
+   "P08",
+   "P09",
+   "P10",
+   "P11",
+   "P12",
+   "P13",
+   "P14",
+   "P15",
+   "P16",
+   "P17",
+   "P18"
+  ],
+  "picks": [
+   {
+    "key": "P03",
+    "label": "顏色 - 經典歐式建築棕 / Dark Academia 05",
+    "on_topic": true,
+    "strength": 100,
+    "reason": "This preset perfectly captures the 'Dark Academia' aesthetic, muting the greens and yellows to a classic, sophisticated olive-and-ochre palette that suits the historic architecture."
+   },
+   {
+    "key": "P04",
+    "label": "顏色 - 經典歐式建築棕 / Dark Academia 03",
+    "on_topic": true,
+    "strength": 110,
+    "reason": "Similar to Candidate 3 but with richer reds and oranges, this preset enhances the warm, golden tones of the interior while keeping the greens muted and elegant."
+   },
+   {
+    "key": "P14",
+    "label": "時間 - 光明白日 / Light 04",
+    "on_topic": false,
+    "strength": 80,
+    "reason": "A lighter option that brightens the dim interior, lifting shadows to reveal more detail in the arches while maintaining a warm, airy atmosphere."
+   }
+  ]
+ },
+ "pick2": {
+  "content": "{\n \"picks\": [\n  {\n   \"id\": 4,\n   \"strength\": 100,\n   \"reason\": \"This preset perfectly targets the 'Dark Academia' aesthetic, muting the distracting greens and cyans on the ceiling ribs while shifting the dominant creams and walls toward rich, warm browns.\"\n  },\n  {\n   \"id\": 1,\n   \"strength\": 90,\n   \"reason\": \"This preset creates a moody, vintage atmosphere by significantly recovering the blown-out highlights of the light fixtures and muting the colors to a classic, muted palette.\"\n  },\n  {\n   \"id\": 5,\n   \"strength\": 75,\n   \"reason\": \"Adding film grain and a slight vignette enhances the architectural details and gives the photo a timeless, nostalgic feel that suits the ornate interior.\"\n  }\n ]\n}",
+  "reasoning": "",
+  "finish": "stop",
+  "wall_s": 18.04,
+  "prompt_n": 9477,
+  "prompt_tps": 646.1675792013813,
+  "gen_n": 197,
+  "gen_tps": 59.73364281049228,
+  "strict_ok": true,
+  "lenient_ok": true,
+  "schema_ok": true,
+  "parsed": {
+   "picks": [
+    {
+     "id": 4,
+     "strength": 100,
+     "reason": "This preset perfectly targets the 'Dark Academia' aesthetic, muting the distracting greens and cyans on the ceiling ribs while shifting the dominant creams and walls toward rich, warm browns."
+    },
+    {
+     "id": 1,
+     "strength": 90,
+     "reason": "This preset creates a moody, vintage atmosphere by significantly recovering the blown-out highlights of the light fixtures and muting the colors to a classic, muted palette."
+    },
+    {
+     "id": 5,
+     "strength": 75,
+     "reason": "Adding film grain and a slight vignette enhances the architectural details and gives the photo a timeless, nostalgic feel that suits the ornate interior."
+    }
+   ]
+  },
+  "order": [
+   "P03",
+   "P07",
+   "P05",
+   "P04",
+   "P09",
+   "P13",
+   "P02",
+   "P11",
+   "P06",
+   "P10",
+   "P08",
+   "P01",
+   "P16",
+   "P17",
+   "P12",
+   "P14",
+   "P15",
+   "P18"
+  ],
+  "picks": [
+   {
+    "key": "P04",
+    "label": "顏色 - 經典歐式建築棕 / Dark Academia 03",
+    "on_topic": true,
+    "strength": 100,
+    "reason": "This preset perfectly targets the 'Dark Academia' aesthetic, muting the distracting greens and cyans on the ceiling ribs while shifting the dominant creams and walls toward rich, warm browns."
+   },
+   {
+    "key": "P03",
+    "label": "顏色 - 經典歐式建築棕 / Dark Academia 05",
+    "on_topic": true,
+    "strength": 90,
+    "reason": "This preset creates a moody, vintage atmosphere by significantly recovering the blown-out highlights of the light fixtures and muting the colors to a classic, muted palette."
+   },
+   {
+    "key": "P09",
+    "label": "器材 - 膠捲 - 復古膠卷 / 復古膠卷3",
+    "on_topic": false,
+    "strength": 75,
+    "reason": "Adding film grain and a slight vignette enhances the architectural details and gives the photo a timeless, nostalgic feel that suits the ornate interior."
+   }
+  ]
+ },
+ "overlap": 2,
+ "top1_same": false
+}

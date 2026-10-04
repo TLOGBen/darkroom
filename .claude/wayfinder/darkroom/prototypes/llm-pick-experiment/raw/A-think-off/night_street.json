@@ -1,0 +1,186 @@
+{
+ "photo": "night_street",
+ "describe": {
+  "content": "{\n  \"subject\": \"night street\",\n  \"main_subject\": \"cobblestone street leading towards a brightly lit castle in the distance\",\n  \"lighting\": \"mixed artificial lighting, warm street lamps and window lights on the foreground buildings, cooler ambient light on the castle, deep shadows in alleyways\",\n  \"color_tone\": \"warm golden tones from the streetlights, cool blue/purple tones from the castle lights, overall balanced white balance with slight warm cast in the foreground\",\n  \"contrast\": \"high\",\n  \"issues\": [\"deep shadows in the lower left building\", \"slight loss of detail in the brightest highlights on the castle\", \"some color fringing around high-contrast edges\"],\n  \"style_directions\": [\"Enhance warm tones with a golden hour preset to emphasize the cozy atmosphere\", \"Increase clarity and texture to highlight the stone surfaces\", \"Slightly lift the blacks and add a subtle vignette to draw the eye to the center\", \"Emphasize the purple/blue cast on the castle for a more dramatic night feel\"]\n}",
+  "reasoning": "",
+  "finish": "stop",
+  "wall_s": 6.27,
+  "prompt_n": 1130,
+  "prompt_tps": 467.5755010299074,
+  "gen_n": 226,
+  "gen_tps": 61.02411483165345,
+  "strict_ok": true,
+  "lenient_ok": true,
+  "schema_ok": true,
+  "parsed": {
+   "subject": "night street",
+   "main_subject": "cobblestone street leading towards a brightly lit castle in the distance",
+   "lighting": "mixed artificial lighting, warm street lamps and window lights on the foreground buildings, cooler ambient light on the castle, deep shadows in alleyways",
+   "color_tone": "warm golden tones from the streetlights, cool blue/purple tones from the castle lights, overall balanced white balance with slight warm cast in the foreground",
+   "contrast": "high",
+   "issues": [
+    "deep shadows in the lower left building",
+    "slight loss of detail in the brightest highlights on the castle",
+    "some color fringing around high-contrast edges"
+   ],
+   "style_directions": [
+    "Enhance warm tones with a golden hour preset to emphasize the cozy atmosphere",
+    "Increase clarity and texture to highlight the stone surfaces",
+    "Slightly lift the blacks and add a subtle vignette to draw the eye to the center",
+    "Emphasize the purple/blue cast on the castle for a more dramatic night feel"
+   ]
+  }
+ },
+ "pick1": {
+  "content": "{\n  \"picks\": [\n    {\n      \"id\": 1,\n      \"strength\": 85,\n      \"reason\": \"This preset is specifically designed for night scenes with neon lights; it recovers the highlights on the illuminated castle and opens the shadows on the stone buildings perfectly, while the cyan split-toning complements the warm street lamps.\"\n    },\n    {\n      \"id\": 2,\n      \"strength\": 85,\n      \"reason\": \"Similar to Candidate 1 but with higher clarity, this is an excellent choice to maintain the texture of the cobblestones and stone walls while still recovering the dynamic range of the night scene and enhancing the neon accents.\"\n    },\n    {\n      \"id\": 8,\n      \"strength\": 75,\n      \"reason\": \"This preset adds a strong violet shadow cast that matches the ambient purple glow of the castle and enhances the neon signs with a 'cyberpunk' feel, while the vibrant saturation makes the night scene pop without losing detail.\"\n    }\n  ]\n}",
+  "reasoning": "",
+  "finish": "stop",
+  "wall_s": 17.18,
+  "prompt_n": 8973,
+  "prompt_tps": 675.0135747464129,
+  "gen_n": 232,
+  "gen_tps": 60.36647940862802,
+  "strict_ok": true,
+  "lenient_ok": true,
+  "schema_ok": true,
+  "parsed": {
+   "picks": [
+    {
+     "id": 1,
+     "strength": 85,
+     "reason": "This preset is specifically designed for night scenes with neon lights; it recovers the highlights on the illuminated castle and opens the shadows on the stone buildings perfectly, while the cyan split-toning complements the warm street lamps."
+    },
+    {
+     "id": 2,
+     "strength": 85,
+     "reason": "Similar to Candidate 1 but with higher clarity, this is an excellent choice to maintain the texture of the cobblestones and stone walls while still recovering the dynamic range of the night scene and enhancing the neon accents."
+    },
+    {
+     "id": 8,
+     "strength": 75,
+     "reason": "This preset adds a strong violet shadow cast that matches the ambient purple glow of the castle and enhances the neon signs with a 'cyberpunk' feel, while the vibrant saturation makes the night scene pop without losing detail."
+    }
+   ]
+  },
+  "order": [
+   "P01",
+   "P02",
+   "P03",
+   "P04",
+   "P05",
+   "P06",
+   "P07",
+   "P08",
+   "P09",
+   "P10",
+   "P11",
+   "P12",
+   "P13",
+   "P14",
+   "P15",
+   "P16",
+   "P17",
+   "P18"
+  ],
+  "picks": [
+   {
+    "key": "P01",
+    "label": "城市 - 燈光 - 霓虹 / NEON Light 05",
+    "on_topic": true,
+    "strength": 85,
+    "reason": "This preset is specifically designed for night scenes with neon lights; it recovers the highlights on the illuminated castle and opens the shadows on the stone buildings perfectly, while the cyan split-toning complements the warm street lamps."
+   },
+   {
+    "key": "P02",
+    "label": "城市 - 燈光 - 霓虹 / NEON Light 11",
+    "on_topic": true,
+    "strength": 85,
+    "reason": "Similar to Candidate 1 but with higher clarity, this is an excellent choice to maintain the texture of the cobblestones and stone walls while still recovering the dynamic range of the night scene and enhancing the neon accents."
+   },
+   {
+    "key": "P08",
+    "label": "城市 - 燈光 - 摩登霓虹 / 摩登霓虹3",
+    "on_topic": false,
+    "strength": 75,
+    "reason": "This preset adds a strong violet shadow cast that matches the ambient purple glow of the castle and enhances the neon signs with a 'cyberpunk' feel, while the vibrant saturation makes the night scene pop without losing detail."
+   }
+  ]
+ },
+ "pick2": {
+  "content": "{\n\"picks\": [\n{\n\"id\": 4,\n\"strength\": 100,\n\"reason\": \"The 'NEON Light 05' preset is specifically designed for night scenes; its strong shadow lift (+71) reveals the stone textures and cobblestones that are currently lost in darkness, while the cyan-blue split toning complements the warm streetlights and purple neon.\"\n},\n{\n\"id\": 17,\n\"strength\": 110,\n\"reason\": \"This preset adds significant vibrance and saturation (+40/+51) which brings the purple neon and warm window lights to life, while the strong violet shadow tint (+59) creates a moody, cinematic atmosphere that fits the urban night setting.\"\n},\n{\n\"id\": 15,\n\"strength\": 85,\n\"reason\": \"Very similar to candidate 4, this preset also offers the necessary shadow lift (+71) to open up the scene, but its slightly lower clarity (-6) adds a softer, dreamier quality that can enhance the romantic feel of the old stone street.\"\n}\n]\n}",
+  "reasoning": "",
+  "finish": "stop",
+  "wall_s": 17.78,
+  "prompt_n": 8973,
+  "prompt_tps": 662.0136103446764,
+  "gen_n": 245,
+  "gen_tps": 59.90777639766193,
+  "strict_ok": true,
+  "lenient_ok": true,
+  "schema_ok": true,
+  "parsed": {
+   "picks": [
+    {
+     "id": 4,
+     "strength": 100,
+     "reason": "The 'NEON Light 05' preset is specifically designed for night scenes; its strong shadow lift (+71) reveals the stone textures and cobblestones that are currently lost in darkness, while the cyan-blue split toning complements the warm streetlights and purple neon."
+    },
+    {
+     "id": 17,
+     "strength": 110,
+     "reason": "This preset adds significant vibrance and saturation (+40/+51) which brings the purple neon and warm window lights to life, while the strong violet shadow tint (+59) creates a moody, cinematic atmosphere that fits the urban night setting."
+    },
+    {
+     "id": 15,
+     "strength": 85,
+     "reason": "Very similar to candidate 4, this preset also offers the necessary shadow lift (+71) to open up the scene, but its slightly lower clarity (-6) adds a softer, dreamier quality that can enhance the romantic feel of the old stone street."
+    }
+   ]
+  },
+  "order": [
+   "P16",
+   "P18",
+   "P15",
+   "P01",
+   "P11",
+   "P05",
+   "P12",
+   "P03",
+   "P06",
+   "P07",
+   "P14",
+   "P09",
+   "P17",
+   "P13",
+   "P02",
+   "P04",
+   "P08",
+   "P10"
+  ],
+  "picks": [
+   {
+    "key": "P01",
+    "label": "城市 - 燈光 - 霓虹 / NEON Light 05",
+    "on_topic": true,
+    "strength": 100,
+    "reason": "The 'NEON Light 05' preset is specifically designed for night scenes; its strong shadow lift (+71) reveals the stone textures and cobblestones that are currently lost in darkness, while the cyan-blue split toning complements the warm streetlights and purple neon."
+   },
+   {
+    "key": "P08",
+    "label": "城市 - 燈光 - 摩登霓虹 / 摩登霓虹3",
+    "on_topic": false,
+    "strength": 110,
+    "reason": "This preset adds significant vibrance and saturation (+40/+51) which brings the purple neon and warm window lights to life, while the strong violet shadow tint (+59) creates a moody, cinematic atmosphere that fits the urban night setting."
+   },
+   {
+    "key": "P02",
+    "label": "城市 - 燈光 - 霓虹 / NEON Light 11",
+    "on_topic": true,
+    "strength": 85,
+    "reason": "Very similar to candidate 4, this preset also offers the necessary shadow lift (+71) to open up the scene, but its slightly lower clarity (-6) adds a softer, dreamier quality that can enhance the romantic feel of the old stone street."
+   }
+  ]
+ },
+ "overlap": 3,
+ "top1_same": true
+}

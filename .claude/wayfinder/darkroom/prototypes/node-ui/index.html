@@ -1,0 +1,673 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>相片編輯節點草圖</title>
+<style>
+:root{
+  --bg:#1e1e1e; --canvas:#202020; --dot:#2c2c2c;
+  --node:#353535; --node-head:#2a2a2a; --panel:#2b2b2b; --panel2:#242424;
+  --line:#444; --text:#ddd; --mute:#999; --accent:#4a9eff; --warn:#e8a33d; --tweak:#ff8a3d; --ok:#5cc46a;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font:13px/1.4 "Microsoft JhengHei","Noto Sans TC",system-ui,sans-serif}
+button{font:inherit;color:var(--text);background:#3d3d3d;border:1px solid #555;border-radius:4px;padding:3px 8px;cursor:pointer}
+button:hover{background:#4a4a4a}
+button.primary{background:#2f6fbf;border-color:#3b82d6}
+button.primary:hover{background:#3b82d6}
+button.on{background:#2f6fbf;border-color:#3b82d6}
+input[type=text]{font:inherit;color:var(--text);background:#1b1b1b;border:1px solid #555;border-radius:4px;padding:3px 6px}
+input[type=range]{width:100%;accent-color:var(--accent);height:14px;margin:0}
+
+/* top switcher */
+#topbar{position:fixed;top:0;left:0;right:0;height:40px;background:#111;border-bottom:1px solid #333;display:flex;align-items:center;gap:8px;padding:0 12px;z-index:50}
+#topbar .title{font-weight:bold;margin-right:12px}
+#topbar .hint{color:var(--mute);margin-left:auto;font-size:12px}
+
+/* comfy canvas */
+#canvas{position:absolute;top:40px;left:0;right:0;bottom:0;overflow:auto;background-color:var(--canvas);
+  background-image:radial-gradient(var(--dot) 1px,transparent 1px);background-size:20px 20px}
+.cnode{position:absolute;background:var(--node);border:1px solid #111;border-radius:8px;box-shadow:0 4px 16px #0008}
+.cnode .head{background:var(--node-head);border-radius:8px 8px 0 0;padding:5px 10px;display:flex;align-items:center;gap:8px;border-bottom:1px solid #111}
+.cnode .head .dot{width:10px;height:10px;border-radius:50%;background:#777}
+.cnode .head .name{font-weight:bold;white-space:nowrap}
+.cnode .head .status{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.status{margin-left:auto;font-size:11px;padding:1px 8px;border-radius:10px;background:#5a4210;color:#ffd27a}
+.status.run{background:#1f4a25;color:#9fe0a8}
+.port{display:flex;align-items:center;gap:6px;font-size:12px;color:#bbb;padding:2px 10px}
+.port i{width:9px;height:9px;border-radius:50%;display:inline-block}
+.port.in i{background:#64b5f6;margin-left:-15px}
+.port.out{justify-content:flex-end}
+.port.out i{background:#64b5f6;margin-right:-15px}
+.ports{display:flex;justify-content:space-between;padding:4px 0}
+.fake{opacity:.8}
+.fake .body{padding:8px 10px;font-size:12px;color:#aaa}
+.wire{position:absolute;pointer-events:none}
+
+/* editor shared */
+#editor{display:grid;gap:0;min-height:0;min-width:0}
+.col{min-height:0;min-width:0;display:flex;flex-direction:column;background:var(--panel)}
+.col + .col{border-left:1px solid #1a1a1a}
+.sec-title{font-size:11px;color:var(--mute);text-transform:uppercase;letter-spacing:.05em;padding:6px 8px 4px}
+.scroll{overflow:auto;min-height:0;flex:1}
+
+/* tree */
+.treebar{display:flex;flex-wrap:wrap;gap:4px;padding:6px 8px;border-bottom:1px solid #1a1a1a}
+.treebar input{flex:1 1 100%}
+.treebar button{font-size:11px;padding:2px 6px}
+.tree{padding:4px 0 10px;font-size:12.5px}
+.tnode{display:flex;align-items:center;gap:4px;padding:2px 6px;cursor:pointer;white-space:nowrap;border-left:2px solid transparent}
+.tnode:hover{background:#383838}
+.tnode.sel{background:#2d4766;border-left-color:var(--accent)}
+.tnode .tw{width:12px;color:#888;font-size:10px;text-align:center;flex:none}
+.tnode .cnt{color:#777;font-size:11px}
+.tnode .star{margin-left:auto;color:#666;font-size:12px;padding:0 2px}
+.tnode .star.fav{color:#f5c518}
+.tnode .flag{color:var(--warn);font-size:11px}
+.tnode.preset{color:#cfcfcf}
+.tnode.preset.active{color:#fff;font-weight:bold;background:#29466b}
+.tnode.folder{color:#e6e6e6}
+.tnode.special{color:#f5c518}
+
+/* center */
+.pv-tools{display:flex;align-items:center;gap:4px;padding:6px 8px;border-bottom:1px solid #1a1a1a;flex-wrap:wrap}
+.pv-tools .sp{flex:1}
+.pv-tools .busy{font-size:11px;color:var(--mute)}
+.pv-tools .busy.on{color:#7fc4ff}
+.pv-wrap{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;background:#151515;position:relative;padding:10px}
+.pv-wrap{container-type:size}
+.pv{position:relative;aspect-ratio:3/2;width:min(100cqw,150cqh);height:auto;user-select:none}
+.pv img{position:absolute;inset:0;width:100%;height:100%;display:block}
+.pv .after{position:absolute;inset:0;overflow:hidden}
+.pv .ov{position:absolute;inset:0;pointer-events:none}
+.pv .lbl{position:absolute;top:6px;font-size:11px;background:#000a;padding:1px 6px;border-radius:3px;pointer-events:none}
+.pv .lbl.l{left:6px}.pv .lbl.r{right:6px}
+.pv .divider{position:absolute;top:0;bottom:0;width:2px;background:#fff;cursor:ew-resize;box-shadow:0 0 4px #000}
+.pv .divider::after{content:"◀▶";position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff;color:#000;font-size:9px;padding:3px 4px;border-radius:10px}
+.warnbar{background:#4a3710;color:#ffd890;font-size:12px;padding:5px 8px;border-bottom:1px solid #1a1a1a;display:none}
+.warnbar.show{display:block}
+.strength{padding:8px 10px;border-top:1px solid #1a1a1a;background:var(--panel2)}
+.strength .row{display:flex;align-items:center;gap:8px}
+.strength .row b{font-size:13px;white-space:nowrap}
+.strength .pname{font-weight:bold;color:#fff}
+.strength .val{width:52px;text-align:right;font-variant-numeric:tabular-nums}
+.pick{display:flex;align-items:center;gap:8px;padding:6px 10px;border-top:1px solid #1a1a1a;background:var(--panel2);flex-wrap:wrap}
+.cands{display:flex;gap:6px}
+.cand{width:84px;cursor:pointer;border:2px solid transparent;border-radius:4px;overflow:hidden;background:#111;font-size:10px;text-align:center}
+.cand.sel{border-color:var(--accent)}
+.cand img{width:100%;display:block;aspect-ratio:3/2}
+
+/* sliders */
+.acc{border-bottom:1px solid #1a1a1a}
+.acc > .ah{display:flex;align-items:center;gap:6px;padding:6px 8px;cursor:pointer;background:#303030;font-weight:bold}
+.acc > .ah:hover{background:#383838}
+.acc > .ah .tw{width:12px;font-size:10px;color:#888}
+.acc > .ah .tc{margin-left:auto;font-size:11px;color:var(--tweak);font-weight:normal}
+.acc > .ab{padding:4px 8px 8px;display:none}
+.acc.open > .ab{display:block}
+.sl{display:grid;grid-template-columns:86px 1fr 46px 16px;align-items:center;gap:6px;padding:2px 0}
+.sl label{font-size:12px;color:#cfcfcf;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sl .v{font-size:12px;text-align:right;font-variant-numeric:tabular-nums;color:#bbb}
+.sl .rs{visibility:hidden;color:var(--tweak);cursor:pointer;font-size:12px;text-align:center}
+.sl.tw label{color:var(--tweak)}
+.sl.tw label::before{content:"● ";font-size:9px}
+.sl.tw .v{color:var(--tweak)}
+.sl.tw .rs{visibility:visible}
+.sl .base{font-size:10px;color:#777}
+.tabs{display:flex;gap:2px;margin:4px 0}
+.tabs button{font-size:11px;padding:1px 7px}
+.curve{width:100%;aspect-ratio:1;background:#1a1a1a;border:1px solid #444;border-radius:3px;display:block;max-width:220px;margin:4px auto}
+.wheels{display:flex;justify-content:space-around;margin:6px 0}
+.wheel{text-align:center;font-size:11px;color:#bbb}
+.wheel .w{width:60px;height:60px;border-radius:50%;position:relative;margin:0 auto 3px;
+  background:radial-gradient(circle,#888 0,#8880 70%),conic-gradient(from 90deg,red,yellow,lime,cyan,blue,magenta,red)}
+.wheel .w i{position:absolute;width:8px;height:8px;border:2px solid #fff;border-radius:50%;transform:translate(-50%,-50%);box-shadow:0 0 2px #000}
+.note{font-size:11px;color:#888;padding:2px 0}
+
+.ai{border-top:1px solid #1a1a1a;background:var(--panel2);padding:6px 8px}
+.ai .ah2{display:flex;align-items:center;gap:6px;font-weight:bold}
+.ai .ab2{display:none;padding-top:6px}
+.ai.open .ab2{display:block}
+.ai .ab2 input[type=text]{width:100%;margin:2px 0 6px}
+.ai .ab2 .lab{font-size:12px;color:#bbb}
+.ai .res{font-size:11px;color:#9fe0a8;margin-top:4px}
+.switch{display:inline-flex;align-items:center;gap:5px;cursor:pointer;font-size:12px;font-weight:normal}
+.switch input{accent-color:var(--accent)}
+
+.actions{display:flex;align-items:center;gap:6px;padding:6px 10px;background:#262626;border-top:1px solid #111;flex-wrap:wrap}
+.actions .sp{flex:1}
+.actions .tip{font-size:11px;color:var(--mute)}
+
+/* A mode sizing */
+body.modeA #editor{grid-template-columns:230px 1fr 330px;flex:1;min-height:0}
+body.modeA .cnode.main{width:1100px;height:800px;display:flex;flex-direction:column}
+body.modeA .cnode.main .nodebody{flex:1;min-height:0;display:flex;flex-direction:column;margin:0 6px 6px;border:1px solid #111;border-radius:4px;overflow:hidden}
+
+/* B mode */
+.mini{padding:6px 10px 10px}
+.mini img{width:100%;display:block;border-radius:3px;aspect-ratio:3/2;background:#111}
+.mini .info{font-size:12px;color:#bbb;margin:6px 0;line-height:1.6}
+.mini .info b{color:#fff}
+.mini .info .tweak{color:var(--tweak)}
+.mini .btnrow{display:flex;gap:6px;margin-top:6px}
+.mini .btnrow button{flex:1}
+#full{position:fixed;inset:40px 0 0 0;background:#1b1b1b;z-index:40;display:none;flex-direction:column}
+#full.show{display:flex}
+#full .fhead{display:flex;align-items:center;gap:8px;padding:6px 12px;background:#111;border-bottom:1px solid #333}
+#full .fhead .t{font-weight:bold}
+#full .fhead .crumb{color:var(--mute)}
+#full .fbody{flex:1;min-height:0;display:flex;flex-direction:column}
+body.modeB #editor{grid-template-columns:280px 1fr 360px;flex:1;min-height:0}
+body.modeB #full .actions{border-top:none;border-bottom:1px solid #111;background:#1f1f1f}
+
+#toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#2f6fbf;color:#fff;padding:8px 16px;border-radius:6px;opacity:0;transition:opacity .3s;z-index:100;pointer-events:none}
+#toast.show{opacity:1}
+.legend{position:absolute;font-size:12px;color:#aaa;background:#0008;border:1px dashed #555;border-radius:6px;padding:8px 10px;max-width:300px;line-height:1.6}
+</style>
+</head>
+<body class="modeA">
+
+<div id="topbar">
+  <span class="title">相片編輯節點　介面草圖</span>
+  <button id="btnA" class="on">A 版：節點內嵌</button>
+  <button id="btnB">B 版：按鈕開全螢幕編輯器</button>
+  <span class="hint">草圖：滑桿只用 CSS 濾鏡粗略模擬，不是真的調色；preset 是假資料</span>
+</div>
+
+<div id="canvas">
+  <!-- upstream fake node -->
+  <div class="cnode fake" id="upNode" style="left:40px;top:80px;width:220px">
+    <div class="head"><span class="dot"></span><span class="name">Load Image</span></div>
+    <div class="body">photo_0412.jpg</div>
+    <div class="ports"><span></span><span class="port out">IMAGE <i></i></span></div>
+  </div>
+  <!-- downstream fake node -->
+  <div class="cnode fake" id="downNode" style="width:200px">
+    <div class="head"><span class="dot"></span><span class="name">Save Image</span></div>
+    <div class="ports"><span class="port in"><i></i> images</span><span></span></div>
+    <div class="body">前綴：photo/%date%-lr</div>
+  </div>
+
+  <!-- main node (contents depend on mode) -->
+  <div class="cnode main" id="mainNode" style="left:320px;top:40px">
+    <div class="head"><span class="dot" style="background:#4a9eff"></span><span class="name">Lightroom Preset 相片編輯</span>
+      <span class="status" id="statusPill">等待編輯中（workflow 暫停）</span></div>
+    <div class="ports">
+      <div><div class="port in"><i></i> image</div><div class="port in"><i></i> params（選填）</div></div>
+      <div><div class="port out">IMAGE <i></i></div><div class="port out">PARAMS <i></i></div></div>
+    </div>
+    <div id="nodeHostA" class="nodebody"></div>
+    <div id="nodeHostB"></div>
+  </div>
+
+  <svg class="wire" id="wires" width="3000" height="2000" style="left:0;top:0"></svg>
+  <div class="legend" id="legend"></div>
+</div>
+
+<div id="full">
+  <div class="fhead">
+    <span class="t">相片編輯器</span><span class="crumb">— 來自節點「Lightroom Preset 相片編輯」#12 ／ photo_0412.jpg</span>
+    <span style="flex:1"></span>
+    <span class="tip" style="font-size:11px;color:#999">Esc＝關閉（保留調整，不送出）</span>
+    <button id="closeFull">關閉</button>
+  </div>
+  <div class="fbody" id="fullHost"></div>
+</div>
+
+<div id="toast"></div>
+
+<!-- shared editor (moved between hosts) -->
+<div id="parking" style="display:none">
+  <div id="actions" class="actions">
+    <button class="primary" id="actApply">套用並繼續 ▶</button>
+    <label class="switch" title="開啟時，執行 workflow 不會停下來等你調整，直接用存好的參數（API／批次用）"><input type="checkbox" id="actNoPause"> 不暫停模式</label>
+    <span class="sp"></span>
+    <button id="actSave">另存為我的 preset</button>
+    <button id="actResetTweaks">還原全部微調</button>
+    <button id="actReset">重設（清空 preset）</button>
+  </div>
+  <div id="editor">
+    <!-- left: library -->
+    <div class="col" id="colLib">
+      <div class="treebar">
+        <input type="text" id="search" placeholder="搜尋 preset…">
+        <button id="tNew" title="在選取的資料夾下建新資料夾">＋資料夾</button>
+        <button id="tRename">改名</button>
+        <button id="tMove">搬移</button>
+        <button id="tImport" title="匯入 .xmp 檔或資料夾">匯入 xmp</button>
+      </div>
+      <div class="sec-title" id="libCount"></div>
+      <div class="scroll tree" id="tree"></div>
+    </div>
+    <!-- center: preview -->
+    <div class="col" id="colPv">
+      <div class="pv-tools">
+        <button id="pvHold" title="按住看原圖（快捷鍵：\）">按住看原圖</button>
+        <button id="pvToggle">前／後 切換</button>
+        <button id="pvSplit">分割比較</button>
+        <span class="sp"></span>
+        <span class="busy" id="busy">預覽：已更新</span>
+      </div>
+      <div class="warnbar" id="warnbar"></div>
+      <div class="pv-wrap"><div class="pv" id="pv">
+        <img id="imgBefore" alt="原圖">
+        <div class="after" id="afterWrap">
+          <img id="imgAfter" alt="套用後">
+          <div class="ov" id="ovTint"></div>
+          <div class="ov" id="ovVig"></div>
+          <div class="ov" id="ovGrain"></div>
+        </div>
+        <span class="lbl l" id="lblL">原圖</span><span class="lbl r" id="lblR">套用後</span>
+        <div class="divider" id="divider"></div>
+      </div></div>
+      <div class="strength">
+        <div class="row"><span>目前 preset：</span><span class="pname" id="pName">（未選）</span><span class="sp" style="flex:1"></span><button id="favCur">☆ 加最愛</button></div>
+        <div class="row" style="margin-top:4px"><b>強度</b><input type="range" id="strength" min="0" max="200" value="100"><span class="val" id="strengthV">100%</span><button id="strength100" title="回到 100%">100%</button></div>
+      </div>
+      <div class="pick">
+        <button id="aiPick" title="AI 看圖挑 preset（之後實作）">AI 自動挑 preset</button>
+        <div class="cands" id="cands"><span class="note">（按下後顯示前 3 名候選，點縮圖切換）</span></div>
+      </div>
+    </div>
+    <!-- right: sliders -->
+    <div class="col" id="colSl">
+      <div class="scroll" id="sliders"></div>
+      <div class="ai" id="aiBox">
+        <div class="ah2"><label class="switch"><input type="checkbox" id="aiOn"> AI 補強</label><span class="note" style="margin-left:auto">預設關</span></div>
+        <div class="ab2">
+          <div class="lab">想要的方向</div><input type="text" id="aiWant" placeholder="例如：更溫暖、膚色乾淨、天空更藍">
+          <div class="lab">不想要的方向</div><input type="text" id="aiNot" placeholder="例如：不要偏綠、不要太飽和">
+          <div class="sl" style="grid-template-columns:86px 1fr 46px 0"><label>AI 補強強度</label><input type="range" id="aiStr" min="0" max="100" value="50"><span class="v" id="aiStrV">50</span><span></span></div>
+          <button id="aiRun" class="primary" style="width:100%;margin-top:4px">執行 AI 補強</button>
+          <div class="res" id="aiRes"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ---------- landscape image (inline SVG) ----------
+const SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 400">
+<defs>
+<linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3b6fb6"/><stop offset=".55" stop-color="#9cc3e6"/><stop offset="1" stop-color="#f3d9a8"/></linearGradient>
+<linearGradient id="lake" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6d9cc9"/><stop offset="1" stop-color="#21466b"/></linearGradient>
+<radialGradient id="sun"><stop offset="0" stop-color="#fff8d8"/><stop offset=".4" stop-color="#ffd977"/><stop offset="1" stop-color="#ffd97700"/></radialGradient>
+</defs>
+<rect width="600" height="400" fill="url(#sky)"/>
+<circle cx="440" cy="150" r="80" fill="url(#sun)"/>
+<path d="M0 230 L80 150 L140 200 L220 110 L300 210 L360 160 L450 230 Z" fill="#5d6f8f"/>
+<path d="M200 230 L300 140 L340 175 L420 120 L520 200 L600 160 L600 240 L200 240Z" fill="#46597a"/>
+<path d="M290 150 L300 140 L312 152 L305 150 L298 156Z M410 128 L420 120 L432 131 L424 130Z" fill="#f2f2f2"/>
+<path d="M0 230 Q150 215 300 232 T600 228 L600 260 L0 260Z" fill="#3f7a3a"/>
+<rect y="255" width="600" height="80" fill="url(#lake)"/>
+<path d="M0 330 Q200 310 380 328 T600 320 L600 400 L0 400Z" fill="#4f8a35"/>
+<path d="M0 360 Q300 345 600 365 L600 400 L0 400Z" fill="#2e5b21"/>
+<g fill="#1f4a1c">
+<path d="M40 340 l18 -60 l18 60z"/><path d="M70 345 l14 -48 l14 48z"/><path d="M520 335 l20 -70 l20 70z"/><path d="M555 340 l14 -50 l14 50z"/>
+</g>
+<g fill="#c7432f"><rect x="250" y="318" width="40" height="22"/><path d="M245 318 l25 -18 l25 18z" fill="#7a2a1f"/></g>
+<rect x="263" y="327" width="8" height="13" fill="#3a2a1a"/>
+<path d="M330 345 q3 -14 6 0z M333 330 a3 3 0 1 0 0.1 0" fill="#e8b98a"/>
+<rect x="331" y="333" width="6" height="12" fill="#d24b6a"/>
+<g fill="#ffffff" opacity=".75"><ellipse cx="120" cy="70" rx="50" ry="12"/><ellipse cx="150" cy="62" rx="30" ry="12"/><ellipse cx="330" cy="90" rx="40" ry="9"/></g>
+</svg>`;
+const IMG = 'data:image/svg+xml,' + encodeURIComponent(SVG);
+const GRAIN = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><filter id="n"><feTurbulence type="fractalNoise" baseFrequency=".9" numOctaves="2" stitchTiles="stitch"/><feColorMatrix type="saturate" values="0"/></filter><rect width="200" height="200" filter="url(#n)"/></svg>');
+
+// ---------- slider definitions ----------
+const HSLC = [['red','紅'],['orange','橙'],['yellow','黃'],['green','綠'],['aqua','淺綠'],['blue','藍'],['purple','紫'],['magenta','洋紅']];
+const S = []; // {key,label,min,max,step,def,group,sub}
+function add(group,key,label,min,max,def=0,step=1,sub=null){S.push({group,key,label,min,max,def,step,sub})}
+add('basic','temp','色溫（增量）',-100,100);add('basic','tint','色調（增量）',-100,100);
+add('basic','exposure','曝光',-5,5,0,0.05);add('basic','contrast','對比',-100,100);
+add('basic','highlights','亮部',-100,100);add('basic','shadows','陰影',-100,100);
+add('basic','whites','白色',-100,100);add('basic','blacks','黑色',-100,100);
+add('basic','texture','紋理',-100,100);add('basic','clarity','清晰度',-100,100);add('basic','dehaze','去朦朧',-100,100);
+add('basic','vibrance','鮮豔度',-100,100);add('basic','saturation','飽和度',-100,100);
+add('curve','pc_hl','亮部區',-100,100);add('curve','pc_lt','亮色調',-100,100);add('curve','pc_dk','暗色調',-100,100);add('curve','pc_sh','陰影區',-100,100);
+for(const [k,n] of HSLC){add('hsl','h_'+k,n,-100,100,0,1,'h');}
+for(const [k,n] of HSLC){add('hsl','s_'+k,n,-100,100,0,1,'s');}
+for(const [k,n] of HSLC){add('hsl','l_'+k,n,-100,100,0,1,'l');}
+for(const [k,n] of [['sh','陰影'],['md','中間調'],['hl','亮部']]){add('grade','g'+k+'_h',n+' 色相',0,360,0);add('grade','g'+k+'_s',n+' 飽和',0,100,0);}
+add('grade','g_blend','混合',0,100,50);add('grade','g_bal','平衡',-100,100,0);
+add('detail','sharp','銳化 量',0,150,40);add('detail','sharp_r','銳化 半徑',0.5,3,1,0.1);add('detail','nr_l','降噪 明度',0,100,0);add('detail','nr_c','降噪 顏色',0,100,25);
+add('effect','vig','暗角 量',-100,100);add('effect','vig_m','暗角 中點',0,100,50);add('effect','grain','顆粒 量',0,100);add('effect','grain_s','顆粒 大小',0,100,25);
+add('calib','cr_h','紅原色 色相',-100,100);add('calib','cr_s','紅原色 飽和',-100,100);add('calib','cg_h','綠原色 色相',-100,100);add('calib','cg_s','綠原色 飽和',-100,100);add('calib','cb_h','藍原色 色相',-100,100);add('calib','cb_s','藍原色 飽和',-100,100);
+const GROUPS=[['basic','基本'],['curve','曲線'],['hsl','HSL'],['grade','顏色分級'],['detail','細節'],['effect','效果'],['calib','校正']];
+const byKey={};S.forEach(s=>byKey[s.key]=s);
+
+// ---------- fake preset library ----------
+function rng(seed){return function(){seed|=0;seed=seed+0x6D2B79F5|0;let t=Math.imul(seed^seed>>>15,1|seed);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+const TREE_SRC = {
+ '顏色':{'咖啡色':{temp:30,saturation:-15,g:'md',gh:35},'青橙':{temp:5,g:'sh',gh:190,h_orange:-10,s_blue:20},'粉彩':{exposure:.3,contrast:-25,saturation:-20},'黑白':{saturation:-100,contrast:25}},
+ '風格':{'清新':{exposure:.4,shadows:30,vibrance:20},'霧面':{blacks:40,contrast:-20,pc_sh:35},'高對比':{contrast:45,clarity:25}},
+ '器材':{'膠捲':{'富士':{temp:-8,tint:-6,s_green:-15,grain:20},'柯達':{temp:18,s_red:12,grain:25}},'拍立得':{'拍立得':{blacks:35,saturation:-20,vig:-20}},'鏡頭':{'復古鏡頭':{clarity:-25,vig:-35}}},
+ '電影':{'戲劇色調':{contrast:30,g:'sh',gh:200,temp:-10},'黑色電影':{saturation:-85,contrast:40,vig:-40}},
+ '自然':{'森林':{s_green:25,l_green:-10,temp:-5},'海邊':{s_blue:30,s_aqua:25,exposure:.2}},
+ '城市':{'夜景':{exposure:-.4,temp:-25,clarity:20},'街頭':{contrast:25,saturation:-25,grain:15}},
+ '地區':{'日本':{exposure:.35,temp:-12,saturation:-15},'北歐':{temp:-18,saturation:-30,blacks:20}},
+ '復古':{'70 年代':{temp:30,tint:8,blacks:30,grain:30},'褪色':{contrast:-35,blacks:45,saturation:-30}},
+ '物件':{'美食':{temp:15,vibrance:30,clarity:10},'產品':{exposure:.2,clarity:20,whites:20}},
+ '時間':{'黃金時刻':{temp:40,tint:8,highlights:-20},'藍調時刻':{temp:-35,tint:5,exposure:-.2}},
+ '人物':{'人像膚色':{h_orange:5,s_orange:-10,l_orange:15,clarity:-10},'婚禮':{exposure:.4,contrast:-15,highlights:-30}},
+};
+const SUFFIX=['柔和','標準','強烈'];
+let uid=0;
+function mkFolder(name,parent){return {id:'f'+(uid++),type:'folder',name,parent,children:[],open:false}}
+const root=mkFolder('root',null);
+const presets={};
+function buildTree(src,parent,seedBase){
+  for(const [name,v] of Object.entries(src)){
+    const f=mkFolder(name,parent);parent.children.push(f);
+    const isLeaf=Object.values(v).every(x=>typeof x!=='object');
+    if(isLeaf){
+      SUFFIX.forEach((suf,i)=>{
+        const r=rng((seedBase+=7)*31+i);
+        const vals={};
+        const k=1-0.35+i*0.35; // 柔和 0.65, 標準 1, 強烈 1.35
+        for(const [kk,vv] of Object.entries(v)){
+          if(kk==='g'){vals['g'+vv+'_s']=Math.round(20*k);continue}
+          if(kk==='gh'){vals['g'+v.g+'_h']=vv;continue}
+          vals[kk]=+(vv*k).toFixed(2);
+        }
+        vals.contrast=Math.round((vals.contrast||0)+(r()*20-10));
+        vals.highlights=Math.round((vals.highlights||0)-r()*25);
+        vals.shadows=Math.round((vals.shadows||0)+r()*20);
+        vals.vibrance=Math.round((vals.vibrance||0)+r()*16-4);
+        const p={id:'p'+(uid++),type:'preset',name:name+' '+suf,parent:f,vals,fav:false,flags:[]};
+        if(r()<0.12)p.flags.push('引用 Adobe 內建 Look「Adobe 鮮明」');
+        if(r()<0.10)p.flags.push('含 2 個遮罩（天空、主體）');
+        f.children.push(p);presets[p.id]=p;
+      });
+    } else buildTree(v,f,seedBase+=100);
+  }
+}
+buildTree(TREE_SRC,root,1);
+const mine=mkFolder('我的 preset',root);mine.special=true;
+const favFolder={id:'fav',type:'folder',name:'★ 最愛',virtual:true,open:true,children:[]};
+
+// ---------- state ----------
+const st={preset:null,strength:100,tweaks:{},view:'after',split:50,hold:false,selFolder:null,search:'',openGroups:{basic:true},hslTab:'h',curveCh:'RGB',mode:'A'};
+function presetOffset(key){
+  if(!st.preset)return 0;
+  const v=st.preset.vals[key]; if(v==null)return 0;
+  const d=byKey[key].def;
+  return (v-d); // stored absolute; offset from default
+}
+function baseVal(key){const s=byKey[key];return s.def+presetOffset(key)*st.strength/100}
+function effVal(key){const s=byKey[key];let v=baseVal(key)+(st.tweaks[key]||0);return Math.min(s.max,Math.max(s.min,v))}
+function fmt(key,v){const s=byKey[key];if(s.step<1)return (v>0&&s.min<0?'+':'')+v.toFixed(2);v=Math.round(v);return (v>0&&s.min<0?'+':'')+v}
+
+// ---------- preview ----------
+function filterFor(get){
+  const ex=get('exposure'),ct=get('contrast'),cl=get('clarity'),dh=get('dehaze'),sat=get('saturation'),vib=get('vibrance');
+  const hl=get('highlights'),sh=get('shadows'),wh=get('whites'),bk=get('blacks');
+  const curveLift=(get('pc_sh')+get('pc_dk'))*0.0015;
+  const br=1+ex*0.2+sh*0.0012+wh*0.0012+hl*0.0006+bk*0.0010+curveLift;
+  const c=Math.max(0.1,1+ct/170+cl/450+dh/300-bk/400+(get('pc_hl')-get('pc_sh'))/600);
+  const s=Math.max(0,1+sat/100+vib/170);
+  const blur=Math.max(0,-get('texture')/250-cl/600);
+  return `brightness(${br.toFixed(3)}) contrast(${c.toFixed(3)}) saturate(${s.toFixed(3)})`+(blur>0.02?` blur(${blur.toFixed(2)}px)`:'');
+}
+function tintColor(get){
+  const t=get('temp'),ti=get('tint');
+  const r=128+t*1.1+ti*0.5,g=128-ti*0.9,b=128-t*1.1+ti*0.5;
+  return {c:`rgb(${r|0},${g|0},${b|0})`,o:Math.min(0.85,(Math.abs(t)+Math.abs(ti))/110)};
+}
+function renderPreview(){
+  const get=effVal;
+  $('#imgAfter').style.filter=filterFor(get);
+  const tc=tintColor(get);$('#ovTint').style.background=tc.c;$('#ovTint').style.opacity=tc.o;$('#ovTint').style.mixBlendMode='soft-light';
+  const vg=get('vig'),mid=get('vig_m');
+  $('#ovVig').style.background=`radial-gradient(ellipse at center, transparent ${20+mid*0.5}%, ${vg<0?'#000':'#fff'} 120%)`;
+  $('#ovVig').style.opacity=Math.abs(vg)/100;
+  $('#ovGrain').style.background=`url("${GRAIN}")`;$('#ovGrain').style.backgroundSize=(80+get('grain_s')*2)+'px';
+  $('#ovGrain').style.opacity=get('grain')/140;$('#ovGrain').style.mixBlendMode='overlay';
+  applyView();
+  // B-mode thumbnail
+  const th=$('#miniImg');if(th){th.style.filter=filterFor(get);}
+  updateMini();
+  flashBusy();
+}
+function applyView(){
+  const aw=$('#afterWrap'),dv=$('#divider');
+  let show=st.view, clip='none';
+  if(st.hold) show='before';
+  if(show==='before'){aw.style.visibility='hidden';dv.style.display='none';$('#lblL').textContent='原圖';$('#lblR').style.display='none';$('#lblL').style.display=''}
+  else if(show==='after'){aw.style.visibility='visible';aw.style.clipPath='none';dv.style.display='none';$('#lblL').style.display='none';$('#lblR').style.display=''}
+  else {aw.style.visibility='visible';aw.style.clipPath=`inset(0 0 0 ${st.split}%)`;dv.style.display='';dv.style.left=`calc(${st.split}% - 1px)`;$('#lblL').style.display='';$('#lblR').style.display='';$('#lblL').textContent='原圖'}
+  $('#pvToggle').textContent= st.view==='before'?'目前：原圖（點切換）':'前／後 切換';
+  $('#pvToggle').classList.toggle('on',st.view==='before');
+  $('#pvSplit').classList.toggle('on',st.view==='split');
+}
+let busyT;
+function flashBusy(){const b=$('#busy');b.textContent='後端算圖中…（約 0.1 秒）';b.classList.add('on');clearTimeout(busyT);busyT=setTimeout(()=>{b.textContent='預覽：已更新';b.classList.remove('on')},350)}
+
+// ---------- sliders UI ----------
+function renderSliders(){
+  const box=$('#sliders');box.innerHTML='';
+  for(const [g,gname] of GROUPS){
+    const acc=document.createElement('div');acc.className='acc'+(st.openGroups[g]?' open':'');
+    const nTw=S.filter(s=>s.group===g&&st.tweaks[s.key]).length;
+    acc.innerHTML=`<div class="ah"><span class="tw">${st.openGroups[g]?'▼':'▶'}</span>${gname}<span class="tc">${nTw?('● 微調 '+nTw+' 項'):''}</span></div><div class="ab"></div>`;
+    acc.querySelector('.ah').onclick=()=>{st.openGroups[g]=!st.openGroups[g];renderSliders()};
+    const ab=acc.querySelector('.ab');
+    if(st.openGroups[g]){
+      if(g==='curve'){
+        ab.insertAdjacentHTML('beforeend',`<div class="note">參數曲線</div>`);
+        S.filter(s=>s.group==='curve').forEach(s=>ab.appendChild(sliderRow(s)));
+        ab.insertAdjacentHTML('beforeend',`<div class="note" style="margin-top:6px">點曲線（可拖曳控制點；草圖只畫示意）</div><div class="tabs" id="chTabs"></div>${curveSvg()}`);
+        const tabs=ab.querySelector('#chTabs');
+        ['RGB','R','G','B'].forEach(ch=>{const b=document.createElement('button');b.textContent=ch;if(st.curveCh===ch)b.classList.add('on');b.onclick=()=>{st.curveCh=ch;renderSliders()};tabs.appendChild(b)});
+      } else if(g==='hsl'){
+        const tabs=document.createElement('div');tabs.className='tabs';
+        [['h','色相'],['s','飽和度'],['l','明度']].forEach(([k,n])=>{const b=document.createElement('button');b.textContent=n;if(st.hslTab===k)b.classList.add('on');b.onclick=()=>{st.hslTab=k;renderSliders()};tabs.appendChild(b)});
+        ab.appendChild(tabs);
+        S.filter(s=>s.group==='hsl'&&s.sub===st.hslTab).forEach(s=>ab.appendChild(sliderRow(s)));
+      } else if(g==='grade'){
+        const w=document.createElement('div');w.className='wheels';
+        for(const [k,n] of [['sh','陰影'],['md','中間調'],['hl','亮部']]){
+          const h=effVal('g'+k+'_h'),sa=effVal('g'+k+'_s');
+          const a=(h-90)*Math.PI/180, r=sa/100*26;
+          w.insertAdjacentHTML('beforeend',`<div class="wheel"><div class="w"><i style="left:${30+Math.cos(a)*r}px;top:${30+Math.sin(a)*r}px"></i></div>${n}</div>`);
+        }
+        ab.appendChild(w);
+        S.filter(s=>s.group==='grade').forEach(s=>ab.appendChild(sliderRow(s)));
+      } else S.filter(s=>s.group===g).forEach(s=>ab.appendChild(sliderRow(s)));
+    }
+    box.appendChild(acc);
+  }
+}
+function curveSvg(){
+  const c=effVal('contrast')/100, sh=(effVal('pc_sh')+effVal('blacks')*0.5)/100, hl=effVal('pc_hl')/100;
+  const col={RGB:'#ddd',R:'#f55',G:'#5d5',B:'#59f'}[st.curveCh];
+  const off={RGB:0,R:effVal('temp')/400,G:-effVal('tint')/400,B:-effVal('temp')/400}[st.curveCh];
+  const y=(x)=>{let v=x+c*0.25*Math.sin(2*Math.PI*(x-0.5))*-1+off*Math.sin(Math.PI*x);v+= sh*0.2*(1-x)*(1-x); v+=hl*0.2*x*x*(x<1?1:0);return Math.max(0,Math.min(1,v))};
+  let d='';for(let i=0;i<=20;i++){const x=i/20;d+=(i?'L':'M')+(x*200).toFixed(1)+' '+((1-y(x))*200).toFixed(1)}
+  const pts=[0.25,0.5,0.75].map(x=>`<circle cx="${x*200}" cy="${(1-y(x))*200}" r="4" fill="${col}"/>`).join('');
+  return `<svg class="curve" viewBox="0 0 200 200"><g stroke="#333"><path d="M50 0V200M100 0V200M150 0V200M0 50H200M0 100H200M0 150H200"/></g><path d="M0 200L200 0" stroke="#555" stroke-dasharray="3 3"/><path d="${d}" fill="none" stroke="${col}" stroke-width="2"/>${pts}</svg>`;
+}
+function sliderRow(s){
+  const row=document.createElement('div');row.className='sl'+(st.tweaks[s.key]?' tw':'');
+  const v=effVal(s.key),bv=baseVal(s.key);
+  row.title=`preset 值 ${fmt(s.key,presetOffset(s.key)+s.def)} × 強度 ${st.strength}% = ${fmt(s.key,bv)}`+(st.tweaks[s.key]?`；微調 ${st.tweaks[s.key]>0?'+':''}${(+st.tweaks[s.key].toFixed(2))}`:'')+'；雙擊滑桿＝還原微調';
+  row.innerHTML=`<label>${s.label}</label><input type="range" min="${s.min}" max="${s.max}" step="${s.step}" value="${v}"><span class="v">${fmt(s.key,v)}</span><span class="rs" title="還原這一項的微調（回到 preset × 強度）">↺</span>`;
+  const inp=row.querySelector('input');
+  inp.oninput=()=>{const nv=+inp.value;let tw=nv-baseVal(s.key);if(Math.abs(tw)<s.step/2)tw=0;if(tw)st.tweaks[s.key]=tw;else delete st.tweaks[s.key];
+    row.classList.toggle('tw',!!tw);row.querySelector('.v').textContent=fmt(s.key,nv);renderPreview();refreshGroupBadges();};
+  inp.onchange=()=>{if(['grade','curve'].includes(s.group))renderSliders()};
+  inp.ondblclick=()=>{delete st.tweaks[s.key];renderSliders();renderPreview()};
+  row.querySelector('.rs').onclick=()=>{delete st.tweaks[s.key];renderSliders();renderPreview()};
+  return row;
+}
+function refreshGroupBadges(){
+  document.querySelectorAll('#sliders .acc').forEach((acc,i)=>{const g=GROUPS[i][0];const n=S.filter(s=>s.group===g&&st.tweaks[s.key]).length;acc.querySelector('.tc').textContent=n?('● 微調 '+n+' 項'):''});
+}
+
+// ---------- tree UI ----------
+function countPresets(f){return f.children.reduce((a,c)=>a+(c.type==='preset'?1:countPresets(c)),0)}
+function renderTree(){
+  const box=$('#tree');box.innerHTML='';
+  const total=Object.keys(presets).length;
+  $('#libCount').textContent=`preset 庫（實際 150 群組／1466 個；草圖假資料 ${total} 個）`;
+  if(st.search){
+    const q=st.search.toLowerCase();
+    const hits=Object.values(presets).filter(p=>p.name.toLowerCase().includes(q)||pathOf(p).toLowerCase().includes(q));
+    box.insertAdjacentHTML('beforeend',`<div class="note" style="padding:2px 8px">找到 ${hits.length} 個</div>`);
+    hits.forEach(p=>box.appendChild(presetRow(p,0,true)));
+    return;
+  }
+  favFolder.children=Object.values(presets).filter(p=>p.fav);
+  box.appendChild(folderRow(favFolder,0));
+  if(favFolder.open){favFolder.children.length?favFolder.children.forEach(p=>box.appendChild(presetRow(p,1,true))):box.insertAdjacentHTML('beforeend','<div class="note" style="padding-left:28px">（點 ☆ 加入最愛）</div>')}
+  const walk=(f,d)=>{for(const c of f.children){if(c.type==='folder'){box.appendChild(folderRow(c,d));if(c.open)walk(c,d+1)}else box.appendChild(presetRow(c,d))}};
+  // mine first
+  box.appendChild(folderRow(mine,0));if(mine.open){mine.children.length?walk(mine,1):box.insertAdjacentHTML('beforeend','<div class="note" style="padding-left:28px">（「另存為我的 preset」會放這裡）</div>')}
+  root.children.filter(c=>c!==mine).forEach(c=>{box.appendChild(folderRow(c,0));if(c.open)walk(c,1)});
+}
+function pathOf(p){const a=[];let f=p.parent;while(f&&f!==root){a.unshift(f.name);f=f.parent}return a.join(' → ')}
+function folderRow(f,d){
+  const r=document.createElement('div');r.className='tnode folder'+(f.special||f.virtual?' special':'')+(st.selFolder===f?' sel':'');
+  r.style.paddingLeft=(6+d*14)+'px';
+  r.innerHTML=`<span class="tw">${f.open?'▼':'▶'}</span><span>${f.name}</span><span class="cnt">${f.virtual?f.children.length:countPresets(f)}</span>`;
+  r.onclick=()=>{f.open=!f.open;if(!f.virtual)st.selFolder=f;renderTree()};
+  return r;
+}
+function presetRow(p,d,showPath){
+  const r=document.createElement('div');r.className='tnode preset'+(st.preset===p?' active':'');
+  r.style.paddingLeft=(6+d*14+12)+'px';
+  r.title=pathOf(p)+(p.flags.length?'\n⚠ '+p.flags.join('；')+'（這部分會略過）':'');
+  r.innerHTML=`<span>${p.name}</span>${showPath?`<span class="cnt">${pathOf(p)}</span>`:''}${p.flags.length?'<span class="flag" title="有部分設定會略過">⚠</span>':''}<span class="star ${p.fav?'fav':''}">${p.fav?'★':'☆'}</span>`;
+  r.onclick=(e)=>{if(e.target.classList.contains('star')){p.fav=!p.fav;renderTree();updateFavBtn();return}selectPreset(p)};
+  return r;
+}
+function selectPreset(p){
+  st.preset=p;
+  if(p){let f=p.parent;while(f&&f!==root){f.open=true;f=f.parent}}st.tweaks={};st.strength=100;$('#strength').value=100;$('#strengthV').textContent='100%';
+  $('#pName').textContent=p?((pathOf(p)?pathOf(p)+' → ':'')+p.name):'（未選）';
+  const wb=$('#warnbar');
+  if(p&&p.flags.length){wb.innerHTML='⚠ 這個 preset '+p.flags.join('、')+'，<b>這部分無法重現，已略過</b>；其餘設定照常套用。';wb.classList.add('show')}else wb.classList.remove('show');
+  updateFavBtn();renderTree();renderSliders();renderPreview();
+}
+function updateFavBtn(){const b=$('#favCur');b.textContent=st.preset&&st.preset.fav?'★ 已在最愛':'☆ 加最愛';b.disabled=!st.preset}
+
+// ---------- mini (B node) ----------
+function updateMini(){
+  const i=$('#miniInfo');if(!i)return;
+  const n=Object.keys(st.tweaks).length;
+  i.innerHTML=`preset：<b>${st.preset?st.preset.name:'（未選）'}</b><br>強度：<b>${st.strength}%</b>　${n?`<span class="tweak">● 微調 ${n} 項</span>`:'無微調'}`+(st.preset&&st.preset.flags.length?'<br><span style="color:#e8a33d">⚠ 部分設定略過</span>':'')+($('#aiOn').checked?'<br>AI 補強：開':'');
+}
+
+// ---------- helpers ----------
+function $(s){return document.querySelector(s)}
+function toast(t){const e=$('#toast');e.textContent=t;e.classList.add('show');clearTimeout(e._t);e._t=setTimeout(()=>e.classList.remove('show'),1800)}
+
+// ---------- wiring events ----------
+$('#imgBefore').src=IMG;$('#imgAfter').src=IMG;
+$('#strength').oninput=e=>{st.strength=+e.target.value;$('#strengthV').textContent=st.strength+'%';renderSliders();renderPreview()};
+$('#strength100').onclick=()=>{st.strength=100;$('#strength').value=100;$('#strengthV').textContent='100%';renderSliders();renderPreview()};
+$('#favCur').onclick=()=>{if(st.preset){st.preset.fav=!st.preset.fav;updateFavBtn();renderTree()}};
+$('#search').oninput=e=>{st.search=e.target.value.trim();renderTree()};
+$('#pvHold').onmousedown=()=>{st.hold=true;applyView()};
+document.addEventListener('mouseup',()=>{if(st.hold){st.hold=false;applyView()}});
+document.addEventListener('keydown',e=>{if(e.key==='\\'&&document.activeElement.tagName!=='INPUT'){st.hold=true;applyView()} if(e.key==='Escape')closeFull()});
+document.addEventListener('keyup',e=>{if(e.key==='\\'){st.hold=false;applyView()}});
+$('#pvToggle').onclick=()=>{st.view=st.view==='before'?'after':'before';applyView()};
+$('#pvSplit').onclick=()=>{st.view=st.view==='split'?'after':'split';applyView()};
+(function(){const dv=$('#divider'),pv=$('#pv');let drag=false;
+  dv.onmousedown=e=>{drag=true;e.preventDefault()};
+  pv.onmousedown=e=>{if(st.view==='split'&&e.target!==dv){drag=true;move(e)}};
+  const move=e=>{const r=pv.getBoundingClientRect();st.split=Math.max(0,Math.min(100,(e.clientX-r.left)/r.width*100));applyView()};
+  document.addEventListener('mousemove',e=>{if(drag)move(e)});document.addEventListener('mouseup',()=>drag=false);})();
+
+$('#tNew').onclick=()=>{const par=st.selFolder&&!st.selFolder.virtual?st.selFolder:root;const n=prompt(`在「${par===root?'最上層':par.name}」下建新資料夾，名稱：`,'新資料夾');if(!n)return;const f=mkFolder(n,par);par.children.unshift(f);par.open=true;st.selFolder=f;renderTree()};
+$('#tRename').onclick=()=>{const t=st.selFolder||null;if(!t){toast('先點選一個資料夾（preset 改名之後也支援）');return}const n=prompt('新名稱：',t.name);if(n){t.name=n;renderTree();if(st.preset)$('#pName').textContent=pathOf(st.preset)+' → '+st.preset.name}};
+$('#tMove').onclick=()=>{
+  const item=st.preset||st.selFolder;if(!item){toast('先選一個 preset 或資料夾');return}
+  const names=root.children.map(c=>c.name).join('、');
+  const n=prompt(`把「${item.name}」搬到哪個第一層資料夾？（${names}）\n正式版會改成拖放`,'我的 preset');if(!n)return;
+  const tgt=root.children.find(c=>c.name===n);if(!tgt){toast('找不到資料夾：'+n);return}
+  const par=item.parent;par.children.splice(par.children.indexOf(item),1);item.parent=tgt;tgt.children.push(item);tgt.open=true;renderTree();if(st.preset)$('#pName').textContent=pathOf(st.preset)+' → '+st.preset.name;toast('已搬到「'+n+'」');
+};
+$('#tImport').onclick=()=>toast('正式版：選 .xmp 檔或資料夾，照 crs:Group 自動分類');
+
+$('#aiOn').onchange=e=>{$('#aiBox').classList.toggle('open',e.target.checked);updateMini()};
+$('#aiStr').oninput=e=>$('#aiStrV').textContent=e.target.value;
+$('#aiRun').onclick=()=>{const r=$('#aiRes');r.textContent='AI 補強執行中…（模擬）';setTimeout(()=>{
+  const k=+$('#aiStr').value/100;st.tweaks.vibrance=(st.tweaks.vibrance||0)+Math.round(12*k);st.tweaks.highlights=(st.tweaks.highlights||0)-Math.round(10*k);
+  r.textContent=`完成（模擬）：依「${$('#aiWant').value||'—'}」／避開「${$('#aiNot').value||'—'}」調了 2 項，以微調形式疊上去（可個別還原）`;renderSliders();renderPreview()},700)};
+$('#aiPick').onclick=()=>{
+  const box=$('#cands');box.innerHTML='<span class="note">AI 挑選中…（模擬）</span>';
+  setTimeout(()=>{box.innerHTML='';const all=Object.values(presets);const picks=[all[5],all[31],all[52]].filter(Boolean);
+    picks.forEach((p,i)=>{const d=document.createElement('div');d.className='cand'+(st.preset===p?' sel':'');
+      const get=k=>{const s=byKey[k];const v=p.vals[k];return v==null?s.def:v};
+      d.innerHTML=`<img src="${IMG}" style="filter:${filterFor(get)}"><div>${i+1}. ${p.name}</div>`;
+      d.onclick=()=>{selectPreset(p);box.querySelectorAll('.cand').forEach(x=>x.classList.remove('sel'));d.classList.add('sel')};box.appendChild(d)});
+  },600)};
+
+$('#actApply').onclick=()=>{toast('已套用，結果送往下游；workflow 繼續執行（模擬）');const s=$('#statusPill');s.textContent='已套用，workflow 繼續';s.classList.add('run');if(st.mode==='B')closeFull()};
+$('#actNoPause').onchange=e=>{syncNoPause(e.target.checked)};
+function syncNoPause(v){$('#actNoPause').checked=v;const m=$('#miniNoPause');if(m)m.checked=v;const s=$('#statusPill');s.classList.toggle('run',v);s.textContent=v?'不暫停：直接用存好的參數':'等待編輯中（workflow 暫停）'}
+$('#actSave').onclick=()=>{
+  const n=prompt('另存為我的 preset，名稱：',(st.preset?st.preset.name:'自訂')+' 改');if(!n)return;
+  const vals={};S.forEach(s=>{const v=effVal(s.key);if(Math.abs(v-s.def)>1e-6)vals[s.key]=+v.toFixed(2)});
+  const p={id:'p'+(uid++),type:'preset',name:n,parent:mine,vals,fav:false,flags:[]};mine.children.push(p);presets[p.id]=p;mine.open=true;selectPreset(p);toast('已存到「我的 preset」')};
+$('#actResetTweaks').onclick=()=>{st.tweaks={};renderSliders();renderPreview()};
+$('#actReset').onclick=()=>{selectPreset(null);$('#cands').innerHTML='<span class="note">（按下後顯示前 3 名候選，點縮圖切換）</span>'};
+
+// ---------- mode switching ----------
+const editor=$('#editor'),actions=$('#actions');
+function closeFull(){$('#full').classList.remove('show')}
+$('#closeFull').onclick=closeFull;
+function setMode(m){
+  st.mode=m;document.body.className='mode'+m;
+  $('#btnA').classList.toggle('on',m==='A');$('#btnB').classList.toggle('on',m==='B');
+  const hostA=$('#nodeHostA'),hostB=$('#nodeHostB');
+  if(m==='A'){
+    closeFull();hostB.innerHTML='';hostA.style.display='';
+    hostA.appendChild(editor);hostA.appendChild(actions);
+    $('#mainNode').style.width='1100px';
+  } else {
+    hostA.style.display='none';
+    $('#mainNode').style.width='320px';$('#mainNode').style.height='auto';
+    hostB.innerHTML=`<div class="mini"><img id="miniImg" src="${IMG}"><div class="info" id="miniInfo"></div>
+      <div class="btnrow"><button class="primary" id="openFull">開啟編輯器…</button></div>
+      <div class="btnrow"><button id="miniApply">套用並繼續 ▶</button></div>
+      <label class="switch" style="margin-top:8px" title="開啟時，執行 workflow 不會停下來等你調整，直接用存好的參數"><input type="checkbox" id="miniNoPause"> 不暫停模式</label></div>`;
+    const fh=$('#fullHost');fh.appendChild(actions);fh.appendChild(editor);
+    $('#openFull').onclick=()=>{$('#full').classList.add('show')};
+    $('#miniApply').onclick=()=>$('#actApply').click();
+    $('#miniNoPause').checked=$('#actNoPause').checked;
+    $('#miniNoPause').onchange=e=>syncNoPause(e.target.checked);
+  }
+  renderPreview();layoutCanvas();
+}
+$('#btnA').onclick=()=>setMode('A');$('#btnB').onclick=()=>setMode('B');
+
+function layoutCanvas(){
+  const mn=$('#mainNode'),up=$('#upNode'),dn=$('#downNode');
+  const mx=320,my=40,mw=mn.offsetWidth,mh=mn.offsetHeight;
+  dn.style.left=(mx+mw+60)+'px';dn.style.top=(my+40)+'px';
+  const lg=$('#legend');
+  if(st.mode==='A'){lg.style.left='40px';lg.style.top='260px';lg.style.maxWidth='250px';lg.innerHTML='<b>A 版：節點內嵌</b><br>整套介面就在節點裡（約 1100×800）。<br>好處：不用切換畫面，邊看 workflow 邊調。<br>代價：節點很大、畫布要縮放；預覽區較小；縮小畫布時文字會糊。'}
+  else {lg.style.left=(mx)+'px';lg.style.top=(my+mh+30)+'px';lg.innerHTML='<b>B 版：按鈕開全螢幕</b><br>節點只放縮圖、目前 preset／強度／微調數、「開啟編輯器」。<br>好處：畫布乾淨、編輯時空間大、預覽大。<br>代價：要多點一下，編輯時看不到 workflow。<br>按「開啟編輯器…」試試。'}
+  // wires
+  const svg=$('#wires');const c=$('#canvas').getBoundingClientRect();
+  const pt=(el,sel,side)=>{const p=el.querySelector(sel).getBoundingClientRect();return [side==='r'?p.right-c.left+$('#canvas').scrollLeft:p.left-c.left+$('#canvas').scrollLeft,p.top+p.height/2-c.top+$('#canvas').scrollTop]};
+  const a=pt(up,'.port.out i','r'),b=pt(mn,'.port.in i','l'),c1=pt(mn,'.port.out i','r'),d=pt(dn,'.port.in i','l');
+  const path=(p,q)=>`M${p[0]} ${p[1]} C${p[0]+60} ${p[1]},${q[0]-60} ${q[1]},${q[0]} ${q[1]}`;
+  svg.innerHTML=`<path d="${path(a,b)}" stroke="#64b5f6" stroke-width="3" fill="none"/><path d="${path(c1,d)}" stroke="#64b5f6" stroke-width="3" fill="none"/>`;
+}
+window.addEventListener('resize',layoutCanvas);
+
+// init
+renderTree();renderSliders();setMode('A');
+// open a couple of folders & preselect for demo
+root.children.find(c=>c.name==='顏色').open=true;root.children.find(c=>c.name==='器材').open=true;
+const eq=root.children.find(c=>c.name==='器材');eq.children[0].open=true;eq.children[0].children[0].open=true;
+selectPreset(root.children.find(c=>c.name==='顏色').children[0].children[1]);
+</script>
+</body>
+</html>

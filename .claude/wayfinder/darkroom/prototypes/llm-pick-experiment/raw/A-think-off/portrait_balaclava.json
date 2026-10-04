@@ -1,0 +1,185 @@
+{
+ "photo": "portrait_balaclava",
+ "describe": {
+  "content": "{\n  \"subject\": \"portrait\",\n  \"main_subject\": \"a person wearing a checkered protective beekeeping suit and hat, looking at the camera\",\n  \"lighting\": \"soft, warm natural light from the side, suggesting golden hour\",\n  \"color_tone\": \"warm white balance with a slight yellow cast, earthy and natural tones\",\n  \"contrast\": \"medium\",\n  \"issues\": [\n    \"slight underexposure in the shadows of the suit\",\n    \"background is very blurred and lacks detail\"\n  ],\n  \"style_directions\": [\n    \"Enhance the warm, golden hour feel with a subtle warm tone grade\",\n    \"Increase clarity and texture on the beekeeping suit to highlight the checkered pattern\",\n    \"Apply a vignette to draw focus to the subject's eyes\",\n    \"Slightly boost saturation on the background greens and yellows for a more vibrant look\"\n  ]\n}",
+  "reasoning": "",
+  "finish": "stop",
+  "wall_s": 6.1,
+  "prompt_n": 1226,
+  "prompt_tps": 497.04146809670823,
+  "gen_n": 207,
+  "gen_tps": 59.294328411136505,
+  "strict_ok": true,
+  "lenient_ok": true,
+  "schema_ok": true,
+  "parsed": {
+   "subject": "portrait",
+   "main_subject": "a person wearing a checkered protective beekeeping suit and hat, looking at the camera",
+   "lighting": "soft, warm natural light from the side, suggesting golden hour",
+   "color_tone": "warm white balance with a slight yellow cast, earthy and natural tones",
+   "contrast": "medium",
+   "issues": [
+    "slight underexposure in the shadows of the suit",
+    "background is very blurred and lacks detail"
+   ],
+   "style_directions": [
+    "Enhance the warm, golden hour feel with a subtle warm tone grade",
+    "Increase clarity and texture on the beekeeping suit to highlight the checkered pattern",
+    "Apply a vignette to draw focus to the subject's eyes",
+    "Slightly boost saturation on the background greens and yellows for a more vibrant look"
+   ]
+  }
+ },
+ "pick1": {
+  "content": "{\n \"picks\": [\n  {\n   \"id\": 1,\n   \"strength\": 100,\n   \"reason\": \"This preset perfectly targets the skin tones (Oranges) with a hue shift and desaturation while opening up the deep shadows in the hat brim and clothing, creating a natural, flattering look.\"\n  },\n  {\n   \"id\": 2,\n   \"strength\": 100,\n   \"reason\": \"With a stronger clarity and shadow lift, this preset enhances the texture of the beekeeper suit while recovering the details in the dark fabric, fitting the outdoor subject well.\"\n  },\n  {\n   \"id\": 12,\n   \"strength\": 100,\n   \"reason\": \"The split toning in this preset complements the green background by adding cyan shadows and yellow-green highlights, and its muted yellow channel helps the suit blend naturally into the scenery.\"\n  }\n ]\n}",
+  "reasoning": "",
+  "finish": "stop",
+  "wall_s": 19.71,
+  "prompt_n": 10308,
+  "prompt_tps": 638.7578799038517,
+  "gen_n": 211,
+  "gen_tps": 59.620405396044156,
+  "strict_ok": true,
+  "lenient_ok": true,
+  "schema_ok": true,
+  "parsed": {
+   "picks": [
+    {
+     "id": 1,
+     "strength": 100,
+     "reason": "This preset perfectly targets the skin tones (Oranges) with a hue shift and desaturation while opening up the deep shadows in the hat brim and clothing, creating a natural, flattering look."
+    },
+    {
+     "id": 2,
+     "strength": 100,
+     "reason": "With a stronger clarity and shadow lift, this preset enhances the texture of the beekeeper suit while recovering the details in the dark fabric, fitting the outdoor subject well."
+    },
+    {
+     "id": 12,
+     "strength": 100,
+     "reason": "The split toning in this preset complements the green background by adding cyan shadows and yellow-green highlights, and its muted yellow channel helps the suit blend naturally into the scenery."
+    }
+   ]
+  },
+  "order": [
+   "P01",
+   "P02",
+   "P03",
+   "P04",
+   "P05",
+   "P06",
+   "P07",
+   "P08",
+   "P09",
+   "P10",
+   "P11",
+   "P12",
+   "P13",
+   "P14",
+   "P15",
+   "P16",
+   "P17",
+   "P18"
+  ],
+  "picks": [
+   {
+    "key": "P01",
+    "label": "風格 - 皮膚強調 / N03",
+    "on_topic": true,
+    "strength": 100,
+    "reason": "This preset perfectly targets the skin tones (Oranges) with a hue shift and desaturation while opening up the deep shadows in the hat brim and clothing, creating a natural, flattering look."
+   },
+   {
+    "key": "P02",
+    "label": "風格 - 皮膚強調 / N01",
+    "on_topic": true,
+    "strength": 100,
+    "reason": "With a stronger clarity and shadow lift, this preset enhances the texture of the beekeeper suit while recovering the details in the dark fabric, fitting the outdoor subject well."
+   },
+   {
+    "key": "P12",
+    "label": "風格 - 喜怒無常 / 09 Moody Tones 09",
+    "on_topic": false,
+    "strength": 100,
+    "reason": "The split toning in this preset complements the green background by adding cyan shadows and yellow-green highlights, and its muted yellow channel helps the suit blend naturally into the scenery."
+   }
+  ]
+ },
+ "pick2": {
+  "content": "{\n  \"picks\": [\n    {\n      \"id\": 1,\n      \"strength\": 85,\n      \"reason\": \"The strong highlight recovery and lifted shadows are perfect for the harsh, direct sunlight on the face, while the skin-boosting HSLs enhance the subject's complexion.\"\n    },\n    {\n      \"id\": 5,\n      \"strength\": 60,\n      \"reason\": \"This preset adds the soft, dreamy, and airy atmosphere characteristic of the 'Japanese style' that complements the natural, gentle mood of the portrait.\"\n    },\n    {\n      \"id\": 13,\n      \"strength\": 100,\n      \"reason\": \"The matte, faded black point and S-curve contrast provide a vintage film look that suits the checkered fabric and soft, natural lighting perfectly.\"\n    }\n  ]\n}",
+  "reasoning": "",
+  "finish": "stop",
+  "wall_s": 19.87,
+  "prompt_n": 10308,
+  "prompt_tps": 632.261143234628,
+  "gen_n": 197,
+  "gen_tps": 57.322713423283204,
+  "strict_ok": true,
+  "lenient_ok": true,
+  "schema_ok": true,
+  "parsed": {
+   "picks": [
+    {
+     "id": 1,
+     "strength": 85,
+     "reason": "The strong highlight recovery and lifted shadows are perfect for the harsh, direct sunlight on the face, while the skin-boosting HSLs enhance the subject's complexion."
+    },
+    {
+     "id": 5,
+     "strength": 60,
+     "reason": "This preset adds the soft, dreamy, and airy atmosphere characteristic of the 'Japanese style' that complements the natural, gentle mood of the portrait."
+    },
+    {
+     "id": 13,
+     "strength": 100,
+     "reason": "The matte, faded black point and S-curve contrast provide a vintage film look that suits the checkered fabric and soft, natural lighting perfectly."
+    }
+   ]
+  },
+  "order": [
+   "P02",
+   "P17",
+   "P06",
+   "P14",
+   "P13",
+   "P03",
+   "P11",
+   "P18",
+   "P15",
+   "P10",
+   "P16",
+   "P05",
+   "P09",
+   "P07",
+   "P01",
+   "P04",
+   "P12",
+   "P08"
+  ],
+  "picks": [
+   {
+    "key": "P02",
+    "label": "風格 - 皮膚強調 / N01",
+    "on_topic": true,
+    "strength": 85,
+    "reason": "The strong highlight recovery and lifted shadows are perfect for the harsh, direct sunlight on the face, while the skin-boosting HSLs enhance the subject's complexion."
+   },
+   {
+    "key": "P13",
+    "label": "地區 - 日系清新 / 日系清新5",
+    "on_topic": false,
+    "strength": 60,
+    "reason": "This preset adds the soft, dreamy, and airy atmosphere characteristic of the 'Japanese style' that complements the natural, gentle mood of the portrait."
+   },
+   {
+    "key": "P09",
+    "label": "器材 - 膠捲 - 即時成像 / Instant Film - Tone 10",
+    "on_topic": false,
+    "strength": 100,
+    "reason": "The matte, faded black point and S-curve contrast provide a vintage film look that suits the checkered fabric and soft, natural lighting perfectly."
+   }
+  ]
+ },
+ "overlap": 1,
+ "top1_same": false
+}
