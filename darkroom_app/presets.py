@@ -10,20 +10,10 @@ import xml.etree.ElementTree as ET
 
 from darkroom import Params, UnsupportedPresetError, load_preset
 
-from . import sliders
+from . import skips, sliders
 
 RDF = "{http://www.w3.org/1999/02/22-rdf-syntax-ns#}"
 CRS = "{http://ns.adobe.com/camera-raw-settings/1.0/}"
-
-# Verbatim constant (contract B11).
-SKIP_BANNER = "這個 preset 有 {n} 項設定無法套用：{items_joined_by_、}"
-
-
-def skip_banner(skipped):
-    if not skipped:
-        return ""
-    return SKIP_BANNER.replace("{n}", str(len(skipped))).replace("{items_joined_by_、}", "、".join(skipped))
-
 
 def _text(root, tag):
     for el in root.iter(f"{CRS}{tag}"):
@@ -74,5 +64,17 @@ class Library:
         e = self.by_id[pid]
         p = self.params.get(pid) or Params()
         values = {k: p.get(k) for k in sliders.BY_KEY}
+        summary = skips.summarize(e["skipped"])
         return {"id": pid, "group": e["group"], "name": e["name"], "supported": e["supported"],
-                "skipped": list(e["skipped"]), "banner": skip_banner(e["skipped"]), "values": values}
+                "skipped": list(e["skipped"]), "level": summary["level"], "banner": summary["banner"],
+                "note": summary["note"], "values": values,
+                "curves": {k: [[float(x), float(y)] for x, y in pts] for k, pts in p.curves.items()}}
+
+    def flags(self):
+        """{id: "major"|"minor"} for presets with skipped settings (contract R4)."""
+        out = {}
+        for e in self.entries:
+            lv = skips.summarize(e["skipped"])["level"]
+            if lv:
+                out[e["id"]] = lv
+        return out

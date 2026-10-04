@@ -17,7 +17,8 @@ import _util
 import _xmpgen
 from darkroom import Params
 
-SKIP_BANNER = "這個 preset 有 {n} 項設定無法套用：{items_joined_by_、}"  # verbatim (contract B11)
+SKIP_BANNER = "這個 preset 有 {n} 項會改變觀感的設定無法套用：{items_joined_by_、}"  # verbatim (contract R4)
+SKIP_NOTE = "另有 {n} 項細節設定未套用：{items_joined_by_、}"                      # verbatim (contract R4)
 PREVIEW_MAX = 1500000                                              # verbatim (contract B4)
 
 
@@ -47,6 +48,12 @@ def make_presets(d):
     _xmpgen.write(d, "p-skip.xmp", _xmpgen.xmp_text(
         {"HDREditMode": "1", "Temperature": "5500", "Tint": "+10", "Exposure2012": "+0.20"},
         name="有略過", group="人像 - 女生", extra=look))
+    _xmpgen.write(d, "p-minor.xmp", _xmpgen.xmp_text(
+        {"LuminanceSmoothing": "+20", "ColorNoiseReduction": "30", "Exposure2012": "+0.10"}, name="只有細節", group="測試"))
+    _xmpgen.write(d, "p-mixed.xmp", _xmpgen.xmp_text(
+        {"Temperature": "5200", "LuminanceSmoothing": "+20", "Exposure2012": "+0.10"}, name="混合", group="測試",
+        curves={"ToneCurvePV2012": [(0, 20), (128, 140), (255, 240)],
+                "ToneCurvePV2012Red": [(0, 0), (255, 230)]}))
     _xmpgen.write(d, "p-old.xmp", _xmpgen.xmp_text({"ProcessVersion": "5.7", "Exposure": "+0.50"}, name="舊版"))
     return d
 
@@ -138,18 +145,72 @@ class TestPresetDetail(AppCase):
         self.assertIs(by["p-old"]["supported"], False)
         self.assertEqual(by["p-skip"]["skipped"], ["HDREditMode", "Temperature", "Tint", "Look（Adobe Color）"])
 
-    async def test_skip_banner_text(self):  # B11
+    async def test_skip_banner_text(self):  # B11 / R4: only look-changing items, Chinese names
         d = await (await self.client.get("/api/presets/p-skip")).json()
-        items = "、".join(["HDREditMode", "Temperature", "Tint", "Look（Adobe Color）"])
-        expect = SKIP_BANNER.replace("{n}", "4").replace("{items_joined_by_、}", items)
-        self.assertEqual(d["banner"], expect)
-        self.assertEqual(d["banner"], "這個 preset 有 4 項設定無法套用：HDREditMode、Temperature、Tint、Look（Adobe Color）")
+        items = "、".join(["HDR 編輯模式", "色溫（絕對值）", "色調（絕對值）", "描述檔外觀（Adobe Color）"])
+        self.assertEqual(d["banner"], SKIP_BANNER.replace("{n}", "4").replace("{items_joined_by_、}", items))
+        self.assertEqual(d["banner"],
+                         "這個 preset 有 4 項會改變觀感的設定無法套用：HDR 編輯模式、色溫（絕對值）、色調（絕對值）、描述檔外觀（Adobe Color）")
+        self.assertEqual(d["note"], "")
+        minor = await (await self.client.get("/api/presets/p-minor")).json()
+        self.assertEqual(minor["banner"], "")
+        self.assertEqual(minor["note"], "另有 2 項細節設定未套用：雜色減少（明度）、雜色減少（顏色）")
+        mixed = await (await self.client.get("/api/presets/p-mixed")).json()
+        self.assertEqual(mixed["banner"], "這個 preset 有 1 項會改變觀感的設定無法套用：色溫（絕對值）")
+        self.assertEqual(mixed["note"], SKIP_NOTE.replace("{n}", "1").replace("{items_joined_by_、}", "雜色減少（明度）"))
         clean = await (await self.client.get("/api/presets/p-expo")).json()
-        self.assertEqual(clean["banner"], "")
+        self.assertEqual((clean["banner"], clean["note"]), ("", ""))
         self.assertEqual(clean["values"]["Exposure2012"], 1.0)
         self.assertEqual(clean["values"]["GrainSize"], 25.0)  # default from the core table
         r = await self.client.get("/api/presets/nope")
         self.assertEqual(r.status, 404)
+
+    async def test_preset_flags(self):  # R4
+        flags = await (await self.client.get("/api/preset_flags")).json()
+        self.assertEqual(flags, {"p-skip": "major", "p-mixed": "major", "p-minor": "minor"})
+        rows = await (await self.client.get("/api/presets")).json()
+        for row in rows:
+            self.assertEqual(set(row), {"id", "group", "name", "supported", "skipped"})   # B3 unchanged
+
+    async def test_api_preset_detail_curves(self):  # R6
+        d = await (await self.client.get("/api/presets/p-mixed")).json()
+        self.assertEqual(d["curves"], {"ToneCurvePV2012": [[0.0, 20.0], [128.0, 140.0], [255.0, 240.0]],
+                                       "ToneCurvePV2012Red": [[0.0, 0.0], [255.0, 230.0]]})
+        e = await (await self.client.get("/api/presets/p-expo")).json()
+        self.assertEqual(e["curves"], {})
+
+    def test_skip_levels(self):  # R4
+        from darkroom_app import skips
+        major = ["Temperature", "Tint", "Look（Adobe Color）", "CameraProfile（Camera Vivid）", "HDREditMode",
+                 "WhiteBalance（Auto）", "Mask/Brush", "CorrectionRangeMask", "PointColors", "ColorVariance",
+                 "MaskGroupBasedCorrections", "SomethingNew"]
+        minor = ["ColorNoiseReduction", "LuminanceSmoothing", "LuminanceNoiseReductionDetail",
+                 "LuminanceNoiseReductionContrast", "ColorNoiseReductionDetail", "ColorNoiseReductionSmoothness",
+                 "SharpenDetail", "SharpenEdgeMasking", "GrainFrequency", "AutoLateralCA", "LensProfileEnable",
+                 "LensProfileVignettingScale", "LensProfileDistortionScale", "DefringePurpleAmount",
+                 "DefringeGreenHueLo", "VignetteAmount", "VignetteMidpoint", "PostCropVignetteHighlightContrast",
+                 "PostCropVignetteStyle", "PostCropVignetteRoundness（負值）", "Contrast2012（超出範圍，已夾值）"]
+        for item in major:
+            self.assertEqual(skips.level(item), "major", item)
+        for item in minor:
+            self.assertEqual(skips.level(item), "minor", item)
+        for item in major + minor:
+            label = skips.label(item)
+            self.assertTrue(label)
+            if item != "SomethingNew":
+                self.assertRegex(label, r"[一-鿿]", item)   # Chinese name
+        self.assertEqual(skips.label("Contrast2012（超出範圍，已夾值）"), "對比（超出範圍，已夾值）")
+        self.assertEqual(skips.label("SomethingNew"), "SomethingNew")
+
+    async def test_library_items_all_labelled(self):  # R4: every item in the user's library has a Chinese name
+        from darkroom import load_preset
+        from darkroom_app import skips
+        unknown = set()
+        for f in _util.preset_files():
+            for item in load_preset(f).skipped:
+                if skips.label(item) == item:
+                    unknown.add(item)
+        self.assertEqual(unknown, set())
 
     async def test_sliders_agree_with_core_tables(self):
         from darkroom import _coverage, _params
@@ -258,6 +319,17 @@ class TestPreview(AppCase):  # B5
         d_wrong = float(np.abs(got - decode(wrong_bytes)).mean())
         self.assertLess(d_good, 0.002)
         self.assertGreater(d_wrong, 10 * d_good + 0.005)
+
+    async def test_overrides_added_after_clamped_strength(self):  # R3
+        from darkroom_app.preview import effective_params
+        from darkroom_app.server import LIBRARY
+        lib = self.app[LIBRARY]
+        e = effective_params(lib.get("p-strong"), 2.0, {"Exposure2012": -1.0})
+        self.assertEqual(e.values["Exposure2012"], 4.0)     # clamp(clamp(4.5 * 2) - 1) = 4, not clamp(9 - 1) = 5
+        e = effective_params(lib.get("p-strong"), 2.0, {})
+        self.assertEqual(e.values["Exposure2012"], 5.0)
+        e = effective_params(lib.get("p-expo"), 1.5, {"Contrast2012": 10.0})
+        self.assertEqual(e.values["Contrast2012"], 70.0)    # 60 is inside the range: plain sum
 
     async def test_preview_validation(self):
         _, info = await self.open_photo()

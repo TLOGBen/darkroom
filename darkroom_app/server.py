@@ -60,6 +60,10 @@ async def api_preset_detail(request):
     return web.json_response(lib.detail(pid))
 
 
+async def api_preset_flags(request):
+    return web.json_response(request.app[LIBRARY].flags())
+
+
 async def api_sliders(request):
     return web.json_response({"groups": [list(g) for g in sliders.GROUPS], "sliders": sliders.SLIDERS})
 
@@ -138,6 +142,7 @@ def make_app(preset_dir, engine=None):
     app.router.add_get("/", index)
     app.router.add_get("/api/health", health)
     app.router.add_get("/api/presets", api_presets)
+    app.router.add_get("/api/preset_flags", api_preset_flags)
     app.router.add_get("/api/presets/{id}", api_preset_detail)
     app.router.add_get("/api/sliders", api_sliders)
     app.router.add_post("/api/open", api_open)

@@ -1,4 +1,4 @@
-"""Preview parameter semantics (B5): final value = clamp(preset value at strength + override)."""
+"""Preview parameter semantics (B5 as patched by R3): final = clamp(clamp(preset value at strength) + override)."""
 import math
 
 from darkroom import Params
@@ -34,9 +34,10 @@ def effective_params(params, strength, overrides):
     """Params at their final values for rendering at strength 1.
 
     params: the preset's Params, or None (no preset: only the overrides apply, on top of the defaults)
-    strength: 0..2; overrides: {slider key: difference added after strength}. Values are clamped to range.
+    strength: 0..2; overrides: {slider key: difference added to the clamped value at strength}. Results
+    are clamped to range again (contract R3).
     """
-    base = params.at_strength(strength) if params is not None else Params()
+    base = (params.at_strength(strength) if params is not None else Params()).clamped()
     values = dict(base.values)
     for k, d in overrides.items():
         values[k] = base.get(k) + d
