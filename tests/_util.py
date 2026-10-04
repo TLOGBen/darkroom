@@ -52,13 +52,13 @@ def presets_hash(d=None):
     return hashlib.sha256("".join(parts).encode("utf-8")).hexdigest().upper()[:16]
 
 
-# Equivalent of `python -m darkroom ...` that also works under the embedded runtime's ._pth (see above).
-_BOOT = "import runpy, sys; sys.path.insert(0, sys.argv.pop(1)); runpy.run_module('darkroom', run_name='__main__', alter_sys=True)"
-
-
-def run_cli(*args):
-    env = dict(os.environ, PYTHONIOENCODING="utf-8")
-    r = subprocess.run([sys.executable, "-s", "-c", _BOOT, REPO, *args], cwd=REPO, capture_output=True, env=env)
+def run_cli(*args, cwd=None):
+    """`python -m darkroom ...` run from a directory outside the repo with no PYTHONPATH (A21: the darkroom
+    runtime's python313._pth lists D:/Code/darkroom)."""
+    env = {k: v for k, v in os.environ.items() if k not in ("PYTHONPATH", "PYTHONHOME")}
+    env["PYTHONIOENCODING"] = "utf-8"
+    r = subprocess.run([sys.executable, "-s", "-m", "darkroom", *args], cwd=cwd or tempfile.gettempdir(),
+                       capture_output=True, env=env)
     return r.returncode, r.stdout.decode("utf-8"), r.stderr.decode("utf-8")
 
 

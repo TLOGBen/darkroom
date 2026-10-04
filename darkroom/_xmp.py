@@ -2,17 +2,19 @@
 import os
 import re
 import xml.etree.ElementTree as ET
+import xml.parsers.expat as expat
 
 from . import _coverage as cov
 from ._errors import UnsupportedPresetError
-from ._params import Params, default
+from ._params import CURVE_RANGE, UNCLAMPED_DATA_KEYS, Params, clamp_value, default
 
 CRS = "{http://ns.adobe.com/camera-raw-settings/1.0/}"
 RDF = "{http://www.w3.org/1999/02/22-rdf-syntax-ns#}"
 XML_LANG = "{http://www.w3.org/XML/1998/namespace}lang"
 
 _NUM = re.compile(r"^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$")
-MIN_PROCESS_VERSION = 10.0  # 6.7 and older are reported as unsupported
+# PV2012-family process versions (all use the *2012 sliders); any minor version of these majors is accepted.
+SUPPORTED_PV_MAJORS = (6, 10, 11, 15)
 
 # Numeric attributes that are adjustments (a parse failure on any of these fails the preset).
 KNOWN_NUMERIC = frozenset(cov.RENDERED - {"ConvertToGrayscale"}) | cov.DETAIL | frozenset([
@@ -73,16 +75,18 @@ class _Skipped(list):
             self.append(item)
 
 
-def _parse_curve(el, tag):
+def _parse_curve(el, tag, clamped):
     pts = []
     for li in _seq_items(el):
         parts = (li.text or "").split(",")
         if len(parts) != 2:
             raise PresetParseError(f"{tag}: bad curve point {li.text!r}")
         x, y = number(parts[0], tag), number(parts[1], tag)
-        if not (0 <= x <= 255 and 0 <= y <= 255):
-            raise PresetParseError(f"{tag}: curve point out of range {li.text!r}")
-        pts.append([x, y])
+        lo, hi = CURVE_RANGE
+        cx, cy = min(hi, max(lo, x)), min(hi, max(lo, y))
+        if (cx, cy) != (x, y):
+            clamped.add(tag)
+        pts.append([cx, cy])
     if len(pts) < 2:
         raise PresetParseError(f"{tag}: needs at least 2 points")
     pts.sort(key=lambda p: p[0])
@@ -129,7 +133,9 @@ def _parse_masks(el, skipped):
         values = {}
         for k, v in a.items():
             if k.startswith("Local"):
-                values[k] = number(v, k)
+                values[k], was = clamp_value(k, number(v, k))
+                if was:
+                    _note_clamp(skipped, k)
                 if k not in cov.LOCAL_RENDERED and k not in cov.LOCAL_DETAIL and values[k] != 0:
                     skipped.add(k)
         node = d if d is not None else li
@@ -149,12 +155,36 @@ def _parse_masks(el, skipped):
     return masks
 
 
+def _note_clamp(skipped, key):
+    skipped.add(f"{key}（超出範圍，已夾值）")
+
+
+class _DtdFound(Exception):
+    pass
+
+
+def _reject_dtd(data):
+    """Refuse any DOCTYPE / ENTITY declaration (in whatever encoding) before ElementTree sees the bytes."""
+    def stop(*_):
+        raise _DtdFound()
+    p = expat.ParserCreate()
+    p.StartDoctypeDeclHandler = stop
+    p.EntityDeclHandler = stop
+    p.UnparsedEntityDeclHandler = stop
+    p.ExternalEntityRefHandler = stop
+    try:
+        p.Parse(data, True)
+    except _DtdFound:
+        raise PresetParseError("DTD/entities are not allowed in a preset") from None
+    except expat.ExpatError as e:
+        raise PresetParseError(f"not valid XML: {e}") from None
+
+
 def read_preset(path):
     """Parse a preset -> (Params, display name). Raises UnsupportedPresetError or ValueError."""
     with open(path, "rb") as f:
         data = f.read()
-    if b"<!DOCTYPE" in data or b"<!ENTITY" in data:  # xmp never needs a DTD; refuse entity tricks
-        raise PresetParseError("DTD/entities are not allowed in a preset")
+    _reject_dtd(data)
     try:
         root = ET.fromstring(data)
     except ET.ParseError as e:
@@ -171,7 +201,7 @@ def read_preset(path):
     pv_text = attrs.get("ProcessVersion")
     if pv_text is None:
         raise PresetParseError("missing ProcessVersion")
-    if number(pv_text, "ProcessVersion") < MIN_PROCESS_VERSION:
+    if int(number(pv_text, "ProcessVersion")) not in SUPPORTED_PV_MAJORS:
         raise UnsupportedPresetError(pv_text.strip(), path)
 
     skipped = _Skipped()
@@ -186,6 +216,10 @@ def read_preset(path):
             skipped.add("HDREditMode")
         elif k in KNOWN_NUMERIC or _NUM.match(v.strip()):
             values[k] = number(v, k)
+            if k not in UNCLAMPED_DATA_KEYS:
+                values[k], was = clamp_value(k, values[k])
+                if was:
+                    _note_clamp(skipped, k)
         else:
             skipped.add(k)  # unknown non-numeric setting
 
@@ -213,7 +247,10 @@ def read_preset(path):
             if tag == "Name":
                 name = _lang_alt(ch)
         elif tag in CURVE_TAGS:
-            curves[tag] = _parse_curve(ch, tag)
+            cl = set()
+            curves[tag] = _parse_curve(ch, tag, cl)
+            if cl:
+                _note_clamp(skipped, tag)
         elif tag == "Look":
             d = ch.find(f"{RDF}Description")
             look = _attrs(d).get("Name", "") if d is not None else ""

@@ -13,7 +13,7 @@ from darkroom import load_preset
 # Verbatim from the contract.
 MSG_OK = "已套用：{preset_name}（強度 {strength}%）→ {output_path}"
 MSG_SKIP = "略過：{skipped_items_joined_by_、}"
-MSG_SCAN = "已解析 {ok}／{total}，不支援 {unsupported}（ProcessVersion 6.7），失敗 {failed}"
+MSG_SCAN = "已解析 {ok}／{total}，不支援 {unsupported}，失敗 {failed}"
 MSG_PV = "不支援的 preset 版本：ProcessVersion {pv}（{file_name}）"
 MSG_EXISTS = "輸出檔已存在或與輸入相同：{output_path}（要覆寫請加 --overwrite）"
 
@@ -37,15 +37,23 @@ class TestScan(unittest.TestCase):
     def test_scan_exact_line(self):  # A3
         rc, out, err = _util.run_cli("scan", _util.preset_dir())
         self.assertEqual(rc, 0, err)
-        self.assertEqual(out.splitlines(), [MSG_SCAN.format(ok=1409, total=1466, unsupported=57, failed=0)])
+        self.assertEqual(out.splitlines(), [MSG_SCAN.format(ok=1466, total=1466, unsupported=0, failed=0)])
 
     def test_scan_counts_failures(self):
         d = _util.tmpdir(self)
         _xmpgen.write(d, "a.xmp", _xmpgen.xmp_text({"Contrast2012": "+10"}))
-        _xmpgen.write(d, "b.xmp", _xmpgen.xmp_text({"ProcessVersion": "6.7"}))
+        _xmpgen.write(d, "b.xmp", _xmpgen.xmp_text({"ProcessVersion": "5.7"}))
         _xmpgen.write(d, "c.xmp", _xmpgen.xmp_text({"Contrast2012": "oops"}))
         rc, out, err = _util.run_cli("scan", d)
         self.assertEqual(out.splitlines(), [MSG_SCAN.format(ok=1, total=3, unsupported=1, failed=1)])
+
+
+class TestAnyDirectory(unittest.TestCase):  # A21
+    def test_module_runs_from_other_directories(self):
+        for cwd in (os.path.abspath(os.sep), _util.tmpdir(self)):
+            rc, out, err = _util.run_cli("scan", _util.preset_dir(), cwd=cwd)
+            self.assertEqual(rc, 0, (cwd, err))
+            self.assertEqual(out.splitlines(), [MSG_SCAN.format(ok=1466, total=1466, unsupported=0, failed=0)])
 
 
 class TestApply(unittest.TestCase):
@@ -72,11 +80,11 @@ class TestApply(unittest.TestCase):
     def test_apply_unsupported_version(self):  # A4
         d = _util.tmpdir(self)
         src = small_photo(d)
-        preset = _util.find_preset(r'crs:ProcessVersion="6\.7"')
+        preset = _xmpgen.write(d, "pv2010.xmp", _xmpgen.xmp_text({"ProcessVersion": "5.7", "FillLight": "20"}))
         out_path = os.path.join(d, "out.png")
         rc, out, err = _util.run_cli("apply", "--preset", preset, src, out_path)
         self.assertEqual(rc, 2)
-        self.assertIn(MSG_PV.format(pv="6.7", file_name=os.path.basename(preset)), err.splitlines())
+        self.assertIn(MSG_PV.format(pv="5.7", file_name=os.path.basename(preset)), err.splitlines())
         self.assertFalse(os.path.exists(out_path))
 
     def test_apply_refuses_overwrite(self):  # A16

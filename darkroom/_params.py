@@ -17,12 +17,41 @@ DEFAULTS = {
     "SplitToningBalance": 0.0,
 }
 
+# Range table (contract Verbatim Constants). Keys not listed are -100..100.
+_R100 = ("SharpenDetail/SharpenEdgeMasking/LuminanceSmoothing/LuminanceNoiseReductionDetail/LuminanceNoiseReductionContrast/"
+         "ColorNoiseReduction/ColorNoiseReductionDetail/ColorNoiseReductionSmoothness/GrainAmount/GrainSize/GrainFrequency/"
+         "PostCropVignetteMidpoint/PostCropVignetteFeather/ParametricShadowSplit/ParametricMidtoneSplit/ParametricHighlightSplit/"
+         "SplitToningShadowSaturation/SplitToningHighlightSaturation/ColorGradeMidtoneSat/ColorGradeGlobalSat/ColorGradeBlending")
+RANGES = {"Exposure2012": (-5.0, 5.0), "LocalExposure2012": (-4.0, 4.0), "SharpenRadius": (0.5, 3.0),
+          "Sharpness": (0.0, 150.0), **{k: (0.0, 100.0) for k in _R100.split("/")},
+          **{k: (0.0, 360.0) for k in ("SplitToningShadowHue", "SplitToningHighlightHue", "ColorGradeMidtoneHue",
+                                         "ColorGradeGlobalHue")}}
+CURVE_RANGE = (0.0, 255.0)
+# Absolute white balance (Kelvin / tint) is kept as data for a future RAW path and never rendered, so it is
+# not squeezed into -100..100 when parsing; render() still clamps every value it reads.
+UNCLAMPED_DATA_KEYS = frozenset({"Temperature", "Tint"})
+
 BOOL_KEYS = frozenset({"ConvertToGrayscale"})
 LOCAL_HUE_KEYS = frozenset({"LocalToningHue"})
 
 
 def default(key):
     return DEFAULTS.get(key, 0.0)
+
+
+def value_range(key):
+    if key in RANGES:
+        return RANGES[key]
+    if is_hue_angle(key) or key == "LocalToningHue":
+        return (0.0, 360.0)
+    return (-100.0, 100.0)
+
+
+def clamp_value(key, v):
+    """(clamped value, was_clamped) according to the range table."""
+    lo, hi = value_range(key)
+    c = min(hi, max(lo, v))
+    return c, c != v
 
 
 def is_hue_angle(key):
@@ -97,6 +126,18 @@ class Params:
         for m in self.masks:
             m = copy.deepcopy(m)
             m["values"] = {k: (v if k in LOCAL_HUE_KEYS else s * v) for k, v in m.get("values", {}).items()}
+            masks.append(m)
+        return Params(values=values, curves=curves, masks=masks, skipped=list(self.skipped))
+
+    def clamped(self):
+        """Copy with every numeric value (global, curve, local) inside the range table; used by render()."""
+        values = {k: (v if k in BOOL_KEYS else clamp_value(k, v)[0]) for k, v in self.values.items()}
+        lo, hi = CURVE_RANGE
+        curves = {k: [[min(hi, max(lo, x)), min(hi, max(lo, y))] for x, y in pts] for k, pts in self.curves.items()}
+        masks = []
+        for m in self.masks:
+            m = copy.deepcopy(m)
+            m["values"] = {k: clamp_value(k, v)[0] for k, v in m.get("values", {}).items()}
             masks.append(m)
         return Params(values=values, curves=curves, masks=masks, skipped=list(self.skipped))
 

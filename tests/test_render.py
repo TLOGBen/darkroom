@@ -53,7 +53,7 @@ def heavy_params():
 class TestIdentity(unittest.TestCase):
     def test_strength_zero_is_identity(self):  # A8
         img = photo()
-        for p in (heavy_params(), load_preset(_util.find_preset(r"Mask/CircularGradient", exclude=r'"6\.7"'))):
+        for p in (heavy_params(), load_preset(_util.find_preset(r"Mask/CircularGradient"))):
             out = render(img, p, strength=0.0)
             self.assertEqual(out.shape, img.shape)
             self.assertLessEqual(float(np.abs(out - img).max()), 1e-4)
@@ -156,17 +156,39 @@ class TestColor(unittest.TestCase):
 
     def test_grayscale_equal_channels(self):  # A11
         img = photo()
+        tone_sats = ("SplitToningShadowSaturation", "SplitToningHighlightSaturation", "ColorGradeMidtoneSat",
+                     "ColorGradeGlobalSat")
         p = heavy_params()
         p.values["ConvertToGrayscale"] = True
         p.values["GrayMixerOrange"] = 20.0
         p.values["GrayMixerBlue"] = -30.0
+        untoned = Params(values={k: v for k, v in p.values.items() if k not in tone_sats}, curves=p.curves)
+
+        def chdiff(o):
+            return float(max(np.abs(o[..., 0] - o[..., 1]).max(), np.abs(o[..., 1] - o[..., 2]).max()))
+
         for s in (0.5, 1.0, 2.0):
-            out = render(img, p, strength=s)
-            self.assertLessEqual(float(np.abs(out[..., 0] - out[..., 1]).max()), 1e-4)
-            self.assertLessEqual(float(np.abs(out[..., 1] - out[..., 2]).max()), 1e-4)
-        for path in (_util.find_preset(r'ConvertToGrayscale="True"', exclude=r'"6\.7"'),):
-            out = render(img, load_preset(path))
-            self.assertLessEqual(float(np.abs(out[..., 0] - out[..., 2]).max()), 1e-4)
+            self.assertLessEqual(chdiff(render(img, untoned, strength=s)), 1e-4)   # no tone: R=G=B
+            self.assertGreater(chdiff(render(img, p, strength=s)), 0.01)            # toned B&W keeps its tone
+        # GrayMixer weights act on the B&W conversion
+        a = render(img, Params(values={"ConvertToGrayscale": True}))
+        b = render(img, Params(values={"ConvertToGrayscale": True, "GrayMixerOrange": 80.0}))
+        self.assertGreater(float(np.abs(a - b).max()), 0.01)
+        # every real B&W preset: R=G=B when it has no tone, tinted when it has one
+        small = photo(max_side=160)
+        n = 0
+        for path in _util.preset_files():
+            if 'ConvertToGrayscale="True"' not in _util.read_text(path):
+                continue
+            q = load_preset(path)
+            toned = any(q.values.get(k, 0) > 0 for k in tone_sats)
+            d = chdiff(render(small, q))
+            if toned:
+                self.assertGreater(d, 1e-4, path)
+            else:
+                self.assertLessEqual(d, 1e-4, path)
+            n += 1
+        self.assertEqual(n, 21)
 
     def test_absolute_wb_skipped_non_raw(self):  # A12
         img = photo(max_side=256)
@@ -231,6 +253,64 @@ class TestMasks(unittest.TestCase):  # A14
         c, edge = out[50, 100].mean(), out[50, 30].mean()
         self.assertLess(c, edge)
         self.assertLess(edge, 0.4)
+
+
+RANGE_TABLE = """範圍表（未列者 -100～100）：Exposure2012 -5～5、LocalExposure2012 -4～4、SharpenRadius 0.5～3、Sharpness 0～150、
+  SharpenDetail/SharpenEdgeMasking/LuminanceSmoothing/LuminanceNoiseReductionDetail/LuminanceNoiseReductionContrast/
+  ColorNoiseReduction/ColorNoiseReductionDetail/ColorNoiseReductionSmoothness/GrainAmount/GrainSize/GrainFrequency/
+  PostCropVignetteMidpoint/PostCropVignetteFeather/ParametricShadowSplit/ParametricMidtoneSplit/ParametricHighlightSplit/
+  SplitToningShadowSaturation/SplitToningHighlightSaturation/ColorGradeMidtoneSat/ColorGradeGlobalSat/ColorGradeBlending 0～100、
+  SplitToningShadowHue/SplitToningHighlightHue/ColorGradeMidtoneHue/ColorGradeGlobalHue 0～360、曲線點 0～255"""
+
+
+class TestRangeClamp(unittest.TestCase):  # A19
+    def huge_params(self):
+        vals = {k: 1e9 for k in heavy_values()}
+        vals.update({"SharpenRadius": 1e9, "GrainSize": 1e9, "GrainFrequency": 1e9, "Sharpness": 1e9,
+                     "PostCropVignetteFeather": 1e9, "PostCropVignetteMidpoint": -1e9, "Exposure2012": 1e9,
+                     "ParametricShadowSplit": 1e9, "ColorGradeBlending": -1e9})
+        return Params(values=vals, curves={"ToneCurvePV2012": [[0.0, -1e9], [1e9, 1e9]]},
+                      masks=[{"name": "m", "amount": 1.0,
+                              "values": {"LocalExposure2012": 1e9, "LocalClarity2012": -1e9},
+                              "shapes": [{"type": "Mask/Gradient", "inverted": False, "opacity": 1.0, "ZeroX": 0.0,
+                                          "ZeroY": 0.0, "FullX": 0.0, "FullY": 1.0}]}])
+
+    def test_huge_values_bounded_time_and_memory(self):
+        dev = "cuda" if HAS_CUDA else "cpu"
+        img = torch.rand(1, 3, 1000, 1500, device=dev)
+        before = 0
+        if HAS_CUDA:
+            torch.cuda.synchronize()
+            torch.cuda.reset_peak_memory_stats()
+            before = torch.cuda.memory_allocated()
+        t0 = time.perf_counter()
+        out = render(img, self.huge_params())
+        if HAS_CUDA:
+            torch.cuda.synchronize()
+            peak = torch.cuda.max_memory_allocated() - before
+            self.assertLess(peak, 2 * 2**30, f"peak {peak / 2**30:.2f} GiB")
+        self.assertLess(time.perf_counter() - t0, 10.0)
+        self.assertTrue(bool(torch.isfinite(out).all()))
+
+    def test_render_uses_clamped_values(self):
+        img = photo(max_side=128)
+        a = render(img, Params(values={"Exposure2012": 5.0, "Sharpness": 150.0}))
+        b = render(img, Params(values={"Exposure2012": 1e9, "Sharpness": 1e9}))
+        self.assertLessEqual(float(np.abs(a - b).max()), 1e-6)
+
+    def test_range_table_verbatim(self):
+        import re
+        from darkroom import _params
+        body = RANGE_TABLE.split("：", 1)[1].replace("\n", "").replace(" ", "").replace("曲線點", "CURVE")
+        expect = {}
+        for keys, lo, hi in re.findall(r"([A-Za-z0-9/]+?)(-?[0-9.]+)～(-?[0-9.]+)", body):
+            for k in keys.split("/"):
+                expect[k] = (float(lo), float(hi))
+        self.assertEqual(expect.pop("CURVE"), _params.CURVE_RANGE)
+        self.assertGreaterEqual(len(expect), 29)
+        for k, r in expect.items():
+            self.assertEqual(_params.value_range(k), r, k)
+        self.assertEqual(_params.value_range("Contrast2012"), (-100.0, 100.0))
 
 
 @unittest.skipUnless(HAS_CUDA, "needs CUDA")

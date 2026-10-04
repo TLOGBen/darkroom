@@ -504,6 +504,8 @@ def _color_ops(x, g):
         if any(la):
             v = (v * (1 + 0.35 * _hue_interp(h, la) * s)).clamp(0, 1)
         x = _hsv2rgb(h, s, v)
+    if g("ConvertToGrayscale"):  # toned B&W: convert first, then colour grading / split toning tints it
+        x = _grayscale(x, g)
     return _color_grade(x, g)
 
 
@@ -592,8 +594,6 @@ def _pipeline(x, p):
     if luts is not None:
         x = _apply_luts(x, luts)
     x = _color_ops(x, g)
-    if g("ConvertToGrayscale"):
-        x = _grayscale(x, g)
     x = _vignette(x, g)
     x = _grain(x, g)
     x = _sharpen(x, g)
@@ -640,6 +640,6 @@ def render(image, params, strength=1.0, device=None):
     """
     if not isinstance(params, Params):
         raise TypeError("params must be a darkroom.Params")
-    p = params.at_strength(strength)
+    p = params.at_strength(strength).clamped()
     x, restore = _to_tensor(image, device)
     return restore(_pipeline(x, p))

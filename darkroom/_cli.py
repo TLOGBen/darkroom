@@ -7,7 +7,7 @@ from ._errors import UnsupportedPresetError
 
 MSG_OK = "已套用：{preset_name}（強度 {strength}%）→ {output_path}"
 MSG_SKIP = "略過：{items}"
-MSG_SCAN = "已解析 {ok}／{total}，不支援 {unsupported}（ProcessVersion 6.7），失敗 {failed}"
+MSG_SCAN = "已解析 {ok}／{total}，不支援 {unsupported}，失敗 {failed}"
 MSG_PV = "不支援的 preset 版本：ProcessVersion {pv}（{file_name}）"
 MSG_EXISTS = "輸出檔已存在或與輸入相同：{output_path}（要覆寫請加 --overwrite）"
 USAGE_APPLY = "python -m darkroom apply --preset <xmp> [--strength 0..200] [--overwrite] <input> <output>"

@@ -11,21 +11,75 @@ from darkroom import Params, UnsupportedPresetError, load_preset
 
 
 class TestVersion(unittest.TestCase):
-    def test_pv67_raises_unsupported(self):  # A4
+    def test_pv67_is_supported(self):  # A4 / P4: PV 6.7 is PV2012 (uses the *2012 sliders)
         p = _util.find_preset(r'crs:ProcessVersion="6\.7"')
-        with self.assertRaises(UnsupportedPresetError) as cm:
-            load_preset(p)
-        self.assertEqual(cm.exception.process_version, "6.7")
+        self.assertIn("Contrast2012", load_preset(p).values)
 
-    def test_synthetic_pv67_raises(self):
+    def test_synthetic_old_versions_raise(self):  # A4: PV2010 and older (no *2012 sliders)
         d = _util.tmpdir(self)
-        p = _xmpgen.write(d, "old.xmp", _xmpgen.xmp_text({"ProcessVersion": "6.7", "Exposure2012": "+0.50"}))
+        for pv in ("5.7", "5.0"):
+            p = _xmpgen.write(d, "old.xmp", _xmpgen.xmp_text({"ProcessVersion": pv, "Exposure": "+0.50",
+                                                               "FillLight": "20", "HighlightRecovery": "30"}))
+            with self.assertRaises(UnsupportedPresetError) as cm:
+                load_preset(p)
+            self.assertEqual(cm.exception.process_version, pv)
+        p = _xmpgen.write(d, "future.xmp", _xmpgen.xmp_text({"ProcessVersion": "99.0"}))
         self.assertRaises(UnsupportedPresetError, load_preset, p)
 
     def test_supported_versions_load(self):
-        for pv in ("10.0", "11.0", "15.4"):
+        for pv in ("6.7", "10.0", "11.0", "15.4"):
             p = _util.find_preset(rf'crs:ProcessVersion="{pv}"')
             self.assertIsInstance(load_preset(p), Params)
+        d = _util.tmpdir(self)
+        for pv in ("6.9", "10.2", "11.3", "15.0"):  # other minor versions of the same majors
+            p = _xmpgen.write(d, "m.xmp", _xmpgen.xmp_text({"ProcessVersion": pv}))
+            self.assertIsInstance(load_preset(p), Params)
+
+
+class TestSafeXml(unittest.TestCase):  # A20
+    def test_doctype_and_entity_rejected(self):
+        d = _util.tmpdir(self)
+        base = _xmpgen.xmp_text({"Contrast2012": "+10"})
+        evil = [
+            '<?xml version="1.0"?>\n<!DOCTYPE x [<!ENTITY a "aaaaaaaaaa"><!ENTITY b "&a;&a;&a;&a;">]>\n' + base,
+            '<?xml version="1.0"?>\n<!DOCTYPE x SYSTEM "file:///C:/Windows/win.ini">\n' + base,
+            "<!DOCTYPE x>" + base,
+        ]
+        for i, text in enumerate(evil):
+            p = _xmpgen.write(d, f"e{i}.xmp", text)
+            self.assertRaises(ValueError, load_preset, p)
+        # same trick in UTF-16 (a plain byte search for "<!DOCTYPE" would miss it)
+        p = os.path.join(d, "u16.xmp")
+        with open(p, "wb") as f:
+            f.write(('<?xml version="1.0" encoding="UTF-16"?>\n<!DOCTYPE x [<!ENTITY a "x">]>\n' + base).encode("utf-16"))
+        self.assertRaises(ValueError, load_preset, p)
+
+    def test_uses_xml_parser_not_regex(self):
+        """Attribute with spaces around '=' and single quotes still parses (an attribute regex would miss it)."""
+        d = _util.tmpdir(self)
+        text = _xmpgen.xmp_text({"Contrast2012": "+10"}).replace('crs:Contrast2012="+10"', "crs:Contrast2012 =\n  '+25'")
+        self.assertEqual(load_preset(_xmpgen.write(d, "q.xmp", text)).values["Contrast2012"], 25.0)
+
+
+class TestClampOnParse(unittest.TestCase):  # A19 (parse side)
+    def test_out_of_range_values_clamped_and_reported(self):
+        d = _util.tmpdir(self)
+        p = load_preset(_xmpgen.write(d, "big.xmp", _xmpgen.xmp_text(
+            {"Exposure2012": "+9.00", "GrainSize": "1000000000", "SharpenRadius": "+0.10", "Contrast2012": "+400"},
+            curves={"ToneCurvePV2012": [(0, 0), (128, 300), (255, 255)]})))
+        self.assertEqual(p.values["Exposure2012"], 5.0)
+        self.assertEqual(p.values["GrainSize"], 100.0)
+        self.assertEqual(p.values["SharpenRadius"], 0.5)
+        self.assertEqual(p.values["Contrast2012"], 100.0)
+        self.assertEqual(p.curves["ToneCurvePV2012"][1], [128.0, 255.0])
+        for k in ("Exposure2012", "GrainSize", "SharpenRadius", "Contrast2012", "ToneCurvePV2012"):
+            self.assertTrue(any(s.startswith(k) for s in p.skipped), k)
+
+    def test_in_range_not_reported(self):
+        d = _util.tmpdir(self)
+        p = load_preset(_xmpgen.write(d, "ok.xmp", _xmpgen.xmp_text({"Exposure2012": "+4.00",
+                                                                      "SplitToningShadowHue": "350"})))
+        self.assertEqual(p.skipped, [])
 
 
 class TestNumbers(unittest.TestCase):  # A5
