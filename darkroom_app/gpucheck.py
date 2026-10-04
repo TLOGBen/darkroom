@@ -1,13 +1,23 @@
-"""Is another program computing on the GPU? (skip rule for timing checks: app-shell B7, core A17)
+"""Is someone actually using the GPU right now? (skip rule for timing checks: app-shell B7, core A17)
 
-`nvidia-smi --query-compute-apps` lists the processes with a compute context. Under the Windows WDDM driver it
-also lists ordinary desktop programs (explorer, browsers) as type "C+G"; only type "C" processes (CUDA programs
-such as ComfyUI or llama-server) count as compute processes here. A process whose type cannot be determined
-counts as a compute process (conservative: the timing is skipped rather than reported under load).
+Busy when either
+  1. the median of BUSY_SAMPLES readings of `nvidia-smi --query-gpu=utilization.gpu` taken over about one
+     second is above BUSY_UTIL_PERCENT, or
+  2. a ComfyUI process is on the GPU (a compute process whose path contains "comfyui") and its
+     /queue (127.0.0.1:8188) has a non-empty queue_running or queue_pending.
+An idle ComfyUI that merely keeps models in memory does not count; an unreachable /queue counts as idle.
+If nvidia-smi cannot be run at all, the GPU state is unknown and the timing is skipped (reason printed).
 """
-import os
-import re
+import json
+import statistics
 import subprocess
+import time
+import urllib.request
+
+BUSY_UTIL_PERCENT = 15.0
+BUSY_SAMPLES = 5
+SAMPLE_INTERVAL_S = 0.2
+COMFYUI_QUEUE_URL = "http://127.0.0.1:8188/queue"
 
 
 def _run(args):
@@ -15,6 +25,11 @@ def _run(args):
     if r.returncode != 0:
         raise OSError(r.stderr.decode("utf-8", "replace").strip() or f"nvidia-smi exited {r.returncode}")
     return r.stdout.decode("utf-8", "replace")
+
+
+def _fetch_queue(url=COMFYUI_QUEUE_URL, timeout=2.0):
+    with urllib.request.urlopen(url, timeout=timeout) as r:
+        return json.loads(r.read().decode("utf-8"))
 
 
 def parse_compute_apps(csv_text):
@@ -31,31 +46,39 @@ def parse_compute_apps(csv_text):
     return out
 
 
-def parse_types(q_text):
-    """`nvidia-smi -q -d PIDS` -> {pid: type}."""
-    types, pid = {}, None
-    for line in q_text.splitlines():
-        m = re.match(r"\s*Process ID\s*:\s*(\d+)", line)
-        if m:
-            pid = int(m.group(1))
-            continue
-        m = re.match(r"\s*Type\s*:\s*(\S+)", line)
-        if m and pid is not None:
-            types[pid] = m.group(1)
-            pid = None
-    return types
+def parse_utilization(text):
+    """First GPU's utilization.gpu (csv,noheader,nounits) -> float percent."""
+    for line in text.splitlines():
+        line = line.strip().rstrip("%").strip()
+        if line:
+            return float(line)
+    raise ValueError("no utilization reading")
 
 
-def other_compute_processes(exclude=(), runner=_run):
-    """[(pid, name)] of compute processes other than this process and `exclude`; None if nvidia-smi fails."""
+def gpu_busy(runner=_run, fetch_queue=_fetch_queue, sleep=time.sleep, samples=BUSY_SAMPLES):
+    """(busy, reason). busy is True (skip), False (measure) or None (cannot tell: skip)."""
     try:
+        readings = []
+        for i in range(samples):
+            if i:
+                sleep(SAMPLE_INTERVAL_S)
+            readings.append(parse_utilization(runner(["--query-gpu=utilization.gpu",
+                                                      "--format=csv,noheader,nounits"])))
         apps = parse_compute_apps(runner(["--query-compute-apps=pid,process_name", "--format=csv,noheader"]))
-        types = parse_types(runner(["-q", "-d", "PIDS"]))
-    except (OSError, subprocess.SubprocessError):
-        return None
-    mine = {os.getpid(), *exclude}
-    return [(pid, name) for pid, name in apps if pid not in mine and types.get(pid, "C") == "C"]
-
-
-def describe(procs):
-    return "、".join(f"{name}（PID {pid}）" for pid, name in procs)
+    except (OSError, ValueError, subprocess.SubprocessError) as e:
+        return None, f"nvidia-smi 無法執行，無法確認 GPU 是否忙碌（{e}）"
+    med = statistics.median(readings)
+    shown = "、".join(f"{r:g}" for r in readings)
+    if med > BUSY_UTIL_PERCENT:
+        return True, f"GPU 使用率中位數 {med:g}%（> {BUSY_UTIL_PERCENT:g}%；取樣 {shown}）"
+    comfy = [(pid, name) for pid, name in apps if "comfyui" in name.lower()]
+    if comfy:
+        try:
+            q = fetch_queue()
+            running, pending = len(q.get("queue_running") or []), len(q.get("queue_pending") or [])
+        except (OSError, ValueError, AttributeError):
+            return False, f"GPU 使用率中位數 {med:g}%；ComfyUI（PID {comfy[0][0]}）的 /queue 連不到，當作閒置"
+        if running or pending:
+            return True, f"ComfyUI（PID {comfy[0][0]}）正在工作：佇列執行中 {running}、等待中 {pending}"
+        return False, f"GPU 使用率中位數 {med:g}%；ComfyUI（PID {comfy[0][0]}）佇列是空的（閒置）"
+    return False, f"GPU 使用率中位數 {med:g}%；沒有偵測到 ComfyUI"

@@ -255,11 +255,11 @@ class TestMasks(unittest.TestCase):  # A14
         self.assertLess(edge, 0.4)
 
 
-def other_compute_processes():
-    """A17 skip rule (amended with app-shell B7): compute processes other than this one, per nvidia-smi
-    --query-compute-apps (type C only; WDDM lists desktop programs as C+G). None if nvidia-smi fails."""
+def gpu_busy():
+    """A17 skip rule (amended with app-shell B7): (busy, reason) from darkroom_app.gpucheck.gpu_busy -
+    utilization median of 5 samples > 15 %, or a busy ComfyUI queue; busy None = nvidia-smi unavailable."""
     from darkroom_app import gpucheck
-    return gpucheck.other_compute_processes()
+    return gpucheck.gpu_busy()
 
 
 RANGE_TABLE = """範圍表（未列者 -100～100）：Exposure2012 -5～5、LocalExposure2012 -4～4、SharpenRadius 0.5～3、Sharpness 0～150、
@@ -329,14 +329,12 @@ class TestSpeedAndDevice(unittest.TestCase):  # A17
         p = heavy_params()
         render(img, p)
         torch.cuda.synchronize()
-        others = other_compute_processes()
-        if others is None:
-            self.skipTest("[A17] nvidia-smi unavailable: cannot check whether other processes use the GPU")
-        if others:
-            from darkroom_app import gpucheck
-            msg = f"[A17] skipped: other compute processes on the GPU: {gpucheck.describe(others)}"
+        busy, reason = gpu_busy()
+        if busy is None or busy:
+            msg = f"[A17] skipped: {reason}"
             print("\n" + msg)
             self.skipTest(msg)
+        print(f"\n[A17] GPU idle, measuring: {reason}")
         for _ in range(5):
             render(img, p)
         torch.cuda.synchronize()

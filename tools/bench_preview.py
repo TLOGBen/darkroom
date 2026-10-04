@@ -5,9 +5,9 @@ folder, or a synthetic one) and simulates dragging a slider at 60 Hz for 10 s wi
 the newest parameters wait, and they go out as soon as the previous response has arrived. Round trip = request
 sent -> JPEG received and decoded. Pass: median < 100 ms and p95 < 150 ms.
 
-If nvidia-smi lists compute processes other than this one (type "C": CUDA programs such as ComfyUI;
-desktop programs listed as "C+G" under WDDM do not count), the check is skipped and their names are printed.
---force measures anyway and labels the result as measured with other compute processes present.
+Skipped (reason printed) only while the GPU is really busy: median of 5 nvidia-smi utilization readings over
+about 1 s above 15 %, or a ComfyUI process on the GPU whose /queue is not empty (unreachable = idle).
+--force measures anyway and labels the result.
 
   python -s tools/bench_preview.py [--seconds 10] [--force] [--port 0]
 """
@@ -37,15 +37,12 @@ PHOTO = os.path.join(REPO, ".claude", "wayfinder", "darkroom", "prototypes", "ll
                      "landscape_lighthouse.png")
 
 
-def gpu_check(exclude=(), runner=None):
-    """(skip, message)."""
-    kw = {"runner": runner} if runner else {}
-    procs = gpucheck.other_compute_processes(exclude=exclude, **kw)
-    if procs is None:
-        return True, "[B7] 跳過：nvidia-smi 無法執行，無法確認 GPU 上是否有其他運算型程序"
-    if procs:
-        return True, "[B7] 跳過：GPU 上有其他運算型程序：" + gpucheck.describe(procs)
-    return False, "[B7] GPU 上沒有其他運算型程序"
+def gpu_check(**kw):
+    """(skip, message). Skip only while someone is really using the GPU (see darkroom_app.gpucheck)."""
+    busy, reason = gpucheck.gpu_busy(**kw)
+    if busy is None or busy:
+        return True, "[B7] 跳過：" + reason
+    return False, "[B7] GPU 閒置，照常量測：" + reason
 
 
 def make_test_image(folder, megapixels=MEGAPIXELS):
@@ -189,7 +186,7 @@ async def run(args):
         print(f"[B7] 測試圖：{w}×{h}（{w * h / 1e6:.1f} MP）", flush=True)
         port = args.port or _free_port()
         server = start_server(port)
-        skip2, msg2 = gpu_check(exclude=(server.pid,))
+        skip2, msg2 = gpu_check()
         if skip2 and not args.force:
             print(msg2, flush=True)
             return 0
@@ -209,7 +206,7 @@ async def run(args):
             rtts, lags, render_ms, events = await drag(s, base, info["image_id"], preset["id"], args.seconds, HZ)
         med, p95 = statistics.median(rtts), pct(rtts, 0.95)
         ok = med < MEDIAN_LIMIT_MS and p95 < P95_LIMIT_MS
-        tag = "（有其他運算型程序時以 --force 量測）" if forced else ""
+        tag = "（GPU 忙碌時以 --force 量測）" if forced else ""
         print(f"[B7] preset：{preset['name']}；滑桿事件 {events} 次 / 送出 {len(rtts)} 次", flush=True)
         print(f"[B7] 往返 中位數 {med:.1f} ms、p95 {pct(rtts, 0.95):.1f} ms、最大 {max(rtts):.1f} ms；"
               f"拖動到畫面 中位數 {statistics.median(lags):.1f} ms、p95 {pct(lags, 0.95):.1f} ms；"
