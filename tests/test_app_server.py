@@ -331,6 +331,23 @@ class TestPreview(AppCase):  # B5
         e = effective_params(lib.get("p-expo"), 1.5, {"Contrast2012": 10.0})
         self.assertEqual(e.values["Contrast2012"], 70.0)    # 60 is inside the range: plain sum
 
+    def test_r3_shared_cases(self):  # F9: the same table drives tests/js/test_logic.cjs
+        from darkroom_app.preview import effective_params
+        with open(os.path.join(_util.REPO, "tests", "cases", "r3_slider_cases.json"), encoding="utf-8") as f:
+            cases = json.load(f)
+        self.assertGreaterEqual(len(cases["view"]), 10)
+        for c in cases["view"]:
+            e = effective_params(Params(values={c["key"]: float(c["preset"])}), c["strength"] / 100.0,
+                                 {c["key"]: float(c["tweak"])} if c["tweak"] else {})
+            self.assertAlmostEqual(e.get(c["key"]), c["value"], places=9, msg=c["name"])
+        for c in cases["tweak"]:   # the tweak the front end sends reproduces the typed value on the server
+            e = effective_params(Params(values={c["key"]: float(c["preset"])}), c["strength"] / 100.0,
+                                 {c["key"]: float(c["tweak"])} if c["tweak"] else {})
+            lo, hi = cases["sliders"][c["key"]]["min"], cases["sliders"][c["key"]]["max"]
+            want = min(hi, max(lo, c["input"]))
+            step = cases["sliders"][c["key"]]["step"]
+            self.assertLess(abs(e.get(c["key"]) - want), step / 2 + 1e-9, c["name"])
+
     async def test_preview_validation(self):
         _, info = await self.open_photo()
         iid = info["image_id"]

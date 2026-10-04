@@ -1,0 +1,33 @@
+{
+  "_doc": "Contract R3 shared cases: shown value = clamp(clamp(preset at strength) + tweak). Drives tests/js/test_logic.cjs (sliderView / tweakFor) and tests/test_app_server.py (preview.effective_params).",
+  "sliders": {
+    "Contrast2012": {"key": "Contrast2012", "min": -100, "max": 100, "default": 0, "step": 1, "hue": false},
+    "Exposure2012": {"key": "Exposure2012", "min": -5, "max": 5, "default": 0, "step": 0.05, "hue": false},
+    "GrainSize": {"key": "GrainSize", "min": 0, "max": 100, "default": 25, "step": 1, "hue": false},
+    "SplitToningShadowHue": {"key": "SplitToningShadowHue", "min": 0, "max": 360, "default": 0, "step": 1, "hue": true}
+  },
+  "view": [
+    {"name": "lower clamp, no tweak", "key": "Contrast2012", "preset": -75, "strength": 150, "tweak": 0, "raw": -112.5, "base": -100, "value": -100, "clamped": "min"},
+    {"name": "lower clamp, positive tweak", "key": "Contrast2012", "preset": -75, "strength": 150, "tweak": 10, "raw": -112.5, "base": -100, "value": -90, "clamped": "min"},
+    {"name": "upper clamp, negative tweak", "key": "Contrast2012", "preset": 80, "strength": 150, "tweak": -5, "raw": 120, "base": 100, "value": 95, "clamped": "max"},
+    {"name": "upper clamp on exposure at 200", "key": "Exposure2012", "preset": 4.5, "strength": 200, "tweak": -1, "raw": 9, "base": 5, "value": 4, "clamped": "max"},
+    {"name": "inside range at 100", "key": "Contrast2012", "preset": 40, "strength": 100, "tweak": 10, "raw": 40, "base": 40, "value": 50, "clamped": null},
+    {"name": "tweak pushes past the bound", "key": "Contrast2012", "preset": 90, "strength": 100, "tweak": 30, "raw": 90, "base": 90, "value": 100, "clamped": null},
+    {"name": "strength 0 keeps only the tweak", "key": "Contrast2012", "preset": 40, "strength": 0, "tweak": 10, "raw": 0, "base": 0, "value": 10, "clamped": null},
+    {"name": "non-zero default at strength 0", "key": "GrainSize", "preset": 60, "strength": 0, "tweak": 0, "raw": 25, "base": 25, "value": 25, "clamped": null},
+    {"name": "non-zero default at strength 100", "key": "GrainSize", "preset": 60, "strength": 100, "tweak": 5, "raw": 60, "base": 60, "value": 65, "clamped": null},
+    {"name": "non-zero default at strength 200", "key": "GrainSize", "preset": 80, "strength": 200, "tweak": -10, "raw": 135, "base": 100, "value": 90, "clamped": "max"},
+    {"name": "hue angle is not scaled", "key": "SplitToningShadowHue", "preset": 200, "strength": 50, "tweak": 30, "raw": 200, "base": 200, "value": 230, "clamped": null},
+    {"name": "hue angle at 200 clamps after the tweak", "key": "SplitToningShadowHue", "preset": 350, "strength": 200, "tweak": 30, "raw": 350, "base": 350, "value": 360, "clamped": null},
+    {"name": "hue angle at strength 0", "key": "SplitToningShadowHue", "preset": 120, "strength": 0, "tweak": 0, "raw": 120, "base": 120, "value": 120, "clamped": null}
+  ],
+  "tweak": [
+    {"name": "dragging to the clamped value is no tweak", "key": "Contrast2012", "preset": -75, "strength": 150, "input": -100, "tweak": 0},
+    {"name": "dragging right of the lower bound", "key": "Contrast2012", "preset": -75, "strength": 150, "input": -90, "tweak": 10},
+    {"name": "below half a step", "key": "Contrast2012", "preset": -75, "strength": 150, "input": -100.3, "tweak": 0},
+    {"name": "dragging left of the upper bound", "key": "Contrast2012", "preset": 80, "strength": 150, "input": 95, "tweak": -5},
+    {"name": "exposure at 50 percent", "key": "Exposure2012", "preset": 1.0, "strength": 50, "input": 0.8, "tweak": 0.3},
+    {"name": "typed value beyond range is clamped first", "key": "Contrast2012", "preset": 0, "strength": 100, "input": 150, "tweak": 100},
+    {"name": "hue angle", "key": "SplitToningShadowHue", "preset": 200, "strength": 50, "input": 230, "tweak": 30}
+  ]
+}

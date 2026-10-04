@@ -26,6 +26,8 @@ input[type=range] { width: 100%; accent-color: var(--accent); height: 14px; marg
 #photo-path { flex: 1; }
 #position { flex: 0 1 auto; min-width: 60px; max-width: 280px; overflow: hidden; text-overflow: ellipsis; }
 #topbar .hint { color: var(--warn); font-size: 12px; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+#topbar .hint .hint-icon { display: none; }
+#reset-all .btn-icon { margin-right: 4px; }
 #status { font-size: 12px; flex: 0 1 230px; min-width: 0; overflow: hidden; text-overflow: ellipsis; text-align: right; }
 #status.busy { color: #7fc4ff; }
 #status.err { color: #ff8080; }
@@ -130,7 +132,9 @@ input.v-edit { width: 58px; font: inherit; font-size: 12px; text-align: right; c
 /* medium windows: narrower side columns */
 @media (max-width: 1280px) {
   :root { --lib-w: 230px; --sl-w: 340px; }
-  #topbar .hint { display: none; }
+  #topbar .hint { flex: none; }
+  #topbar .hint .hint-icon { display: inline; }
+  #topbar .hint .hint-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 }
 /* narrow windows (about 820 px): the preset column folds away and opens over the preview (R6) */
 @media (max-width: 960px) {
@@ -140,7 +144,9 @@ input.v-edit { width: 58px; font: inherit; font-size: 12px; text-align: right; c
     box-shadow: 4px 0 16px #000a; }
   body.lib-open #col-lib { display: flex; }
   body.lib-collapsed #col-lib { display: none; }
-  #topbar .brand, #reset-all { display: none; }
+  #topbar .brand { display: none; }
+  #reset-all .btn-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  #reset-all .btn-icon { margin-right: 0; }
   #open-form { flex-basis: 260px; }
   .sl { grid-template-columns: 62px minmax(50px, 1fr) 92px 16px; gap: 4px; }
   .sl .cn { font-size: 10px; }

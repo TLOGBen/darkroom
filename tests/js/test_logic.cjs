@@ -130,3 +130,138 @@ test('R6: curve at strength', () => {
   assert.ok(d.startsWith('M0.0 '), d);
   assert.ok(d.includes('L100.0 '), d);
 });
+
+// ---------------------------------------------------------------- shared R3 cases (also run by Python, F9)
+const CASES = require(path.join(__dirname, '..', 'cases', 'r3_slider_cases.json'));
+
+test('R3 shared cases: sliderView', () => {
+  assert.ok(CASES.view.length >= 10);
+  for (const c of CASES.view) {
+    const v = L.sliderView(CASES.sliders[c.key], c.preset, c.strength, c.tweak);
+    assert.ok(Math.abs(v.raw - c.raw) < 1e-9, c.name + ' raw');
+    assert.ok(Math.abs(v.base - c.base) < 1e-9, c.name + ' base');
+    assert.ok(Math.abs(v.value - c.value) < 1e-9, c.name + ' value');
+    assert.equal(v.clamped, c.clamped, c.name + ' clamped');
+  }
+});
+
+test('R3 shared cases: tweakFor', () => {
+  for (const c of CASES.tweak) {
+    assert.ok(Math.abs(L.tweakFor(CASES.sliders[c.key], c.preset, c.strength, c.input) - c.tweak) < 1e-9, c.name);
+  }
+});
+
+// ---------------------------------------------------------------- editor state transitions (F2, R5)
+const S_CONTRAST = CASES.sliders.Contrast2012;
+const dispatch = (ed, ...actions) => actions.reduce((e, a) => L.reduce(e, a), ed);
+
+test('R5: selecting a preset keeps strength and tweaks', () => {
+  let ed = L.initialEditor();
+  ed = dispatch(ed, {type: 'selectPreset', id: 'a'}, {type: 'setStrength', value: 150},
+                {type: 'setValue', slider: S_CONTRAST, presetValue: 20, value: 40});
+  assert.equal(ed.strength, 150);
+  assert.deepEqual(ed.tweaks, {Contrast2012: 10});           // 20 x 150% = 30, shown 40 -> +10
+  ed = L.reduce(ed, {type: 'selectPreset', id: 'b'});
+  assert.equal(ed.presetId, 'b');
+  assert.equal(ed.strength, 150);
+  assert.deepEqual(ed.tweaks, {Contrast2012: 10});
+  ed = L.reduce(ed, {type: 'selectPreset', id: null});
+  assert.equal(ed.presetId, null);
+  assert.deepEqual(ed.tweaks, {Contrast2012: 10});
+});
+
+test('R5: undo / redo walk back through preset, strength, values and resets', () => {
+  let ed = dispatch(L.initialEditor(), {type: 'selectPreset', id: 'a'}, {type: 'setStrength', value: 120},
+                    {type: 'setValue', slider: S_CONTRAST, presetValue: 0, value: 25},
+                    {type: 'selectPreset', id: 'b'}, {type: 'resetAll'});
+  assert.deepEqual([ed.presetId, ed.strength, ed.tweaks], ['b', 120, {}]);
+  ed = L.reduce(ed, {type: 'undo'});
+  assert.deepEqual([ed.presetId, ed.strength, ed.tweaks], ['b', 120, {Contrast2012: 25}]);
+  ed = L.reduce(ed, {type: 'undo'});
+  assert.deepEqual([ed.presetId, ed.strength, ed.tweaks], ['a', 120, {Contrast2012: 25}]);
+  ed = dispatch(ed, {type: 'undo'}, {type: 'undo'});
+  assert.deepEqual([ed.presetId, ed.strength, ed.tweaks], ['a', 100, {}]);
+  ed = L.reduce(ed, {type: 'undo'});
+  assert.deepEqual([ed.presetId, ed.strength, ed.tweaks], [null, 100, {}]);
+  assert.equal(L.canUndo(ed), false);
+  assert.equal(L.reduce(ed, {type: 'undo'}), ed);             // nothing to undo: same state
+  ed = dispatch(ed, {type: 'redo'}, {type: 'redo'});
+  assert.deepEqual([ed.presetId, ed.strength], ['a', 120]);
+  ed = L.reduce(ed, {type: 'resetKey', key: 'Contrast2012'});  // no tweak there yet at this point: no-op
+  assert.equal(L.canRedo(ed), true);
+  ed = L.reduce(ed, {type: 'setStrength', value: 90});         // a new change drops the redo branch
+  assert.equal(L.canRedo(ed), false);
+});
+
+test('R5: one drag is one history step; at least 50 steps kept', () => {
+  let ed = L.reduce(L.initialEditor(), {type: 'selectPreset', id: 'a'});
+  for (const v of [-10, -20, -30, -40]) {
+    ed = L.reduce(ed, {type: 'setValue', slider: S_CONTRAST, presetValue: 0, value: v, gesture: 'Contrast2012'});
+  }
+  ed = L.reduce(ed, {type: 'endGesture'});
+  for (const v of [110, 120, 130]) ed = L.reduce(ed, {type: 'setStrength', value: v, gesture: 'strength'});
+  ed = L.reduce(ed, {type: 'endGesture'});
+  assert.equal(ed.past.length, 3);                            // select, drag, strength drag
+  ed = L.reduce(ed, {type: 'undo'});
+  assert.deepEqual([ed.strength, ed.tweaks], [100, {Contrast2012: -40}]);
+  ed = L.reduce(ed, {type: 'undo'});
+  assert.deepEqual(ed.tweaks, {});
+  let e2 = L.reduce(L.initialEditor(), {type: 'selectPreset', id: 'a'});
+  for (let i = 1; i <= 70; i++) e2 = L.reduce(e2, {type: 'setStrength', value: i});
+  for (let i = 0; i < 50; i++) e2 = L.reduce(e2, {type: 'undo'});
+  assert.equal(e2.strength, 20);
+  assert.ok(L.HISTORY_LIMIT >= 50);
+});
+
+test('R5: strength is disabled and ignored without a preset', () => {
+  let ed = L.initialEditor();
+  assert.equal(L.strengthEnabled(ed), false);
+  const same = L.reduce(ed, {type: 'setStrength', value: 150});
+  assert.equal(same.strength, 100);
+  assert.equal(same.past.length, 0);
+  ed = L.reduce(ed, {type: 'selectPreset', id: 'a'});
+  assert.equal(L.strengthEnabled(ed), true);
+  ed = L.reduce(ed, {type: 'setStrength', value: 150});
+  ed = L.reduce(ed, {type: 'selectPreset', id: null});
+  assert.equal(L.strengthInEffect(ed), 100);                   // no preset: tweaks apply at full value
+  assert.equal(ed.strength, 150);                              // remembered for the next preset
+});
+
+test('R5: tweaks are measured at the strength in effect', () => {
+  const ed = L.reduce(L.initialEditor(), {type: 'setValue', slider: S_CONTRAST, presetValue: 0, value: 30});
+  assert.deepEqual(ed.tweaks, {Contrast2012: 30});
+  const e2 = L.reduce(ed, {type: 'setValue', slider: S_CONTRAST, presetValue: 0, value: 0});
+  assert.deepEqual(e2.tweaks, {});                             // back to the base value removes the key
+});
+
+test('R5 / F4: photo-switch hint only with a photo and a preset or a tweak', () => {
+  const ed = L.initialEditor();
+  assert.equal(L.carryHintVisible(ed, true), false);
+  assert.equal(L.carryHintVisible(L.reduce(ed, {type: 'selectPreset', id: 'a'}), false), false);
+  assert.equal(L.carryHintVisible(L.reduce(ed, {type: 'selectPreset', id: 'a'}), true), true);
+  const tw = L.reduce(ed, {type: 'setValue', slider: S_CONTRAST, presetValue: 0, value: 30});
+  assert.equal(L.carryHintVisible(tw, true), true);
+  assert.equal(L.carryHintVisible(L.reduce(tw, {type: 'resetAll'}), true), false);
+});
+
+test('R5: a drag whose first event changes nothing still records one step', () => {
+  let ed = L.reduce(L.initialEditor(), {type: 'selectPreset', id: 'a'});
+  ed = L.reduce(ed, {type: 'setStrength', value: 150});
+  const before = ed.past.length;
+  // contrast preset -75 at 150% shows -100: the first event (-100) is no change, then the drag moves on
+  for (const v of [-100, -95, -90]) {
+    ed = L.reduce(ed, {type: 'setValue', slider: S_CONTRAST, presetValue: -75, value: v, gesture: 'c'});
+  }
+  ed = L.reduce(ed, {type: 'endGesture'});
+  assert.equal(ed.past.length, before + 1);
+  assert.deepEqual(ed.tweaks, {Contrast2012: 10});
+  ed = L.reduce(ed, {type: 'undo'});
+  assert.deepEqual(ed.tweaks, {});
+  assert.equal(ed.strength, 150);
+});
+
+test('R3 / F8: tooltip sentence with suffixes is fixed', () => {
+  assert.equal(L.sliderTooltip(S_CONTRAST, 40, 100, 10), 'preset × 100% = 40；微調 +10；雙擊＝還原這一項');
+  assert.equal(L.sliderTooltip(S_CONTRAST, 80, 150, -5), 'preset × 150% = 120，已到上限 100；微調 -5；雙擊＝還原這一項');
+  assert.equal(L.sliderTooltip(S_CONTRAST, 40, 0, 0), 'preset × 0% = 0；雙擊＝還原這一項');
+});

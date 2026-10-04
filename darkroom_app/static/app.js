@@ -1,7 +1,8 @@
 'use strict';
 // darkroom editor: preset tree (left), backend-rendered preview (centre), sliders (right).
 // Every preview comes from the backend (POST /api/preview); the page never fakes colour changes.
-// Pure logic (slider semantics, history, tree keys, search, typed values, curves) lives in logic.js.
+// Pure logic lives in logic.js: every change of preset / strength / tweaks goes through L.reduce (dispatch);
+// this file only reads that state and wires the DOM.
 
 const L = window.DarkroomLogic;
 const $ = (s) => document.querySelector(s);
@@ -12,12 +13,11 @@ const NARROW = window.matchMedia('(max-width: 960px)');
 const st = {
   presets: [], byId: {}, flags: {}, sliders: [], groups: [], byKey: {},
   image: null, folder: null,
-  presetId: null, detail: null,
-  strength: 100, tweaks: {},
+  detail: null,
   search: '', openFolders: {}, openGroups: loadPref('openGroups', {basic: true}), hslTab: 'h', focusKey: null,
   holding: false, originalUrl: null, originalFor: null,
 };
-const history = new L.History(200);
+let ed = L.initialEditor();   // {presetId, strength, tweaks, past, future, gesture}
 
 function loadPref(k, dflt) {
   try { const v = localStorage.getItem('darkroom.' + k); return v ? JSON.parse(v) : dflt; } catch (e) { return dflt; }
@@ -44,36 +44,42 @@ async function api(method, url, body) {
   return r;
 }
 
-// ------------------------------------------------------------------ state, history (R5)
-function snapshot() { return {presetId: st.presetId, strength: st.strength, tweaks: Object.assign({}, st.tweaks)}; }
-function record() { history.push(snapshot()); refreshUndo(); }
-function refreshUndo() { $('#undo').disabled = !history.canUndo(); $('#redo').disabled = !history.canRedo(); }
+// ------------------------------------------------------------------ state (R5): dispatch -> L.reduce -> sync DOM
+function refreshUndo() { $('#undo').disabled = !L.canUndo(ed); $('#redo').disabled = !L.canRedo(ed); }
+function renderHint() { $('#carry-hint').hidden = !L.carryHintVisible(ed, !!st.image); }
 
-async function applyState(s) {
-  if (!s) return;
-  const presetChanged = s.presetId !== st.presetId;
-  st.strength = s.strength;
-  st.tweaks = Object.assign({}, s.tweaks);
-  if (presetChanged) await loadPreset(s.presetId);
-  else renderStrength();
-  renderSliders();
+async function dispatch(action) {
+  const prev = ed;
+  ed = L.reduce(ed, action);
+  if (ed === prev) return;
   refreshUndo();
+  renderHint();
+  const sameState = prev.presetId === ed.presetId && prev.strength === ed.strength &&
+    JSON.stringify(prev.tweaks) === JSON.stringify(ed.tweaks);
+  if (sameState) return;
+  if (prev.presetId !== ed.presetId) {
+    requestPreview();
+    await loadPreset(ed.presetId);
+    renderSliders();
+    return;
+  }
+  if (prev.strength !== ed.strength) renderStrength();
+  refreshSliderValues();
+  refreshBadges();
   requestPreview();
 }
-function undo() { applyState(history.undo(snapshot())); }
-function redo() { applyState(history.redo(snapshot())); }
+const undo = () => dispatch({type: 'undo'});
+const redo = () => dispatch({type: 'redo'});
 
 // ------------------------------------------------------------------ slider values (R3)
 function presetValue(key) {
   const s = st.byKey[key];
   return st.detail && st.detail.values[key] != null ? st.detail.values[key] : s.default;
 }
-const strengthNow = () => (st.presetId === null ? 100 : st.strength);
-function view(key) { return L.sliderView(st.byKey[key], presetValue(key), strengthNow(), st.tweaks[key] || 0); }
-function setTweak(key, value) {
-  const d = L.tweakFor(st.byKey[key], presetValue(key), strengthNow(), value);
-  if (d) st.tweaks[key] = d; else delete st.tweaks[key];
-}
+const strengthNow = () => L.strengthInEffect(ed);
+function view(key) { return L.sliderView(st.byKey[key], presetValue(key), strengthNow(), ed.tweaks[key] || 0); }
+const setValue = (key, value, gesture) =>
+  dispatch({type: 'setValue', slider: st.byKey[key], presetValue: presetValue(key), value, gesture});
 
 // ------------------------------------------------------------------ preview: latest wins
 // Only the newest parameters wait to be sent; older ones are overwritten, never queued.
@@ -81,8 +87,8 @@ const pv = {pending: null, inflight: false, seq: 0, shownSeq: 0, url: null};
 
 function currentRequest() {
   const overrides = {};
-  for (const [k, d] of Object.entries(st.tweaks)) if (d) overrides[k] = d;
-  return {image_id: st.image.image_id, preset_id: st.presetId, strength: strengthNow(), overrides};
+  for (const [k, d] of Object.entries(ed.tweaks)) if (d) overrides[k] = d;
+  return {image_id: st.image.image_id, preset_id: ed.presetId, strength: strengthNow(), overrides};
 }
 
 function requestPreview() {
@@ -185,7 +191,7 @@ function addRow(el, meta) {
 
 function presetEl(p, depth, showPath) {
   const el = document.createElement('div');
-  el.className = 'tnode preset' + (p.id === st.presetId ? ' active' : '') + (p.supported ? '' : ' unsupported');
+  el.className = 'tnode preset' + (p.id === ed.presetId ? ' active' : '') + (p.supported ? '' : ' unsupported');
   el.style.paddingLeft = (6 + depth * 14) + 'px';
   el.dataset.id = p.id;
   el.innerHTML = `<span class="tw"></span><span class="nm"></span>${flagHtml(p)}` + (showPath ? '<span class="path"></span>' : '');
@@ -214,7 +220,7 @@ function renderTree() {
   treeRows = [];
   $('#lib-count').textContent = `preset 庫（${st.presets.length} 個）`;
   const none = document.createElement('div');
-  none.className = 'tnode preset none' + (st.presetId === null ? ' active' : '');
+  none.className = 'tnode preset none' + (ed.presetId === null ? ' active' : '');
   none.innerHTML = '<span class="tw"></span><span class="nm">（不套 preset，只用微調）</span>';
   none.onclick = () => { st.focusKey = 'p:'; selectPreset(null); };
   addRow(none, {type: 'preset', key: 'p:', id: null, depth: 0, parent: -1});
@@ -241,7 +247,7 @@ function renderTree() {
   }
   // roving tabindex: exactly one row can be reached with Tab
   let fi = treeRows.findIndex((r) => r.key === st.focusKey);
-  if (fi < 0) fi = treeRows.findIndex((r) => r.type === 'preset' && r.id === st.presetId);
+  if (fi < 0) fi = treeRows.findIndex((r) => r.type === 'preset' && r.id === ed.presetId);
   if (fi < 0) fi = 0;
   treeRows[fi].el.tabIndex = 0;
   box.scrollTop = scroll;
@@ -279,12 +285,11 @@ function onTreeKey(e) {
 }
 
 async function loadPreset(id) {
-  st.presetId = id;
   st.detail = null;
   if (id !== null) {
     try { st.detail = await (await api('GET', '/api/presets/' + encodeURIComponent(id))).json(); }
     catch (e) { toast('讀取 preset 失敗：' + e.message, true); }
-    if (st.presetId !== id) return;
+    if (ed.presetId !== id) return;
   }
   $('#preset-name').textContent = id === null ? NO_PRESET : st.byId[id].name;
   const banner = $('#skip-banner'), note = $('#skip-note');
@@ -295,13 +300,7 @@ async function loadPreset(id) {
   renderTree();
 }
 
-async function selectPreset(id) {
-  if (id === st.presetId) return;
-  record();                       // strength and tweaks are kept (R5)
-  await loadPreset(id);
-  renderSliders();
-  requestPreview();
-}
+function selectPreset(id) { return dispatch({type: 'selectPreset', id}); }   // strength and tweaks are kept (R5)
 
 // ------------------------------------------------------------------ inline value editing (R6)
 function editValue(span, current, spec, commit) {
@@ -330,14 +329,14 @@ function editValue(span, current, spec, commit) {
 // ------------------------------------------------------------------ sliders
 function updateRow(row) {
   const key = row.dataset.key, s = st.byKey[key], v = view(key);
-  row.classList.toggle('adjusted', !!st.tweaks[key]);
+  row.classList.toggle('adjusted', !!ed.tweaks[key]);
   row.classList.toggle('clamped', !!v.clamped);
   const inp = row.querySelector('input[type=range]');
   if (document.activeElement !== inp || !row.dragging) inp.value = v.value;
   const vs = row.querySelector('.v');
   if (!vs.querySelector('input')) vs.textContent = L.fmtNum(s, v.value);
   row.querySelector('.cn').textContent = L.clampNote(v);
-  row.title = L.sliderTooltip(s, presetValue(key), strengthNow(), st.tweaks[key] || 0);
+  row.title = L.sliderTooltip(s, presetValue(key), strengthNow(), ed.tweaks[key] || 0);
 }
 
 function sliderRow(s) {
@@ -350,24 +349,14 @@ function sliderRow(s) {
   row.querySelector('label').textContent = s.label;
   const inp = row.querySelector('input');
   inp.setAttribute('aria-label', s.label);
-  let gesture = false;
-  inp.addEventListener('input', () => {
-    if (!gesture) { record(); gesture = true; }      // one history step per drag
-    row.dragging = true;
-    setTweak(s.key, +inp.value);
-    updateRow(row);
-    refreshBadges();
-    requestPreview();
-  });
-  inp.addEventListener('change', () => { gesture = false; row.dragging = false; updateRow(row); });
-  const reset = () => { if (st.tweaks[s.key]) { record(); delete st.tweaks[s.key]; updateRow(row); refreshBadges(); requestPreview(); } };
+  inp.addEventListener('input', () => { row.dragging = true; setValue(s.key, +inp.value, 'slider:' + s.key); });  // one step per drag
+  inp.addEventListener('change', () => { row.dragging = false; dispatch({type: 'endGesture'}); updateRow(row); });
+  const reset = () => dispatch({type: 'resetKey', key: s.key});
   inp.addEventListener('dblclick', reset);
   row.querySelector('label').addEventListener('dblclick', reset);
   row.querySelector('.reset').addEventListener('click', reset);
   const vs = row.querySelector('.v');
-  vs.addEventListener('dblclick', () => editValue(vs, L.fmtNum(s, view(s.key).value).replace(/^\+/, ''), s, (v) => {
-    record(); setTweak(s.key, v); updateRow(row); refreshBadges(); requestPreview();
-  }));
+  vs.addEventListener('dblclick', () => editValue(vs, L.fmtNum(s, view(s.key).value).replace(/^\+/, ''), s, (v) => setValue(s.key, v)));
   updateRow(row);
   return row;
 }
@@ -428,7 +417,7 @@ function renderSliders() {
 function refreshBadges() {
   document.querySelectorAll('#sliders .acc').forEach((acc) => {
     const g = acc.dataset.group;
-    const n = st.sliders.filter((s) => s.group === g && st.tweaks[s.key]).length;
+    const n = st.sliders.filter((s) => s.group === g && ed.tweaks[s.key]).length;
     acc.querySelector('.tc').textContent = n ? `● 微調 ${n} 項` : '';
   });
 }
@@ -441,30 +430,14 @@ function refreshSliderValues() {
 
 // ------------------------------------------------------------------ strength
 function renderStrength() {
-  const none = st.presetId === null;
-  $('#strength').disabled = none;
-  $('#strength-100').disabled = none;
-  $('#strength').value = st.strength;
-  $('#strength-value').textContent = none ? '—' : st.strength + '%';
-  $('#strength').title = none ? '先選一個 preset' : '';
+  const on = L.strengthEnabled(ed);
+  $('#strength').disabled = !on;
+  $('#strength-100').disabled = !on;
+  if (document.activeElement !== $('#strength')) $('#strength').value = ed.strength;
+  $('#strength-value').textContent = on ? ed.strength + '%' : '—';
+  $('#strength').title = on ? '' : '先選一個 preset';
 }
-
-let strengthGesture = false;
-function onStrength() {
-  if (!strengthGesture) { record(); strengthGesture = true; }
-  st.strength = +$('#strength').value;
-  $('#strength-value').textContent = st.strength + '%';
-  refreshSliderValues();
-  requestPreview();
-}
-function setStrength(v) {
-  if (st.presetId === null || v === st.strength) return;
-  record();
-  st.strength = v;
-  renderStrength();
-  refreshSliderValues();
-  requestPreview();
-}
+const setStrength = (v, gesture) => dispatch({type: 'setStrength', value: v, gesture});
 
 // ------------------------------------------------------------------ photos
 async function openPhoto(path) {
@@ -487,7 +460,7 @@ async function openPhoto(path) {
 
 function renderPosition() {
   const f = st.folder;
-  $('#carry-hint').hidden = !st.image;
+  renderHint();
   if (!f || f.index < 0) { $('#position').textContent = st.image ? st.image.path : '尚未開啟照片'; $('#prev').disabled = $('#next').disabled = true; return; }
   $('#position').textContent = `${f.index + 1}/${f.files.length} ${f.files[f.index].name}`;
   $('#position').title = f.files[f.index].path;
@@ -520,14 +493,14 @@ async function init() {
   $('#redo').onclick = redo;
   $('#toggle-lib').onclick = toggleLib;
   $('#toggle-sl').onclick = () => document.body.classList.toggle('sl-collapsed');
-  $('#strength').addEventListener('input', onStrength);
-  $('#strength').addEventListener('change', () => { strengthGesture = false; });
+  $('#strength').addEventListener('input', () => setStrength(+$('#strength').value, 'strength'));
+  $('#strength').addEventListener('change', () => dispatch({type: 'endGesture'}));
   $('#strength-100').onclick = () => setStrength(100);
   $('#strength-value').addEventListener('dblclick', () => {
-    if (st.presetId === null) return;
-    editValue($('#strength-value'), String(st.strength), STRENGTH, (v) => setStrength(Math.round(v)));
+    if (!L.strengthEnabled(ed)) return;
+    editValue($('#strength-value'), String(ed.strength), STRENGTH, (v) => setStrength(v));
   });
-  $('#reset-all').onclick = () => { if (Object.keys(st.tweaks).length) { record(); st.tweaks = {}; renderSliders(); requestPreview(); } };
+  $('#reset-all').onclick = () => dispatch({type: 'resetAll'});
   $('#search').addEventListener('input', (e) => { st.search = e.target.value.trim(); renderTree(); });
   $('#preset-tree').addEventListener('keydown', onTreeKey);
   const hold = $('#hold');
@@ -563,5 +536,5 @@ async function init() {
   if (last) { $('#photo-path').value = last; openPhoto(last); }
 }
 
-window.darkroom = {st, pv, history, requestPreview, selectPreset, openPhoto, step, undo, redo, setStrength};
+window.darkroom = {st, pv, get ed() { return ed; }, dispatch, requestPreview, selectPreset, openPhoto, step, undo, redo, setStrength};
 init().catch((e) => toast('載入失敗：' + e.message, true));

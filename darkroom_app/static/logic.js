@@ -72,6 +72,78 @@
     canRedo() { return this.future.length > 0; }
   }
 
+  // ---------------------------------------------------------------- R5 editor state (reducer)
+  // ed = {presetId, strength, tweaks, past: [snapshot], future: [snapshot], gesture: string|null}
+  // A snapshot is {presetId, strength, tweaks}. Every change records the state before it, except further
+  // steps of the same gesture (one drag = one step). Changes that change nothing record nothing.
+  const HISTORY_LIMIT = 200;
+  const snap = (ed) => ({presetId: ed.presetId, strength: ed.strength, tweaks: Object.assign({}, ed.tweaks)});
+
+  function initialEditor() {
+    return {presetId: null, strength: 100, tweaks: {}, past: [], future: [], gesture: null};
+  }
+
+  const strengthEnabled = (ed) => ed.presetId !== null;
+  const strengthInEffect = (ed) => (ed.presetId === null ? 100 : ed.strength);
+  const canUndo = (ed) => ed.past.length > 0;
+  const canRedo = (ed) => ed.future.length > 0;
+  const carryHintVisible = (ed, hasImage) =>
+    !!hasImage && (ed.presetId !== null || Object.keys(ed.tweaks).length > 0);
+
+  function change(ed, next, gesture) {
+    const now = snap(ed);
+    if (same(now, snap(Object.assign({}, ed, next)))) {
+      // nothing changed: a gesture only counts as started once it has changed something
+      const keep = gesture && ed.gesture === gesture ? gesture : null;
+      return keep === ed.gesture ? ed : Object.assign({}, ed, {gesture: keep});
+    }
+    const continuing = gesture && ed.gesture === gesture;
+    const past = continuing ? ed.past : ed.past.concat([now]).slice(-HISTORY_LIMIT);
+    return Object.assign({}, ed, next, {past, future: [], gesture: gesture || null});
+  }
+
+  function reduce(ed, a) {
+    switch (a.type) {
+      case 'selectPreset':              // strength and tweaks are kept
+        return change(ed, {presetId: a.id === undefined ? null : a.id});
+      case 'setStrength': {
+        if (!strengthEnabled(ed)) return ed;
+        const v = Math.min(200, Math.max(0, Math.round(a.value)));
+        return change(ed, {strength: v}, a.gesture);
+      }
+      case 'setValue': {
+        const d = tweakFor(a.slider, a.presetValue, strengthInEffect(ed), a.value);
+        const tweaks = Object.assign({}, ed.tweaks);
+        if (d) tweaks[a.slider.key] = d; else delete tweaks[a.slider.key];
+        return change(ed, {tweaks}, a.gesture);
+      }
+      case 'resetKey': {
+        if (!(a.key in ed.tweaks)) return ed;
+        const tweaks = Object.assign({}, ed.tweaks);
+        delete tweaks[a.key];
+        return change(ed, {tweaks});
+      }
+      case 'resetAll':
+        return Object.keys(ed.tweaks).length ? change(ed, {tweaks: {}}) : ed;
+      case 'endGesture':
+        return ed.gesture ? Object.assign({}, ed, {gesture: null}) : ed;
+      case 'undo': {
+        if (!canUndo(ed)) return ed;
+        const prev = ed.past[ed.past.length - 1];
+        return Object.assign({}, ed, copy(prev), {past: ed.past.slice(0, -1), future: ed.future.concat([snap(ed)]),
+                                                   gesture: null});
+      }
+      case 'redo': {
+        if (!canRedo(ed)) return ed;
+        const next = ed.future[ed.future.length - 1];
+        return Object.assign({}, ed, copy(next), {past: ed.past.concat([snap(ed)]), future: ed.future.slice(0, -1),
+                                                   gesture: null});
+      }
+      default:
+        throw new Error('unknown action ' + a.type);
+    }
+  }
+
   // ---------------------------------------------------------------- R6 tree keyboard
   // rows: visible rows in order, {type: 'folder'|'preset', depth, open, parent: index or -1}
   function treeKey(rows, i, key) {
@@ -127,5 +199,6 @@
   }
 
   return {sliderView, tweakFor, sliderTooltip, clampNote, fmtNum, History, treeKey, matchPreset,
+          HISTORY_LIMIT, initialEditor, reduce, strengthEnabled, strengthInEffect, canUndo, canRedo, carryHintVisible,
           parseValueInput, curveAtStrength, curvePath};
 });
