@@ -13,6 +13,7 @@ from .presets import Library
 
 HOST = "127.0.0.1"          # only ever bound to the local machine (B2)
 DEFAULT_PORT = 8765
+OPEN_ERROR = "照片讀取失敗：{file_name}：{reason}"   # verbatim (CONTRACT-heic)
 READY_LINE = "darkroom 已啟動：http://127.0.0.1:{port}/"
 STATIC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 
@@ -77,11 +78,11 @@ async def api_open(request):
     if not os.path.isfile(path):
         return _bad(f"photo not found: {path}", 404)
     if os.path.splitext(path)[1].lower() not in engine_mod.PHOTO_EXT:
-        return _bad("unsupported photo format (JPEG/PNG/TIFF)")
+        return _bad("unsupported photo format (JPEG/PNG/TIFF/HEIC)")
     try:
         info = await _run(request, request.app[ENGINE].open, path)
     except (OSError, ValueError) as e:
-        return _bad(f"cannot read photo: {e}")
+        return _bad(OPEN_ERROR.format(file_name=os.path.basename(path), reason=" ".join(str(e).split())))
     return web.json_response(info)
 
 

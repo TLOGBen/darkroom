@@ -21,7 +21,7 @@ import torch
 from darkroom import Params, read_image, render
 
 PREVIEW_MAX_PIXELS = 1500000  # verbatim constant (B4)
-PHOTO_EXT = (".jpg", ".jpeg", ".png", ".tif", ".tiff")
+PHOTO_EXT = (".jpg", ".jpeg", ".png", ".tif", ".tiff", ".heic", ".heif")   # CONTRACT-heic H7
 JPEG_QUALITY = 85
 MAX_OPEN_IMAGES = 8
 
@@ -69,7 +69,7 @@ class Engine:
         """Read a photo (read-only), keep a preview-sized copy on the device, return its description."""
         ext = os.path.splitext(path)[1].lower()
         if ext not in PHOTO_EXT:
-            raise ValueError(f"unsupported photo format {ext or '(none)'} (JPEG/PNG/TIFF)")
+            raise ValueError(f"unsupported photo format {ext or '(none)'} (JPEG/PNG/TIFF/HEIC)")
         full = read_image(path)
         h, w = full.shape[:2]
         pw, ph = preview_size(w, h)
