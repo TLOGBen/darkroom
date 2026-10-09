@@ -6,25 +6,25 @@
 
 ```powershell
 cd D:\Code\darkroom
-$PY  = "C:/Users/powde/workspace/LocalLLMs/runtimes/darkroom-python/py3.13.14-torch2.14.0-cu130/python.exe"
+$PY  = "E:/llm/runtimes/darkroom-python/py3.13.14-torch2.14.0-cu130/python.exe"
 $GEN = ".claude/wayfinder/darkroom/prototypes/calibration/make_calibration_set.py"
 ```
 
 1. **先設提醒（30 秒）**：手機行事曆設「試用第 6 天：取消 Adobe 試用」。試用要登錄付款方式，第 7 天前沒取消就會扣款。
-2. **產生要匯入的檔案（約 2 分鐘，前一天先做也可以）**：`& $PY -s $GEN build`。最後出現「設定數：必做 71、選做 130；方案 A 檔數：必做 429、選做 344」就是成功，檔案在 `C:\Users\powde\workspace\LocalLLMs\scratch\lr-calibration\`。
+2. **產生要匯入的檔案（約 2 分鐘，前一天先做也可以）**：`& $PY -s $GEN build`。最後出現「設定數：必做 71、選做 130；方案 A 檔數：必做 429、選做 344」就是成功，檔案在 `E:\llm\scratch\lr-calibration\`。
 3. **安裝 Lightroom Classic（動手 10 分鐘，下載安裝另等 5～15 分鐘）**：Adobe 官網 → Photography 方案 7 天免費試用 → 用 Creative Cloud 裝 **Lightroom Classic**（不是雲端版「Lightroom」）。打開後新建 catalog `D:\lr-calibration\calib.lrcat`；編輯 → 偏好設定 →「預設集」確認**沒有**勾「套用自動色調調整」。（詳細：下面第 1 步）
-4. **匯入（動手 3 分鐘，等約 5 分鐘）**：來源選 `C:\Users\powde\workspace\LocalLLMs\scratch\lr-calibration\planA\must`（有空也加 `optional`）；上方選「**新增**」；取消勾「不要匯入可疑的重複項目」；修片設定「無」、中繼資料「無」。（詳細：第 2 步）
+4. **匯入（動手 3 分鐘，等約 5 分鐘）**：來源選 `E:\llm\scratch\lr-calibration\planA\must`（有空也加 `optional`）；上方選「**新增**」；取消勾「不要匯入可疑的重複項目」；修片設定「無」、中繼資料「無」。（詳細：第 2 步）
 5. **抽查 3 張（1～3 分鐘）**：到修片模組看第 3 步表格裡那 3 張，滑桿數字對就繼續。全是 0 → 圖庫模組 Ctrl+A，「中繼資料 → 從檔案讀取中繼資料」再看；還是 0 → 改走下面的方案 B。
-6. **匯出（動手 5 分鐘，等 10～25 分鐘）**：Ctrl+A 全選 → 匯出到 `C:\Users\powde\workspace\LocalLLMs\outputs\lr-calibration`（不要勾子資料夾）；檔名範本 `{自訂文字}-{檔名}`，自訂文字填**今天日期**（例如 `2026-10-20`）；**TIFF、ZIP 壓縮、sRGB、16 位元**；不縮圖、不輸出銳利化。（完整設定表：第 4 步）
+6. **匯出（動手 5 分鐘，等 10～25 分鐘）**：Ctrl+A 全選 → 匯出到 `E:\llm\outputs\lr-calibration`（不要勾子資料夾）；檔名範本 `{自訂文字}-{檔名}`，自訂文字填**今天日期**（例如 `2026-10-20`）；**TIFF、ZIP 壓縮、sRGB、16 位元**；不縮圖、不輸出銳利化。（完整設定表：第 4 步）
 7. **記版本（1 分鐘）**：在同一個資料夾新增文字檔 `<今天日期>-lr-version.txt`，寫 Lightroom Classic 版本（說明 → 系統資訊第一行）和 Camera Raw 版本。
-8. **檢查有沒有漏（1 分鐘）**：`& $PY -s $GEN check C:/Users/powde/workspace/LocalLLMs/outputs/lr-calibration`。必做要「缺 0」，有缺就回 Lightroom 補匯出那幾張。匯出到別的資料夾或忘了加日期：`& $PY -s $GEN stamp <那個資料夾> <今天日期>`，會補前綴並搬過去。
+8. **檢查有沒有漏（1 分鐘）**：`& $PY -s $GEN check E:/llm/outputs/lr-calibration`。必做要「缺 0」，有缺就回 Lightroom 補匯出那幾張。匯出到別的資料夾或忘了加日期：`& $PY -s $GEN stamp <那個資料夾> <今天日期>`，會補前綴並搬過去。
 9. **擬合（電腦自己跑約 3～5 分鐘；先關掉 ComfyUI 這類佔 GPU 的程式）**：
 
    ```powershell
    & $PY -s .claude/wayfinder/darkroom/prototypes/calibration/fit_calibration.py fit
    ```
 
-   它讀上面那個匯出資料夾，標準圖用 `C:\Users\powde\workspace\LocalLLMs\scratch\lr-calibration\planB_base\`，報告寫到 `D:\Code\darkroom\outputs\calibration\<今天日期>-fit-report.md`。只給建議常數，不會改程式。GPU 記憶體不夠就加 `--stride 3`。
+   它讀上面那個匯出資料夾，標準圖用 `E:\llm\scratch\lr-calibration\planB_base\`，報告寫到 `D:\Code\darkroom\outputs\calibration\<今天日期>-fit-report.md`。只給建議常數，不會改程式。GPU 記憶體不夠就加 `--stride 3`。
 10. **趁試用還在，看一下報告**：把報告交給 Claude。報告說某個滑桿「撞到搜尋邊界」或「擬合後平均 ΔE 仍 > 3」，代表光調常數不夠，可能要補渲染別的取值——這時 Lightroom 還能用。
 11. **取消試用**：`check` 缺 0、擬合也跑完以後，到 account.adobe.com → 方案 → 取消方案，確認收到取消信。
 
@@ -73,7 +73,7 @@ darkroom 自己寫的 Lightroom XMP 調色，有幾項 Adobe 沒公開演算法�
 
 ```powershell
 cd D:\Code\darkroom
-$PY  = "C:/Users/powde/workspace/LocalLLMs/runtimes/darkroom-python/py3.13.14-torch2.14.0-cu130/python.exe"
+$PY  = "E:/llm/runtimes/darkroom-python/py3.13.14-torch2.14.0-cu130/python.exe"
 $GEN = ".claude/wayfinder/darkroom/prototypes/calibration/make_calibration_set.py"
 & $PY -s $GEN plan    # 只看數量（不下載、不寫檔），可省略
 & $PY -s $GEN build
@@ -97,7 +97,7 @@ $GEN = ".claude/wayfinder/darkroom/prototypes/calibration/make_calibration_set.p
 
 ### 2. 匯入
 
-1. 檔案 → 匯入相片和視訊 → 來源選 `C:\Users\powde\workspace\LocalLLMs\scratch\lr-calibration\planA\must`（要做選做的話，在左邊來源欄也勾 `optional`，或匯入兩次）。
+1. 檔案 → 匯入相片和視訊 → 來源選 `E:\llm\scratch\lr-calibration\planA\must`（要做選做的話，在左邊來源欄也勾 `optional`，或匯入兩次）。
 2. 上方選 **「新增」**（Add，檔案原地不動，不要選拷貝／移動）。
 3. 右邊「檔案處理」：建立預覽選「最小」；**取消勾選「不要匯入可疑的重複項目」**。
 4. 右邊「匯入時套用」：**修片設定選「無」**、中繼資料選「無」。
@@ -123,7 +123,7 @@ $GEN = ".claude/wayfinder/darkroom/prototypes/calibration/make_calibration_set.p
 
 | 區塊 | 設定 |
 |---|---|
-| 匯出位置 | 指定資料夾：`C:\Users\powde\workspace\LocalLLMs\outputs\lr-calibration`，**不要勾「置於子資料夾」**（不開日期資料夾）；現有檔案：詢問 |
+| 匯出位置 | 指定資料夾：`E:\llm\outputs\lr-calibration`，**不要勾「置於子資料夾」**（不開日期資料夾）；現有檔案：詢問 |
 | 檔案命名 | 勾「重新命名為」→「編輯…」建一個檔名範本：**`{自訂文字}-{檔名}`**（中間一個減號），存成範本「校正-日期」；「自訂文字」欄填**今天的渲染日期**，例如 `2026-10-08`。匯出結果像 `2026-10-08-A02-03_Highlights2012_m050__real-portrait.tif`。不要用範本裡的「日期」權杖：那是照片的拍攝日期，不是今天 |
 | 檔案設定 | 影像格式 **TIFF**；壓縮 **ZIP**；色彩空間 **sRGB**；位元深度 **16 位元／色版**；如果有「HDR 輸出」選項，**不要勾** |
 | 調整影像尺寸 | **不要勾**（保持原尺寸，局部運算的半徑跟尺寸有關） |
@@ -145,14 +145,14 @@ $GEN = ".claude/wayfinder/darkroom/prototypes/calibration/make_calibration_set.p
 ### 5. 比對有沒有漏
 
 ```powershell
-& $PY -s $GEN check C:/Users/powde/workspace/LocalLLMs/outputs/lr-calibration
+& $PY -s $GEN check E:/llm/outputs/lr-calibration
 ```
 
 會列出必做／選做各缺幾張；缺的話回 Lightroom 找那幾張補匯出。`check` 會忽略檔名開頭的 `YYYY-MM-DD-`，有沒有日期前綴都認得。
 
 ### 6. 收尾
 
-1. 匯出的檔案直接放在 `C:\Users\powde\workspace\LocalLLMs\outputs\lr-calibration\`（不開子資料夾、不開日期資料夾；`outputs/` 不進 git），檔名是 `<渲染日期>-<原本的檔名>.tif`。另外在同一個資料夾放 `<渲染日期>-lr-version.txt`，內容寫 Lightroom Classic 的版本號（說明 → 系統資訊，第一行）跟 Camera Raw 版本。日期前綴後面的部分不要改，後面的分析靠它找設定。
+1. 匯出的檔案直接放在 `E:\llm\outputs\lr-calibration\`（不開子資料夾、不開日期資料夾；`outputs/` 不進 git），檔名是 `<渲染日期>-<原本的檔名>.tif`。另外在同一個資料夾放 `<渲染日期>-lr-version.txt`，內容寫 Lightroom Classic 的版本號（說明 → 系統資訊，第一行）跟 Camera Raw 版本。日期前綴後面的部分不要改，後面的分析靠它找設定。
 2. 確認 `check` 說「缺 0」、也跑完第 7 步擬合以後（報告有問題還能趁試用補渲染），**到 Adobe 帳號頁面取消試用**（account.adobe.com → 方案 → 取消方案），確認收到取消信。
 3. 想清空間的話，`<LocalLLMs>/scratch/lr-calibration/planA/` 可以刪（之後可以重產）；**`planB_base/` 先留著**，`.claude/wayfinder/darkroom/prototypes/calibration/fit_calibration.py` 拿它當 darkroom 那一側的輸入。
 
@@ -171,7 +171,7 @@ $GEN = ".claude/wayfinder/darkroom/prototypes/calibration/make_calibration_set.p
 
 ## 方案 B（備案：方案 A 讀不到內嵌設定時）
 
-1. 匯入 `C:\Users\powde\workspace\LocalLLMs\scratch\lr-calibration\planB_base\` 的 9 張乾淨原圖（同樣選「新增」、修片設定「無」）。
+1. 匯入 `E:\llm\scratch\lr-calibration\planB_base\` 的 9 張乾淨原圖（同樣選「新增」、修片設定「無」）。
 2. 修片模組左邊「預設集」面板 → 「＋」→ 匯入預設集 → 選 `presets/presets_must.zip`（選做再匯入 `presets_optional.zip`）。會出現「校正 - 基準」「校正 - Highlights2012」…等群組，名稱前面有代碼，照順序排好。
 3. 做一個匯出預設集：設定同上表，檔案命名改成自訂範本 **`{自訂文字}__{檔名}`**（中間是兩個底線）。
 4. 每個 preset：全選 9 張 → 點 preset → 匯出 → 「自訂文字」填「渲染日期-代碼」（例如 `2026-10-08-A02-03`，代碼是 preset 名稱最前面那段）→ 匯出。檔名會是 `2026-10-08-A02-03__real-portrait.tif`。

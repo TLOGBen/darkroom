@@ -6,7 +6,7 @@
 
 ## Notes
 
-- **專案位置（2026-10-04 起）**：本專案是獨立 repo `D:/Code/darkroom`（使用者指定；D 槽是 SATA，程式碼放這裡沒問題，大檔案與模型仍在 C 槽）。地圖、計畫檔、研究、原型都從 LocalLLMs 搬來。**票裡寫的 `models/`、`runtimes/`、`projects/comfyui/`、`launcher/`、`artifact/11_preset/`、`outputs/`、`scratch/` 這類路徑，根目錄都是 `C:/Users/powde/workspace/LocalLLMs`**（模型、llama.cpp、ComfyUI、使用者的 preset 都在那裡）；`prototypes/`、`.claude/` 則是本 repo。
+- **專案位置（2026-10-04 起）**：本專案是獨立 repo `D:/Code/darkroom`（使用者指定；D 槽是 SATA，程式碼放這裡沒問題，大檔案與模型仍在 C 槽）。地圖、計畫檔、研究、原型都從 LocalLLMs 搬來。**票裡寫的 `models/`、`runtimes/`、`projects/comfyui/`、`launcher/`、`artifact/11_preset/`、`outputs/`、`scratch/` 這類路徑，根目錄都是 `E:/llm`**（模型、llama.cpp、ComfyUI、使用者的 preset 都在那裡）；`prototypes/`、`.claude/` 則是本 repo。
 - **領域**：本機相片編輯——2026-10-04 起載體改為「核心函式庫＋獨立本機 App」，ComfyUI 0.38 只當擴散模型後端（RTX 4070 Ti SUPER 16GB）；使用者退了 Lightroom 訂閱，要用買來的 preset（`artifact/11_preset/xmp`，1466 個 xmp、150 個群組、第一層 11 類）。
 - **先讀**：`.claude/think/comfyui-lightroom-preset-editor.md`（① 的計畫：確認過的理解第 3 版、Building／Not building／Approach／Key decisions／Unknowns）。地圖上的票都從它的未決點與三塊分工來。
 - **已定原則（使用者 2026-10-04）**：xmp 的設定一律由程式執行；提示詞（PE＋Qwen 修圖）只做「加強」與「Adobe 未公開演算法的補強」。AI 只負責看懂畫面、找出位置（遮罩、關鍵點）、重畫內容；要用滑桿調、要能重複的部分由程式做。拖動預覽要即時；JPEG 先、RAW 後；「專案資料夾」＝preset 的資料夾分組；preset 庫不改原檔。② 的方向（2026-10-04 改）：**LLM 看圖直接決定滑桿數值（程式套用）＋可選 Qwen 重畫（混合強度）**；不做 AI 自動挑 preset。AI 功能（LLM 給數值、AI 補強／重畫）都吃兩個使用者輸入：**想要的方向**與**不想要的方向**（使用者 2026-10-04）。

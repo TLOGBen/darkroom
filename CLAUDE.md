@@ -25,7 +25,9 @@
 - **原則**：xmp 的設定一律由程式執行；AI 只負責看懂畫面、找出位置（遮罩、關鍵點）、重畫內容；要用滑桿調、要能重複的部分由程式做。
 - **② AI 修圖助理**：PE-I2I（不思考）看圖給滑桿數值，json_schema 強制格式；白平衡由程式先量，診斷與數值矛盾就重問或歸零。不做 AI 自動挑 preset。
 
-## 依賴 LocalLLMs（`C:/Users/powde/workspace/LocalLLMs`）
+## 依賴 LocalLLMs（`E:/llm`）
+
+2026-10-09 從 `C:/Users/powde/workspace/LocalLLMs` 整個搬到 `E:/llm`（目錄結構不變，`config.local.json` 的 `localllms_root` 已改）。**E 是隨身硬碟（Samsung T9）**：沒插就跑不了 darkroom（專用 Python、preset 都在上面），載入模型也比 NVMe 慢。
 
 模型、執行程式與使用者的 preset 都在 LocalLLMs，**不要複製進本 repo**：
 - preset：`artifact/11_preset/xmp`（1466 個；preset 庫索引 `artifact/11_preset/library.json`、自存 preset `artifact/11_preset/user/`）

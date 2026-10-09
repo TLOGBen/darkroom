@@ -10,7 +10,7 @@
   5. manifest.csv、expected 檔名清單；--check 可比對 Lightroom 匯出的資料夾少了哪些。
 
 用法（pwsh；在 darkroom repo 根目錄 D:/Code/darkroom 執行，本檔路徑以此為準）：
-  $PY = "C:/Users/powde/workspace/LocalLLMs/runtimes/darkroom-python/py3.13.14-torch2.14.0-cu130/python.exe"
+  $PY = "E:/llm/runtimes/darkroom-python/py3.13.14-torch2.14.0-cu130/python.exe"
   $GEN = ".claude/wayfinder/darkroom/prototypes/calibration/make_calibration_set.py"
   & $PY -s $GEN plan                  # 只列數量：不下載、不寫任何檔案
   & $PY -s $GEN build                 # 產生全部（預設下載真實照片）
