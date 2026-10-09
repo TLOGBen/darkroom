@@ -19,9 +19,10 @@ class FakeDarkroom:
             raise self.fail[op]
         return result
 
-    def list_presets(self, query=None, offset=0, limit=None):
-        items = [{"id": "fake-1", "group": "假群組", "name": "假一", "supported": True, "skipped": []}]
-        return self._do("list_presets", (query, offset, limit), {"items": items, "total": 1, "next_offset": None})
+    def list_presets(self, query=None, offset=0, limit=None, favorites=False):
+        items = [{"id": "fake-1", "group": "假群組", "name": "假一", "supported": True, "skipped": [], "favorite": False}]
+        return self._do("list_presets", (query, offset, limit, favorites),
+                        {"items": items, "total": 1, "next_offset": None})
 
     def preset_detail(self, preset_id):
         return self._do("preset_detail", (preset_id,), {"id": preset_id, "fake": True})
@@ -47,3 +48,34 @@ class FakeDarkroom:
         results = [{"ok": True, "source": "a.jpg", "output": "D:\\out\\a.jpg"},
                    {"ok": False, "source": "b.jpg", "error": "匯出失敗：b.jpg：壞了"}][: len(items or [])]
         return self._do("export", (items, format, quality, dest_dir), {"results": results})
+
+    # CONTRACT-preset-library K16
+    def preset_groups(self):
+        return self._do("preset_groups", (), {"groups": [], "ungrouped": 0})
+
+    def rename_preset(self, preset_id, name):
+        return self._do("rename_preset", (preset_id, name), {"id": preset_id, "name": name})
+
+    def move_preset(self, preset_id, group):
+        return self._do("move_preset", (preset_id, group), {"id": preset_id, "group": group})
+
+    def set_favorite(self, preset_id, favorite):
+        return self._do("set_favorite", (preset_id, favorite), {"id": preset_id, "favorite": favorite})
+
+    def create_group(self, group):
+        return self._do("create_group", (group,), {"group": group})
+
+    def rename_group(self, group, new_name):
+        return self._do("rename_group", (group, new_name), {"group": new_name, "presets": 0})
+
+    def import_presets(self, paths=None, group=None, files=None):
+        results = [{"ok": True, "source": "a.xmp", "id": "import:a"},
+                   {"ok": False, "source": "b.txt", "error": "不是 .xmp 檔：b.txt"}]
+        return self._do("import_presets", (paths, group, files), {"results": results})
+
+    def save_user_preset(self, name, group=None, preset_id=None, strength=100, overrides=None):
+        return self._do("save_user_preset", (name, group, preset_id, strength, overrides),
+                        {"id": "user:x", "name": name, "group": group, "file": "user/x.xmp"})
+
+    def rebuild_library(self):
+        return self._do("rebuild_library", (), {"added": 0, "removed": 0, "kept": 0})

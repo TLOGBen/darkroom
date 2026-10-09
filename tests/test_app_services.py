@@ -42,7 +42,7 @@ class TestListPresets(ServiceCase):  # L4
         self.assertEqual(list(r), ["items", "total", "next_offset"])
         self.assertEqual([x["id"] for x in r["items"]], [e["id"] for e in lib.entries])
         for row in r["items"]:
-            self.assertEqual(list(row), ["id", "group", "name", "supported", "skipped"])
+            self.assertEqual(list(row), ["id", "group", "name", "supported", "skipped", "favorite"])   # K9
         self.assertEqual((r["total"], r["next_offset"]), (6, None))
 
     def test_query_paging(self):

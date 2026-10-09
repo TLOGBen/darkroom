@@ -5,6 +5,7 @@ One build_facade (synthetic presets + the real Engine) is driven through HTTP (a
 Outcome(ok, kind, message); status code / exit code / isError must follow L7.
 Export (CONTRACT-export XP6 / XP11 / XP13): the outcome plus every result's (ok, basename(output) or error); CLI exit 6
 and MCP `failed` when some photo failed.
+Preset library (CONTRACT-preset-library K17): TestPresetLibraryParity, every scenario on its own synthetic library copy.
 """
 import base64
 import builtins
@@ -489,6 +490,242 @@ class TestInterfaceParity(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(sorted(os.listdir(folder)), ["same (2).jpg", "same.jpg"])
         self.assertEqual(snapshot(self.photos, self.presets), before)
         self.assertFalse(os.path.exists(os.path.join(self.photos, "darkroom 匯出")))
+
+
+LIB_HTTP_STATUS = {"invalid": 400, "not_found": 404, "conflict": 409, "unavailable": 503}
+LIB_CLI_EXIT = {"invalid": 2, "not_found": 3, "conflict": 4, "unavailable": 5}
+
+
+class _Switch:
+    """One facade slot behind all three interfaces; every library scenario puts a fresh facade in it (K17)."""
+
+    def __init__(self):
+        self.target = None
+
+    def __getattr__(self, name):
+        return getattr(self.target, name)
+
+
+class TestPresetLibraryParity(unittest.IsolatedAsyncioTestCase):  # CONTRACT-preset-library K17
+    """Each scenario runs on its own copy of a synthetic library, once per interface; outcomes and results agree."""
+
+    async def asyncSetUp(self):
+        from darkroom_app.server import FACADE, make_app
+        from test_layering import _NoEngine
+        self.tmp = _util.tmpdir(self)
+        seed = os.path.join(self.tmp, "seed")
+        os.makedirs(seed)
+        make_presets(seed)
+        self.switch = _Switch()
+        app = make_app(seed, engine=_NoEngine())
+        app[FACADE] = self.switch
+        self.client = TestClient(TestServer(app))
+        await self.client.start_server()
+        self.n = 0
+
+    async def asyncTearDown(self):
+        await self.client.close()
+
+    def fresh(self):
+        """A new library root with the synthetic presets and the import sources; the switch points at it."""
+        from darkroom_app.composition import build_facade
+        self.n += 1
+        root = os.path.join(self.tmp, f"lib{self.n}")
+        pd = os.path.join(root, "xmp")
+        os.makedirs(pd)
+        make_presets(pd)
+        src = os.path.join(root, "src")
+        os.makedirs(src)
+        import _xmpgen
+        _xmpgen.write(src, "good.xmp", _xmpgen.xmp_text({"Contrast2012": "+7"}, name="新來的", group="匯入"))
+        shutil.copyfile(os.path.join(pd, "p-expo.xmp"), os.path.join(src, "dup.xmp"))
+        with open(os.path.join(src, "note.txt"), "w") as fh:
+            fh.write("x")
+        with open(os.path.join(src, "bad.xmp"), "w") as fh:
+            fh.write("<x")
+        self.switch.target = build_facade(pd)
+        return root, src
+
+    # ---------------------------------------------------------------- the three drivers
+    async def http(self, method, path, body=None):
+        r = await (self.client.get(path) if method == "GET" else self.client.post(path, json=body))
+        data = await r.json()
+        if r.status == 200:
+            return OK, data
+        kind = {v: k for k, v in LIB_HTTP_STATUS.items()}[r.status]
+        self.assertEqual(list(data), ["error"])
+        return Outcome(False, kind, data["error"]), None
+
+    def cli(self, argv):
+        from darkroom_app import cli
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            rc = cli.main(argv + ["--json"], facade=self.switch)
+        self.assertEqual(err.getvalue(), "", argv)
+        self.assertEqual(out.getvalue().count("\n"), 1, argv)
+        env = json.loads(out.getvalue())
+        if env["ok"]:
+            res = env["result"]
+            partial = isinstance(res, dict) and "results" in res and not all(x["ok"] for x in res["results"])
+            self.assertEqual(rc, 6 if partial else 0, argv)                     # KP5
+            return OK, res
+        self.assertEqual(rc, LIB_CLI_EXIT[env["error"]["kind"]], argv)
+        return Outcome(False, env["error"]["kind"], env["error"]["message"]), None
+
+    def mcp(self, tool, arguments):
+        from darkroom_app.mcp_server import serve
+        line = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                           "params": {"name": tool, "arguments": arguments}}).encode("utf-8") + b"\n"
+        out = io.BytesIO()
+        serve(io.BytesIO(line), out, facade=self.switch)
+        res = json.loads(out.getvalue())["result"]
+        sc = res["structuredContent"]
+        if res.get("isError"):
+            return Outcome(False, sc["kind"], sc["message"]), None
+        self.assertNotIn("isError", res)
+        if tool == "darkroom_presets_import":                                     # KP5
+            self.assertEqual(sc["failed"], sum(1 for x in sc["results"] if not x["ok"]))
+            sc = {"results": sc["results"]}
+        return OK, sc
+
+    async def run_three(self, http, cli, mcp, setup=None):
+        got = {}
+        for name, call in (("http", http), ("cli", cli), ("mcp", mcp)):
+            if call is None:
+                continue
+            root, src = self.fresh()
+            if setup:
+                setup(root)
+            if name == "http":
+                got[name] = await self.http(*call(root, src))
+            elif name == "cli":
+                got[name] = self.cli(call(root, src))
+            else:
+                got[name] = self.mcp(*call(root, src))
+        return got
+
+    def b64(self, src, name):
+        with open(os.path.join(src, name), "rb") as fh:
+            return {"name": name, "data_base64": base64.b64encode(fh.read()).decode("ascii")}
+
+    async def test_preset_library_parity(self):
+        L = "/api/preset-library/"
+        upload = ("bad.xmp", "dup.xmp", "good.xmp", "note.txt")
+        cases = [
+            ("group tree", (lambda r, s: ("GET", L + "groups")), (lambda r, s: ["presets", "groups"]),
+             (lambda r, s: ("darkroom_preset_groups", {})), OK),
+            ("rename to blank", (lambda r, s: ("POST", L + "rename", {"preset_id": "p-expo", "name": "  "})),
+             (lambda r, s: ["presets", "rename", "p-expo", "  "]),
+             (lambda r, s: ("darkroom_preset_rename", {"preset_id": "p-expo", "name": "  "})),
+             Outcome(False, "invalid", "preset 名稱要 1～100 個字")),
+            ("rename unknown preset", (lambda r, s: ("POST", L + "rename", {"preset_id": "nope", "name": "x"})),
+             (lambda r, s: ["presets", "rename", "nope", "x"]),
+             (lambda r, s: ("darkroom_preset_rename", {"preset_id": "nope", "name": "x"})),
+             Outcome(False, "not_found", "unknown preset nope")),
+            ("move to an empty level", (lambda r, s: ("POST", L + "move", {"preset_id": "p-expo", "group": "A -  - B"})),
+             (lambda r, s: ["presets", "move", "p-expo", "A -  - B"]),
+             (lambda r, s: ("darkroom_preset_move", {"preset_id": "p-expo", "group": "A -  - B"})),
+             Outcome(False, "invalid", "群組名稱不能是空的，也不能有空的層級：A -  - B")),
+            ("create an existing group", (lambda r, s: ("POST", L + "groups/create", {"group": "測試"})),
+             (lambda r, s: ["groups", "create", "測試"]), (lambda r, s: ("darkroom_group_create", {"group": "測試"})),
+             Outcome(False, "conflict", "群組已存在：測試")),
+            ("rename to an existing group",
+             (lambda r, s: ("POST", L + "groups/rename", {"group": "測試", "new_name": "風景"})),
+             (lambda r, s: ["groups", "rename", "測試", "風景"]),
+             (lambda r, s: ("darkroom_group_rename", {"group": "測試", "new_name": "風景"})),
+             Outcome(False, "conflict", "群組已存在：風景")),
+            ("rename an unknown group",
+             (lambda r, s: ("POST", L + "groups/rename", {"group": "沒有", "new_name": "x"})),
+             (lambda r, s: ["groups", "rename", "沒有", "x"]),
+             (lambda r, s: ("darkroom_group_rename", {"group": "沒有", "new_name": "x"})),
+             Outcome(False, "not_found", "找不到群組：沒有")),
+            ("favorite 1", (lambda r, s: ("POST", L + "favorite", {"preset_id": "p-expo", "favorite": 1})),
+             (lambda r, s: ["presets", "favorite", "p-expo", "1"]),
+             (lambda r, s: ("darkroom_preset_favorite", {"preset_id": "p-expo", "favorite": 1})),
+             Outcome(False, "invalid", "favorite 必須是 true 或 false")),
+            ("import batch", (lambda r, s: ("POST", L + "import", {"files": [self.b64(s, n) for n in upload]})),
+             (lambda r, s: ["presets", "import", *[os.path.join(s, n) for n in upload]]),
+             (lambda r, s: ("darkroom_presets_import", {"paths": [os.path.join(s, n) for n in upload]})), OK),
+            ("save, nothing chosen", (lambda r, s: ("POST", L + "save", {"name": "x"})),
+             (lambda r, s: ["presets", "save", "--name", "x"]), (lambda r, s: ("darkroom_preset_save", {"name": "x"})),
+             Outcome(False, "invalid", "沒有可以存的設定（沒選 preset 也沒有微調）")),
+            ("save, strength 250",
+             (lambda r, s: ("POST", L + "save", {"name": "x", "preset_id": "p-expo", "strength": 250})),
+             (lambda r, s: ["presets", "save", "--name", "x", "--preset", "p-expo", "--strength", "250"]),
+             (lambda r, s: ("darkroom_preset_save", {"name": "x", "preset_id": "p-expo", "strength": 250})),
+             Outcome(False, "invalid", "strength must be within 0..200, got 250")),
+            ("save success",
+             (lambda r, s: ("POST", L + "save", {"name": "我的", "preset_id": "p-expo", "strength": 150,
+                                                 "overrides": {"Exposure2012": 0.25}})),
+             (lambda r, s: ["presets", "save", "--name", "我的", "--preset", "p-expo", "--strength", "150",
+                            "--override", "Exposure2012=0.25"]),
+             (lambda r, s: ("darkroom_preset_save", {"name": "我的", "preset_id": "p-expo", "strength": 150,
+                                                     "overrides": {"Exposure2012": 0.25}})), OK),
+        ]
+        for name, http, cli, mcp, want in cases:
+            got = await self.run_three(http, cli, mcp)
+            self.assertEqual(set(got), {"http", "cli", "mcp"}, name)
+            self.assertEqual({k: v[0] for k, v in got.items()}, dict.fromkeys(got, want), name)
+            results = {k: v[1] for k, v in got.items()}
+            self.assertEqual(len({json.dumps(v, sort_keys=True, ensure_ascii=False) for v in results.values()}), 1,
+                             (name, results))
+            if name == "import batch":
+                res = results["http"]["results"]
+                self.assertEqual([(x["ok"], x["source"]) for x in res],
+                                 [(False, "bad.xmp"), (False, "dup.xmp"), (True, "good.xmp"), (False, "note.txt")])
+                self.assertEqual(res[1]["duplicate_of"], "p-expo")
+                self.assertEqual(res[2]["id"], "import:good")
+            if name == "save success":
+                from darkroom_app import preview as semantics
+                self.assertEqual(results["http"]["id"], "user:我的")
+                d = self.switch.target.preset_detail("user:我的")                # readable afterwards (K13)
+                want_p = semantics.effective_params(self.switch.target._library.library.get("p-expo"), 1.5,
+                                                    {"Exposure2012": 0.25})
+                self.assertEqual(d["values"]["Exposure2012"], want_p.values["Exposure2012"])
+                self.assertEqual(d["values"]["Contrast2012"], want_p.values["Contrast2012"])
+
+    async def test_favorites_view_parity(self):  # K9: the favorites view through each interface
+        got = {}
+        for name in ("http", "cli", "mcp"):
+            self.fresh()
+            self.switch.target.set_favorite("p-skip", True)
+            self.switch.target.set_favorite("p-expo", True)
+            if name == "http":
+                o, rows = await self.http("GET", "/api/presets?favorites=1")
+            elif name == "cli":
+                o, res = self.cli(["presets", "list", "--favorites"])
+                rows = res["items"]
+            else:
+                o, res = self.mcp("darkroom_presets_list", {"favorites": True})
+                rows = res["items"]
+            got[name] = (o, [r["id"] for r in rows], all(r["favorite"] for r in rows))
+        self.assertEqual(len({(o, tuple(ids), fav) for o, ids, fav in got.values()}), 1, got)
+        self.assertEqual(got["http"][1], ["p-skip", "p-expo"])
+
+    async def test_lock_held_parity(self):  # K15 / K17: the lock is held by someone else -> conflict everywhere
+        import msvcrt
+        from darkroom_app.services import preset_library as pl
+        got = {}
+        for name in ("http", "cli", "mcp"):
+            root, _ = self.fresh()
+            fd = os.open(os.path.join(root, "library.json.lock"), os.O_RDWR | os.O_CREAT | os.O_BINARY)
+            try:
+                msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+                with mock.patch.object(pl, "LOCK_WAIT_S", 0.2):
+                    if name == "http":
+                        got[name] = await self.http("POST", "/api/preset-library/favorite",
+                                                    {"preset_id": "p-expo", "favorite": True})
+                    elif name == "cli":
+                        got[name] = self.cli(["presets", "favorite", "p-expo", "on"])
+                    else:
+                        got[name] = self.mcp("darkroom_preset_favorite", {"preset_id": "p-expo", "favorite": True})
+                os.lseek(fd, 0, 0)
+                msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+            finally:
+                os.close(fd)
+            self.assertFalse(os.path.exists(os.path.join(root, "library.json")), name)
+        self.assertEqual({k: v[0] for k, v in got.items()},
+                         dict.fromkeys(got, Outcome(False, "conflict", "preset 庫正被其他程式修改，請稍後再試")))
 
 
 class TestSubprocessSmoke(unittest.TestCase):  # L11: one real-process run per interface

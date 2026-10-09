@@ -17,7 +17,13 @@ from test_app_server import make_presets, write_photo
 SERVER_INFO = {"name": "darkroom", "version": "0.1.0"}                      # verbatim
 TOOLS = ["darkroom_presets_list", "darkroom_preset_show", "darkroom_preset_flags", "darkroom_sliders",
          "darkroom_open_photo", "darkroom_photo_folder", "darkroom_preview",
-         "darkroom_export"]    # verbatim, in order (CONTRACT-export XP4: export last)
+         "darkroom_export",    # verbatim, in order (CONTRACT-export XP4; K16: the library tools after it)
+         "darkroom_preset_groups", "darkroom_preset_rename", "darkroom_preset_move", "darkroom_preset_favorite",
+         "darkroom_group_create", "darkroom_group_rename", "darkroom_presets_import", "darkroom_preset_save",
+         "darkroom_presets_rebuild"]
+LIBRARY_IDEMPOTENT = {"darkroom_preset_rename": True, "darkroom_preset_move": True, "darkroom_preset_favorite": True,
+                      "darkroom_presets_rebuild": True, "darkroom_group_create": False, "darkroom_group_rename": False,
+                      "darkroom_presets_import": False, "darkroom_preset_save": False}   # K16
 EXPORT_ANNOTATIONS = {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False,
                       "openWorldHint": False}   # verbatim (CONTRACT-export XP4)
 MODERN = {"io.modelcontextprotocol/protocolVersion": "2026-07-28"}
@@ -75,8 +81,12 @@ class TestMcpProtocol(McpCase):
         self.assertNotIn("nextCursor", res[1]["result"])
         self.assertEqual([t["name"] for t in tools], TOOLS)
         for t in tools:
-            self.assertEqual(t["annotations"], EXPORT_ANNOTATIONS if t["name"] == "darkroom_export"
-                             else {"readOnlyHint": True, "openWorldHint": False})
+            if t["name"] in LIBRARY_IDEMPOTENT:
+                want = dict(EXPORT_ANNOTATIONS, idempotentHint=LIBRARY_IDEMPOTENT[t["name"]])
+            else:
+                want = EXPORT_ANNOTATIONS if t["name"] == "darkroom_export" else {"readOnlyHint": True,
+                                                                                  "openWorldHint": False}
+            self.assertEqual(t["annotations"], want)
             self.assertEqual(t["inputSchema"]["type"], "object")
             self.assertIs(t["inputSchema"]["additionalProperties"], False)
         call = res[2]["result"]

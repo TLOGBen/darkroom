@@ -163,7 +163,10 @@ class TestCliLightImports(CliCase):
     def test_presets_and_sliders_never_import_torch_or_cv2(self):
         code = ("import sys, contextlib, io\n"
                 "from darkroom_app import cli\n"
-                "for argv in (['presets','list'], ['presets','show','p-expo'], ['presets','flags'], ['sliders']):\n"
+                "for argv in (['presets','list'], ['presets','show','p-expo'], ['presets','flags'], ['sliders'],\n"
+                "             ['presets','groups'], ['presets','favorite','p-expo','on'], ['presets','rename','p-expo','X'],\n"
+                "             ['presets','save','--name','s','--preset','p-expo'], ['groups','create','G'],\n"
+                "             ['presets','rebuild']):\n"   # KP11: the library commands that write stay torch-free
                 "    with contextlib.redirect_stdout(io.StringIO()):\n"
                 "        assert cli.main(['--preset-dir', sys.argv[1], *argv, '--json']) == 0, argv\n"
                 "print(sorted(m for m in ('torch', 'cv2') if m in sys.modules))\n")

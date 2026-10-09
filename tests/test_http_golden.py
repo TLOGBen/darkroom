@@ -18,7 +18,7 @@ OPEN_ERROR = "照片讀取失敗：{file_name}：{reason}"           # verbatim
 BODY_NOT_JSON = '{"error": "body must be JSON"}'           # verbatim (HTTP entry sentence)
 BODY_NOT_OBJECT = '{"error": "body must be a JSON object"}'  # verbatim (HTTP entry sentence)
 
-PRESET_ROW = ["id", "group", "name", "supported", "skipped"]
+PRESET_ROW = ["id", "group", "name", "supported", "skipped", "favorite"]   # CONTRACT-preset-library K9
 DETAIL_KEYS = ["id", "group", "name", "supported", "skipped", "level", "banner", "note", "values", "curves"]
 OPEN_KEYS = ["image_id", "width", "height", "preview_width", "preview_height"]
 FOLDER_KEYS = ["folder", "files", "index"]
@@ -232,13 +232,18 @@ class TestGoldenCrossSite(GoldenCase):  # CONTRACT-export XP16 / app shell R10: 
 
 
 class TestGoldenRoutes(GoldenCase):
-    async def test_exactly_ten_routes(self):  # nine of L8 + POST /api/export (CONTRACT-export X1 / XP1)
+    async def test_exactly_nineteen_routes(self):  # nine of L8 + POST /api/export (XP1) + nine library routes (K16)
         routes = sorted((r.method, r.resource.canonical) for r in self.app.router.routes()
                         if r.method != "HEAD" and not r.resource.canonical.startswith("/static"))
         self.assertEqual(routes, sorted([
             ("GET", "/"), ("GET", "/api/health"), ("GET", "/api/presets"), ("GET", "/api/preset_flags"),
             ("GET", "/api/presets/{id}"), ("GET", "/api/sliders"), ("POST", "/api/open"), ("POST", "/api/preview"),
-            ("GET", "/api/folder"), ("POST", "/api/export")]))
+            ("GET", "/api/folder"), ("POST", "/api/export"),
+            ("GET", "/api/preset-library/groups"), ("POST", "/api/preset-library/rename"),
+            ("POST", "/api/preset-library/move"), ("POST", "/api/preset-library/favorite"),
+            ("POST", "/api/preset-library/groups/create"), ("POST", "/api/preset-library/groups/rename"),
+            ("POST", "/api/preset-library/import"), ("POST", "/api/preset-library/save"),
+            ("POST", "/api/preset-library/rebuild")]))
 
 
 if __name__ == "__main__":
