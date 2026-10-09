@@ -132,3 +132,7 @@ HTTP 帶 dest_dir（400）：{"error": "dest_dir is not accepted over HTTP (use 
 - XP26（F1，X1／X12 收緊）：讀檔階段（`read_image`＋`read_exif`）丟出任何 `Exception`——不只 `ValueError`／`OSError`，例如 OpenCV 對受損 TIFF 丟的 `cv2.error`——都只讓該筆 `ok:false`，reason＝單行 `str(e)`；其他筆照常。釘死：`test_unexpected_read_error_fails_one_item`。
 - XP27（F2，X9 收緊）：同一份清單裡同 stem 的照片，檔名一律依 items 順序編號（先到的 item 拿 `{stem}`、下一個拿 `{stem} (2)`…），與哪一張先編碼完無關；編碼仍在兩條寫檔執行緒平行，只有「取檔名＋建檔」依序。釘死：`test_same_stem_in_one_list`（讓第一張故意慢 0.3 秒、重複 3 輪）。
 - XP28（F6，覆蓋補強）：EXIF 測試補 little-endian（II）來源、Interop 子 IFD 保留、MakerNote 保留，以及 APP1 超過 64 KB 時丟 MakerNote（`test_export_exif_little_endian_interop_and_maker_note`）；核心 K2 補 II 方向 1～8（`test_read_image_orientation_jpeg_tiff`）。
+
+## 封緘第 2 次派遣（複驗）處置紀錄（2026-10-09）
+- XP29（N1，穩定性：第 1 輪 F2 修正帶進的退化，修正並釘死）：編碼階段丟出 `ValueError`／`OverflowError` 以外的例外（例如 `cv2.error`）時，那一號從沒取檔名，`_Turns` 的序號不再前進，8 張以上的批次永久卡死。改為：編碼的任何 `Exception` 都只讓該筆 `ok:false`（「渲染失敗：{detail}」），而且寫檔執行緒不論怎麼離開都保證讓自己那一號過去（沒取過檔名就空轉一次）。釘死：`test_encode_error_neither_hangs_nor_stops_the_batch`（8 張、第 1 張編碼丟 `cv2.error`，60 秒內結束、只 1 筆失敗、其餘 7 張寫出）。
+- N2（測試空心，已修）：`test_same_stem_in_one_list` 末段拿自己的雜湊比自己，刪除；檔名順序的斷言保留（已證明會紅）。

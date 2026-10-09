@@ -285,9 +285,6 @@ class TestFiles(ExportCase):
                 res = self.export([b, a], dest_dir=dest)
             self.assertEqual([os.path.basename(r["output"]) for r in res], ["IMG_1.jpg", "IMG_1 (2).jpg"], round_)
             self.assertEqual([r["source"] for r in res], ["IMG_1.heic", "IMG_1.jpg"])
-            with open(res[0]["output"], "rb") as f:          # and the first name holds the first item's pixels
-                first = f.read()
-            self.assertEqual(sha(res[0]["output"]), hashlib.sha256(first).hexdigest())
 
     def test_export_concurrent_names(self):  # X9: two exports at the same time never share a name
         photo = write_jpeg(self.p("c.jpg"), pattern(40, 60))
@@ -347,6 +344,33 @@ class TestFiles(ExportCase):
         self.assertEqual(res[1]["error"], "匯出失敗：IMG_2.jpg：OpenCV(5.0.0) loadsave.cpp:77: error: "
                                           "(-215:Assertion failed) size <= limit")
         self.assertEqual(sorted(os.listdir(dest)), ["IMG_1.jpg", "IMG_3.jpg"])
+
+    def test_encode_error_neither_hangs_nor_stops_the_batch(self):  # seal N1: a turn that never claims a name
+        from darkroom_app import encoding
+        photos = [write_jpeg(self.p(f"n{i}.jpg"), pattern(16, 24, i)) for i in range(8)]
+        real, calls = encoding.jpeg_bytes, []
+
+        def boom_first(*args):
+            calls.append(1)
+            if len(calls) == 1:
+                raise cv2.error("OpenCV(5.0.0) imencode: boom")
+            return real(*args)
+        dest = os.path.join(self.tmp, "dest")
+        os.makedirs(dest)
+        done = {}
+
+        def run():
+            with mock.patch.object(encoding, "jpeg_bytes", boom_first):
+                done["res"] = self.export(photos, dest_dir=dest)
+        t = threading.Thread(target=run, daemon=True)
+        t.start()
+        t.join(60)
+        self.assertFalse(t.is_alive(), "export hung")
+        res = done["res"]
+        self.assertEqual(sum(not r["ok"] for r in res), 1)
+        bad = next(r for r in res if not r["ok"])
+        self.assertEqual(bad["error"], f"匯出失敗：{bad['source']}：渲染失敗：OpenCV(5.0.0) imencode: boom")
+        self.assertEqual(len(os.listdir(dest)), 7)
 
     def test_export_failure_leaves_no_file(self):  # X10, X11, X12
         from darkroom_app import safe_write

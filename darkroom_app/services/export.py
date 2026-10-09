@@ -201,8 +201,18 @@ class ExportService:
                 raise
 
         def write(k, w, job, pixels, exif):
+            claimed = []
+
+            def claim():
+                claimed.append(w)
+                return turns.turn(w)
             try:
-                out[k] = self._write(job, pixels, exif, ext, bits, quality, dest_dir, lambda: turns.turn(w))
+                out[k] = self._write(job, pixels, exif, ext, bits, quality, dest_dir, claim)
+            except BaseException:
+                if not claimed:                 # seal N1: turn w must pass even if it never got to claim
+                    with turns.turn(w):
+                        pass
+                raise
             finally:
                 slots.release()
 
@@ -249,7 +259,7 @@ class ExportService:
                 data = encoding.jpeg_bytes(pixels, quality, exif, icc)
             else:
                 data = encoding.tiff_bytes(pixels, exif, icc)
-        except (ValueError, OverflowError) as e:   # cv2 / struct refusing the data
+        except Exception as e:      # cv2.error / struct.error / ValueError refusing the data: this item only (N1)
             with claim():
                 return _failed(job.source, M.EXPORT_RENDER_FAILED.format(detail=_one_line(e)))
         del pixels
