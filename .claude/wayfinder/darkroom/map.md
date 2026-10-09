@@ -17,7 +17,7 @@
 
 ## Decisions so far
 
-- **照片庫（最小版）移入 alpha**（使用者 2026-10-04，改為獨立 App 後）：資料夾縮圖格、每張照片自動記住修改（`darkroom-params/1` 參數檔，原圖不動）、複製修改套到其他照片；星等、收藏集、搜尋、批次匯出留到後面。原本「照片專案／目錄」列在不在範圍內，是因為當時載體是 ComfyUI 節點。
+- **照片庫（最小版）移入 alpha**（使用者 2026-10-04，改為獨立 App 後）：資料夾縮圖格、每張照片自動記住修改（`darkroom-edit/1` 編輯檔，內含 preset 參數快照，存在 App 資料區、原圖不動；ADR-0002）、複製修改套到其他照片；星等、收藏集、搜尋、批次匯出留到後面。原本「照片專案／目錄」列在不在範圍內，是因為當時載體是 ComfyUI 節點。
 
 - [① App 的執行環境與啟動](issues/21-app-runtime.md) — 複製 ComfyUI 的 python_embeded 當專用（LocalLLMs runtimes/darkroom-python/），darkroom 自己的啟動捷徑；App 自己協調 llama-server／ComfyUI
 
