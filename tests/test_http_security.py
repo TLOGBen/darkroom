@@ -142,6 +142,22 @@ class TestRefused(SecurityCase):
             status, _ = await self.send(method, path)                        # the other routes need no header
             self.assertEqual(status, 200, path)
 
+    async def test_head_and_path_spellings_cannot_bypass_the_header(self):  # PLP12
+        for method, path in PATH_GETS:
+            r = await self.client.request("HEAD", path)
+            self.assertEqual(r.status, 403, path)                                # still checked
+            r = await self.client.request("HEAD", path, headers={"X-Darkroom": "1"})
+            self.assertEqual(r.status, 405, path)                                # allow_head=False
+        for path in ("/API/thumbnail?path=a.jpg", "/api/thumbnail/?path=a.jpg", "/api//thumbnail?path=a.jpg",
+                     "/api/thumbnail%2F?path=a.jpg", "/api/%74humbnail?path=a.jpg", "/api/Folder?image_id=i",
+                     "/api/folder/?image_id=i", "/api/edit/?path=a.jpg", "/api/folder/thumbnails/?folder=f"):
+            r = await self.client.get(path)
+            self.assertIn(r.status, (403, 404), path)
+        self.assertEqual(self.fake.calls, [])
+        r = await self.client.get("/api/thumbnail?path=a.jpg", headers={"X-Darkroom": "1"})
+        self.assertEqual(r.status, 200)
+        self.assertEqual([c[0] for c in self.fake.calls], ["thumbnail"])
+
     async def test_check_order(self):  # Host -> Sec-Fetch-Site -> Origin -> Content-Type -> X-Darkroom -> route
         status, _ = await self.send("GET", "/api/folder?image_id=i", {"Host": "evil.example", "Sec-Fetch-Site": "cross-site",
                                                                        "Origin": "http://evil.example"})

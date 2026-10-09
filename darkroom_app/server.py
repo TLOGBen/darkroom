@@ -71,8 +71,13 @@ async def _local_only(request, handler):
         return web.json_response({"error": ORIGIN_REFUSED.format(origin=origin)}, status=403)
     if request.method in ("POST", "PUT") and request.content_type != "application/json":   # PLP2: PUT too
         return web.json_response({"error": CONTENT_TYPE_REFUSED}, status=415)
-    if request.method == "GET" and request.path in PATH_READING_GETS and request.headers.get("X-Darkroom") != "1":
-        return web.json_response({"error": DARKROOM_HEADER_REFUSED}, status=403)   # img / script cannot add it
+    if request.method in ("GET", "HEAD") and request.headers.get("X-Darkroom") != "1":   # PLP11 / PLP12
+        resource = request.match_info.route.resource if request.match_info.route is not None else None
+        # the resolved route, not the raw path; a HEAD that resolved to nothing (allow_head=False -> 405) is judged
+        # by its path so it is refused the same way before the 405
+        canonical = resource.canonical if resource is not None else request.path
+        if canonical in PATH_READING_GETS:
+            return web.json_response({"error": DARKROOM_HEADER_REFUSED}, status=403)   # img / script cannot add it
     return await handler(request)
 
 
@@ -273,7 +278,7 @@ def make_app(preset_dir, engine=None, library_dir=None, data_dir=None):
     app.router.add_get("/api/sliders", api_sliders)
     app.router.add_post("/api/open", api_open)
     app.router.add_post("/api/preview", api_preview)
-    app.router.add_get("/api/folder", api_folder)
+    app.router.add_get("/api/folder", api_folder, allow_head=False)             # PLP12: no HEAD on path-reading GETs
     app.router.add_post("/api/export", api_export)
     app.router.add_get("/api/preset-library/groups", api_library_groups)
     app.router.add_post("/api/preset-library/rename", api_library_rename)
@@ -284,13 +289,13 @@ def make_app(preset_dir, engine=None, library_dir=None, data_dir=None):
     app.router.add_post("/api/preset-library/import", api_library_import)
     app.router.add_post("/api/preset-library/save", api_library_save)
     app.router.add_post("/api/preset-library/rebuild", api_library_rebuild)
-    app.router.add_get("/api/edit", api_edit_get)
+    app.router.add_get("/api/edit", api_edit_get, allow_head=False)
     app.router.add_put("/api/edit", api_edit_set)
     app.router.add_delete("/api/edit", api_edit_clear)
     app.router.add_post("/api/edit/paste", api_edit_paste)
     app.router.add_post("/api/edit/save-preset", api_edit_save_preset)
-    app.router.add_get("/api/folder/thumbnails", api_folder_thumbnails)
-    app.router.add_get("/api/thumbnail", api_thumbnail)
+    app.router.add_get("/api/folder/thumbnails", api_folder_thumbnails, allow_head=False)
+    app.router.add_get("/api/thumbnail", api_thumbnail, allow_head=False)
     app.router.add_static("/static/", STATIC)
     app.on_cleanup.append(_on_cleanup)
     return app
