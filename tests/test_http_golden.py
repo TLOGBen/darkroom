@@ -18,7 +18,7 @@ OPEN_ERROR = "照片讀取失敗：{file_name}：{reason}"           # verbatim
 BODY_NOT_JSON = '{"error": "body must be JSON"}'           # verbatim (HTTP entry sentence)
 BODY_NOT_OBJECT = '{"error": "body must be a JSON object"}'  # verbatim (HTTP entry sentence)
 
-PRESET_ROW = ["id", "group", "name", "supported", "skipped", "favorite"]   # CONTRACT-preset-library K9
+PRESET_ROW = ["id", "group", "name", "supported", "skipped", "favorite", "tags"]   # K9 + CONTRACT-semantic-index SI10
 DETAIL_KEYS = ["id", "group", "name", "supported", "skipped", "level", "banner", "note", "values", "curves"]
 OPEN_KEYS = ["image_id", "width", "height", "preview_width", "preview_height"]
 FOLDER_KEYS = ["folder", "files", "index"]
@@ -232,7 +232,7 @@ class TestGoldenCrossSite(GoldenCase):  # CONTRACT-export XP16 / app shell R10: 
 
 
 class TestGoldenRoutes(GoldenCase):
-    async def test_exactly_twenty_six_routes(self):  # nine of L8 + export (XP1) + nine library (K16) + seven photo library (PL6, PLP2)
+    async def test_exactly_twenty_eight_routes(self):  # nine of L8 + export (XP1) + nine library (K16) + seven photo library (PL6, PLP2) + two semantic (SI11)
         routes = sorted((r.method, r.resource.canonical) for r in self.app.router.routes()
                         if r.method != "HEAD" and not r.resource.canonical.startswith("/static"))
         self.assertEqual(routes, sorted([
@@ -245,7 +245,21 @@ class TestGoldenRoutes(GoldenCase):
             ("POST", "/api/preset-library/import"), ("POST", "/api/preset-library/save"),
             ("POST", "/api/preset-library/rebuild"),
             ("GET", "/api/edit"), ("PUT", "/api/edit"), ("DELETE", "/api/edit"), ("POST", "/api/edit/paste"),
-            ("POST", "/api/edit/save-preset"), ("GET", "/api/folder/thumbnails"), ("GET", "/api/thumbnail")]))
+            ("POST", "/api/edit/save-preset"), ("GET", "/api/folder/thumbnails"), ("GET", "/api/thumbnail"),
+            ("POST", "/api/preset-library/semantic/build"), ("GET", "/api/preset-library/semantic")]))
+
+    async def test_semantic_build_refused_over_http(self):  # CONTRACT-semantic-index SI11: the page never spends money
+        from darkroom_app.server import FACADE
+        calls = []
+        self.app[FACADE].semantic_build = lambda *a, **k: calls.append((a, k))
+        for body in ({}, {"limit": 3}, {"dry_run": True}):
+            await self.err("POST", "/api/preset-library/semantic/build", 400,
+                           "semantic build is not accepted over HTTP (use the CLI or MCP)", json=body)
+        self.assertEqual(calls, [])
+        r = await self.client.get("/api/preset-library/semantic")
+        self.assertEqual(r.status, 200)
+        self.assertEqual(list(await r.json()), ["available", "reason", "model", "index_state", "indexed", "total",
+                                                "pending", "in_flight", "budget_usd", "last_usage"])
 
 
 if __name__ == "__main__":

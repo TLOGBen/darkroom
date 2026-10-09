@@ -548,7 +548,10 @@ class TestResolveParams(PhotoLibCase):
                         hits.append((name, node.name))
         self.assertEqual(sorted(set(hits)), [("photo_library.py", "_resolve"), ("photo_library.py", "_status"),
                                              ("photo_library.py", "set_edit"),
-                                             ("preset_library.py", "save_user_preset")])
+                                             ("preset_library.py", "save_user_preset"),
+                                             # CONTRACT-semantic-index SI4: presets rendered on the calibration
+                                             # photos at their current values (no photo, no snapshot involved)
+                                             ("semantic_index.py", "_submit"), ("semantic_index.py", "_supported")])
         self.assertEqual(self.lib.resolve_params("00" * 32, None), None)
 
     def preview_bytes(self, path, pid="p-expo"):

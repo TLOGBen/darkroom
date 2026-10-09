@@ -21,8 +21,11 @@ FORBIDDEN_NAMES = ("validate_strength", "validate_overrides", "effective_params"
 FORBIDDEN_MODULES = ("darkroom_app.services", "darkroom_app.preview", "hashlib")
 FORBIDDEN_STRINGS = ("edits/", "thumbs/", "index/")                       # data_dir layout is the service's (PLP8)
 SAFE_WRITE = "safe_write.py"
-SAFE_WRITE_USERS = ("services/export.py", "services/preset_library.py",
-                    "services/photo_library.py")      # G10 whitelist: XP10, K18 / KP3, PL14 / PLP1
+SAFE_WRITE_USERS = ("services/export.py", "services/preset_library.py", "services/photo_library.py",
+                    "services/semantic_index.py")      # G10 whitelist: XP10, K18 / KP3, PL14 / PLP1, WG15 / SI1
+SEMANTIC_TOOLS = ["darkroom_semantic_build", "darkroom_semantic_status"]   # verbatim, in order (SI11)
+SEMANTIC_BUILD_ANNOTATIONS = {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False,
+                              "openWorldHint": True}   # verbatim (SI11)
 LIBRARY_TOOLS = ["darkroom_preset_groups", "darkroom_preset_rename", "darkroom_preset_move", "darkroom_preset_favorite",
                  "darkroom_group_create", "darkroom_group_rename", "darkroom_presets_import", "darkroom_preset_save",
                  "darkroom_presets_rebuild"]          # verbatim, in order (CONTRACT-preset-library K16)
@@ -128,7 +131,7 @@ class TestLayering(unittest.TestCase):
         files = py_files("services")
         self.assertEqual({os.path.basename(f) for f in files},
                          {"__init__.py", "presets.py", "photos.py", "preview.py", "export.py",
-                          "preset_library.py", "photo_library.py"})   # XP1, K16, PL6
+                          "preset_library.py", "photo_library.py", "semantic_index.py"})   # XP1, K16, PL6, SI1
         for path in files:
             for mod in imported_modules(path):
                 self.assertNotIn(mod.split(".")[0], ("aiohttp", "argparse"), path)
@@ -243,7 +246,7 @@ class TestLayering(unittest.TestCase):
         files = py_files()
         self.assertIn(os.path.join(APP, SAFE_WRITE), files)
         self.assertEqual(SAFE_WRITE_USERS, ("services/export.py", "services/preset_library.py",
-                                            "services/photo_library.py"))   # XP10, KP3, PLP1
+                                            "services/photo_library.py", "services/semantic_index.py"))   # + SI1
         for path in files:
             rel = os.path.relpath(path, APP).replace("\\", "/")
             with open(path, encoding="utf-8") as f:
@@ -281,7 +284,8 @@ class TestLayering(unittest.TestCase):
                                             "create_group", "rename_group", "import_presets", "save_user_preset",
                                             "rebuild_library",   # CONTRACT-preset-library K16
                                             "get_edit", "set_edit", "clear_edit", "paste_edit", "folder_thumbnails",
-                                            "thumbnail", "save_edit_as_preset"])   # CONTRACT-photo-library PL6, PLP6
+                                            "thumbnail", "save_edit_as_preset",   # CONTRACT-photo-library PL6, PLP6
+                                            "semantic_build", "semantic_status"])   # CONTRACT-semantic-index SI1
         self.assertTrue(issubclass(DarkroomFacade, Facade))
 
     def test_operation_coverage(self):  # L2: every registered route, subcommand and tool exists
@@ -322,15 +326,21 @@ class TestLayering(unittest.TestCase):
         self.assertEqual(listed["darkroom_export"], {"readOnlyHint": False, "destructiveHint": False,
                                                      "idempotentHint": False, "openWorldHint": False})
         self.assertEqual(list(listed)[8:17], LIBRARY_TOOLS)
-        self.assertEqual(list(listed)[17:], PHOTO_TOOLS)                   # PL6 / PLP6: operations 18..24
+        self.assertEqual(list(listed)[17:24], PHOTO_TOOLS)                 # PL6 / PLP6: operations 18..24
+        self.assertEqual(list(listed)[24:], SEMANTIC_TOOLS)                # SI1 / SI11: operations 25, 26
         for name, ann in listed.items():
             if name in LIBRARY_WRITES:
                 self.assertEqual(ann, {"readOnlyHint": False, "destructiveHint": False,
                                        "idempotentHint": LIBRARY_WRITES[name], "openWorldHint": False}, name)
             elif name in PHOTO_ANNOTATIONS:
                 self.assertEqual(ann, PHOTO_ANNOTATIONS[name], name)
+            elif name == "darkroom_semantic_build":
+                self.assertEqual(ann, SEMANTIC_BUILD_ANNOTATIONS)          # SI11: the one open-world tool
             elif name != "darkroom_export":
                 self.assertEqual(ann, {"readOnlyHint": True, "openWorldHint": False}, name)
+        self.assertEqual(OPERATIONS["semantic_build"]["mcp_defaults"], {"wait_seconds": 0})     # SI9
+        self.assertEqual(OPERATIONS["semantic_build"]["http"], ("POST", "/api/preset-library/semantic/build"))
+        self.assertEqual(OPERATIONS["semantic_status"]["http"], ("GET", "/api/preset-library/semantic"))
         self.assertEqual(OPERATIONS["folder_thumbnails"]["mcp_defaults"], {"limit": 50})
         self.assertEqual(OPERATIONS["set_edit"]["http"], ("PUT", "/api/edit"))
         self.assertEqual(OPERATIONS["clear_edit"]["http"], ("DELETE", "/api/edit"))
@@ -375,7 +385,7 @@ class TestHttpControllerWithFake(AioHTTPTestCase):  # L7 / L13: HTTP translation
     async def test_success_translation(self):
         r = await self.client.get("/api/presets")
         self.assertEqual(await r.json(), [{"id": "fake-1", "group": "假群組", "name": "假一", "supported": True,
-                                           "skipped": [], "favorite": False}])
+                                           "skipped": [], "favorite": False, "tags": []}])
         r = await self.client.post("/api/preview", json={"image_id": "i", "preset_id": "p", "overrides": {"a": 1}})
         self.assertEqual(r.status, 200)
         self.assertEqual(await r.read(), JPEG)

@@ -23,7 +23,8 @@ class FakeDarkroom:
         return result
 
     def list_presets(self, query=None, offset=0, limit=None, favorites=False):
-        items = [{"id": "fake-1", "group": "假群組", "name": "假一", "supported": True, "skipped": [], "favorite": False}]
+        items = [{"id": "fake-1", "group": "假群組", "name": "假一", "supported": True, "skipped": [], "favorite": False,
+                  "tags": []}]
         return self._do("list_presets", (query, offset, limit, favorites),
                         {"items": items, "total": 1, "next_offset": None})
 
@@ -109,3 +110,10 @@ class FakeDarkroom:
     def save_edit_as_preset(self, path, name, group=None):
         return self._do("save_edit_as_preset", (path, name, group),
                         {"id": "user:x", "name": name, "group": group, "file": "user/x.xmp"})
+
+    # CONTRACT-semantic-index SI1
+    def semantic_build(self, limit=None, dry_run=False, wait_seconds=None):
+        return self._do("semantic_build", (limit, dry_run, wait_seconds), {"state": "dry_run", "planned": 0})
+
+    def semantic_status(self):
+        return self._do("semantic_status", (), {"available": False, "reason": "假原因", "indexed": 0, "total": 1})

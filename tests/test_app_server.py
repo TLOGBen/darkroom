@@ -123,7 +123,7 @@ class TestPresetsApi(AppCase):  # B3 (the user's real library)
         self.assertIsInstance(rows, list)
         self.assertEqual(len(rows), 1466)
         for row in rows:
-            self.assertEqual(set(row), {"id", "group", "name", "supported", "skipped", "favorite"})   # K9
+            self.assertEqual(set(row), {"id", "group", "name", "supported", "skipped", "favorite", "tags"})   # K9
             self.assertIs(row["supported"], True)
             self.assertIsInstance(row["skipped"], list)
             self.assertIsInstance(row["group"], str)
@@ -145,7 +145,7 @@ class TestPresetDetail(AppCase):
         rows = await (await self.client.get("/api/presets")).json()
         by = {r["id"]: r for r in rows}
         self.assertEqual(by["p-expo"], {"id": "p-expo", "group": "風景 - 海邊", "name": "曝光一",
-                                        "supported": True, "skipped": [], "favorite": False})
+                                        "supported": True, "skipped": [], "favorite": False, "tags": []})
         self.assertIs(by["p-old"]["supported"], False)
         self.assertEqual(by["p-skip"]["skipped"], ["HDREditMode", "Temperature", "Tint", "Look（Adobe Color）"])
 
@@ -174,7 +174,7 @@ class TestPresetDetail(AppCase):
         self.assertEqual(flags, {"p-skip": "major", "p-mixed": "major", "p-minor": "minor"})
         rows = await (await self.client.get("/api/presets")).json()
         for row in rows:
-            self.assertEqual(set(row), {"id", "group", "name", "supported", "skipped", "favorite"})   # B3 + K9
+            self.assertEqual(set(row), {"id", "group", "name", "supported", "skipped", "favorite", "tags"})   # B3 + K9
 
     async def test_api_preset_detail_curves(self):  # R6
         d = await (await self.client.get("/api/presets/p-mixed")).json()

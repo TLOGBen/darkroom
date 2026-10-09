@@ -158,10 +158,10 @@ class TestLocationAndReadOnly(LibCase):
         ps.preset_flags()
         self.assertEqual(sorted(os.listdir(root)), names)
 
-    def test_six_columns_and_favorites_view(self):  # K9
+    def test_six_columns_and_favorites_view(self):  # K9 (+ tags: CONTRACT-semantic-index SI10)
         r = self.f.list_presets()
         for row in r["items"]:
-            self.assertEqual(list(row), ["id", "group", "name", "supported", "skipped", "favorite"])
+            self.assertEqual(list(row), ["id", "group", "name", "supported", "skipped", "favorite", "tags"])
         self.assertEqual(self.f.list_presets(favorites=True)["items"], [])
         self.f.set_favorite("p-plain", True)
         self.assertEqual([x["id"] for x in self.f.list_presets(favorites=True)["items"]], ["p-plain"])

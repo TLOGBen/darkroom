@@ -203,7 +203,7 @@ class TestCliLightImports(CliCase):
                 "for argv in (['presets','list'], ['presets','show','p-expo'], ['presets','flags'], ['sliders'],\n"
                 "             ['presets','groups'], ['presets','favorite','p-expo','on'], ['presets','rename','p-expo','X'],\n"
                 "             ['presets','save','--name','s','--preset','p-expo'], ['groups','create','G'],\n"
-                "             ['presets','rebuild'],\n"   # KP11: the library commands that write stay torch-free
+                "             ['presets','rebuild'], ['presets','semantic','status'],\n"   # KP11 / SI1: torch-free
                 "             ['edit','get',sys.argv[2]], ['edit','set',sys.argv[2],'--preset','p-expo'],\n"
                 "             ['edit','paste','--from',sys.argv[2],sys.argv[2]], ['edit','clear',sys.argv[2]],\n"
                 "             ['edit','set',sys.argv[2],'--preset','p-expo'],\n"

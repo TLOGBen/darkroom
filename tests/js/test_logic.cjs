@@ -110,6 +110,17 @@ test('R6: search matches name and group, all terms', () => {
   assert.ok(L.matchPreset(p, '  '));
 });
 
+test('SI10: search matches semantic tags (zh and en); the tooltip lists them', () => {
+  const p = {name: 'K-01', group: '器材', tags: ['底片', '暖調', 'film', 'warm']};
+  assert.ok(L.matchPreset(p, '底片'));
+  assert.ok(L.matchPreset(p, 'FILM 器材'));
+  assert.ok(!L.matchPreset(p, '黑白'));
+  assert.ok(!L.matchPreset({name: 'K-01', group: '器材'}, '底片'));          // no tags: name and group only
+  assert.equal(L.presetTitle(p), '器材 / K-01｜底片、暖調、film、warm');
+  assert.equal(L.presetTitle({name: 'K-01', group: '器材', tags: []}), '器材 / K-01');
+  assert.equal(L.presetTitle({name: 'K-01', group: ''}), 'K-01');
+});
+
 test('R6: typed values', () => {
   assert.equal(L.parseValueInput('+12', CONTRAST), 12);
   assert.equal(L.parseValueInput('−30', CONTRAST), -30);   // unicode minus

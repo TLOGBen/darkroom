@@ -684,6 +684,41 @@ class TestPresetLibraryParity(unittest.IsolatedAsyncioTestCase):  # CONTRACT-pre
                 self.assertEqual(d["values"]["Exposure2012"], want_p.values["Exposure2012"])
                 self.assertEqual(d["values"]["Contrast2012"], want_p.values["Contrast2012"])
 
+    async def test_semantic_parity(self):  # CONTRACT-semantic-index SI11: status, build when off, build dry-run
+        from test_semantic_index import NEED_KEY, REF, make_sources
+        L = "/api/preset-library/semantic"
+
+        def off(root):
+            svc = self.switch.target._semantic
+            svc.have_anthropic, svc.key_ref, svc.env_key, svc.budget_usd = (lambda: True), None, None, 5.0
+            svc.sources_dir = make_sources(os.path.join(root, "sources"))
+
+        def on(root):
+            off(root)
+            svc = self.switch.target._semantic
+            svc.key_ref, svc.key_reader = REF, (lambda ref: "sk-ant-not-used-in-a-dry-run")
+            svc.client_factory = lambda api_key: (_ for _ in ()).throw(AssertionError("dry run must not build a client"))
+        got = await self.run_three(lambda r, s: ("GET", L), lambda r, s: ["presets", "semantic", "status"],
+                                   lambda r, s: ("darkroom_semantic_status", {}), setup=off)
+        self.assertEqual({k: v[0] for k, v in got.items()}, dict.fromkeys(got, OK))
+        self.assertEqual(len({json.dumps(v[1], sort_keys=True) for v in got.values()}), 1, got)
+        self.assertEqual((got["cli"][1]["available"], got["cli"][1]["reason"], got["cli"][1]["indexed"],
+                          got["cli"][1]["total"]), (False, NEED_KEY, 0, 5))
+        got = await self.run_three(lambda r, s: ("POST", L + "/build", {}),
+                                   lambda r, s: ["presets", "semantic", "build", "--wait-seconds", "0"],
+                                   lambda r, s: ("darkroom_semantic_build", {}), setup=off)
+        self.assertEqual(got["cli"], got["mcp"])
+        self.assertEqual(got["cli"][0], Outcome(False, "unavailable", NEED_KEY))
+        self.assertEqual(got["http"][0], Outcome(False, "invalid",
+                                                 "semantic build is not accepted over HTTP (use the CLI or MCP)"))
+        got = await self.run_three(None, lambda r, s: ["presets", "semantic", "build", "--dry-run", "--limit", "2"],
+                                   lambda r, s: ("darkroom_semantic_build", {"dry_run": True, "limit": 2}), setup=on)
+        self.assertEqual({k: v[0] for k, v in got.items()}, {"cli": OK, "mcp": OK})
+        self.assertEqual(got["cli"][1], got["mcp"][1])
+        self.assertEqual((got["cli"][1]["state"], got["cli"][1]["planned"]), ("dry_run", 2))
+        self.assertGreater(got["cli"][1]["estimated_usd"], 0)
+        self.assertEqual(got["cli"][1]["batch_ids"], [])
+
     async def test_favorites_view_parity(self):  # K9: the favorites view through each interface
         got = {}
         for name in ("http", "cli", "mcp"):

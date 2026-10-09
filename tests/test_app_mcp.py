@@ -22,7 +22,10 @@ TOOLS = ["darkroom_presets_list", "darkroom_preset_show", "darkroom_preset_flags
          "darkroom_group_create", "darkroom_group_rename", "darkroom_presets_import", "darkroom_preset_save",
          "darkroom_presets_rebuild",
          "darkroom_edit_get", "darkroom_edit_set", "darkroom_edit_clear", "darkroom_edit_paste",
-         "darkroom_folder_thumbnails", "darkroom_thumbnail", "darkroom_edit_save_preset"]   # PL6 / PLP6: 18..24
+         "darkroom_folder_thumbnails", "darkroom_thumbnail", "darkroom_edit_save_preset",   # PL6 / PLP6: 18..24
+         "darkroom_semantic_build", "darkroom_semantic_status"]   # CONTRACT-semantic-index SI1 / SI11: 25, 26
+SEMANTIC_BUILD_ANNOTATIONS = {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False,
+                              "openWorldHint": True}   # verbatim (SI11)
 LIBRARY_IDEMPOTENT = {"darkroom_preset_rename": True, "darkroom_preset_move": True, "darkroom_preset_favorite": True,
                       "darkroom_presets_rebuild": True, "darkroom_group_create": False, "darkroom_group_rename": False,
                       "darkroom_presets_import": False, "darkroom_preset_save": False,
@@ -91,6 +94,8 @@ class TestMcpProtocol(McpCase):
                 want = dict(EXPORT_ANNOTATIONS, idempotentHint=LIBRARY_IDEMPOTENT[t["name"]])
             elif t["name"] in EDIT_TOOLS:
                 want = EDIT_ANNOTATIONS
+            elif t["name"] == "darkroom_semantic_build":
+                want = SEMANTIC_BUILD_ANNOTATIONS
             else:
                 want = EXPORT_ANNOTATIONS if t["name"] == "darkroom_export" else {"readOnlyHint": True,
                                                                                   "openWorldHint": False}
