@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-labelledby="t">
+  <title id="t">darkroom logo — a print emerging from red developer</title>
+  <defs>
+    <linearGradient id="img" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3a2a1f"/>
+      <stop offset="1" stop-color="#d89b4a"/>
+    </linearGradient>
+    <clipPath id="tile"><rect width="256" height="256" rx="52"/></clipPath>
+  </defs>
+  <rect width="256" height="256" rx="52" fill="#141414"/>
+  <g clip-path="url(#tile)">
+    <!-- the print -->
+    <g transform="rotate(-8 128 128)">
+      <rect x="58" y="76" width="140" height="104" rx="4" fill="#f3ede2"/>
+      <rect x="70" y="88" width="116" height="80" fill="url(#img)"/>
+      <circle cx="158" cy="116" r="12" fill="#f3ede2" fill-opacity="0.9"/>
+      <path d="M70 168 L104 132 L128 152 L152 130 L186 168 Z" fill="#2b1d16"/>
+    </g>
+    <!-- red developer with a wavy surface -->
+    <path d="M0 156 C 40 142, 72 170, 112 158 S 190 140, 256 160 L256 256 L0 256 Z" fill="#c0392b" fill-opacity="0.9"/>
+    <path d="M0 156 C 40 142, 72 170, 112 158 S 190 140, 256 160" fill="none" stroke="#e74c3c" stroke-width="5" stroke-linecap="round"/>
+  </g>
+</svg>

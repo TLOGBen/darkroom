@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>darkroom</title>
+<link rel="icon" href="/static/logo.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
@@ -43,7 +44,7 @@
   <section class="col" id="col-pv">
     <div class="pv-tools">
       <button id="hold" title="按住看原圖（快捷鍵：按住 \）">按住看原圖</button>
-      <span id="skip-banner" class="warnbar" hidden></span><span id="skip-note" class="skipnote" hidden></span>
+      <span id="skip-banner" class="warnbar" role="button" tabindex="0" hidden></span><span id="skip-note" class="skipnote" role="button" tabindex="0" hidden></span>
       <span id="edit-status" class="editstatus" hidden></span>
       <button id="restore-previous-btn" title="取回上一份：把最近一次被還原（清除）的編輯拿回來" disabled>取回上一份</button>
       <span class="sp"></span>
@@ -57,6 +58,7 @@
       <img id="preview-img" alt="預覽" hidden>
       <div class="pv-empty" id="preview-empty">在上方輸入照片路徑後按「開啟」</div>
       <span class="pv-label" id="pv-label" hidden>原圖</span>
+      <div id="skip-detail" class="skip-detail" role="dialog" aria-label="無法套用的設定（完整內容）" hidden></div>
     </div>
     <div class="strength">
       <div class="row">
@@ -89,6 +91,7 @@
     <button id="paste-edit-btn" title="把複製的編輯貼到選取的照片，取代它們原本的編輯" disabled>貼上編輯</button>
     <button id="export-selected-btn" title="用各自的編輯、全解析度匯出選取的照片（格式與品質取上方匯出設定）" disabled>匯出所選</button>
   </div>
+  <div id="grid-result" class="import-result" role="status" hidden></div>
   <div class="scroll cells" id="grid-cells" role="listbox" aria-multiselectable="true" aria-label="照片縮圖格"></div>
 </main>
 

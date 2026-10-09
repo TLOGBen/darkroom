@@ -84,6 +84,15 @@ body.sl-collapsed #col-sl { display: none; }
 .pv-empty { color: #888; }
 .pv-label { position: absolute; top: 16px; left: 16px; font-size: 13px; background: #000b; padding: 2px 8px;
   border-radius: 3px; pointer-events: none; }
+/* S12: the full skipped-settings text opens over the preview; the toolbar line keeps its height (R4) */
+.skip-detail { position: absolute; top: 12px; left: 12px; right: 12px; max-height: 60%; overflow: auto; z-index: 3;
+  background: #1a1a1acc; border: 1px solid #444; border-radius: 4px; padding: 8px 12px; font-size: 13px; line-height: 1.5;
+  white-space: normal; cursor: pointer; }
+.skip-detail p { margin: 0; }
+.skip-detail p + p { margin-top: 6px; color: var(--faint); }
+.warnbar, .skipnote { cursor: pointer; }
+#grid-count { white-space: nowrap; }
+.grid-empty { color: var(--faint); grid-column: 1 / -1; padding: 24px; text-align: center; }
 .strength { padding: 8px 10px; border-top: 1px solid var(--line); background: var(--panel2); flex: none; }
 .strength .row { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .strength .row + .row { margin-top: 4px; }

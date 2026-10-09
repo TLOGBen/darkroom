@@ -51,8 +51,10 @@ PATH_READING_GETS = frozenset(("/api/folder", "/api/edit", "/api/folder/thumbnai
 
 
 def _lenient_int(text):
-    """A query-string number -> int when it is all digits, else the raw string (the service says why; PLP8)."""
-    return int(text) if text.isdigit() else text
+    """A query-string number -> int when it is all decimal digits, else the raw string (the service says why; PLP8).
+
+    isdecimal, not isdigit (CONTRACT-s1-experience S15): '²' and '①' are digits int() refuses."""
+    return int(text) if text.isdecimal() else text
 
 
 @web.middleware

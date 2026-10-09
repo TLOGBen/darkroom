@@ -1032,6 +1032,13 @@ class TestPhotoLibraryHttp(AioHTTPTestCase):
         self.assertEqual(([i["name"] for i in listing["items"]], listing["total"]), (["b.jpg"], 2))
         r = await self.client.get("/api/folder/thumbnails", params={"folder": self.photos, "limit": "x"})
         self.assertEqual((r.status, await r.json()), (400, {"error": "limit must be an integer in 1..200"}))
+        for odd in ("²", "①", "٣"):            # S15: Unicode digits int() refuses never become a 500
+            r = await self.client.get("/api/folder/thumbnails", params={"folder": self.photos, "offset": odd})
+            self.assertIn(r.status, (200, 400), odd)
+            if r.status == 400:
+                self.assertEqual(await r.json(), {"error": "offset must be an integer >= 0"})
+        from darkroom_app.server import _lenient_int
+        self.assertEqual([_lenient_int(t) for t in ("12", "²", "①", "x", "")], [12, "²", "①", "x", ""])
         r = await self.client.get("/api/folder/thumbnails", params={"folder": os.path.join(self.tmp, "no")})
         self.assertEqual(r.status, 404)
         r = await self.client.get("/api/thumbnail", params={"path": a})

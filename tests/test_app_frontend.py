@@ -364,6 +364,65 @@ class TestPageStructure(unittest.TestCase):
         apply = js[js.index("function applyEditInfo"):js.index("function restore(res)")]
         self.assertIn("if (res.edit && res.edit.preset) st.snapshots[res.edit.preset.id] = res.edit.preset;", apply)
 
+    def test_export_commits_carried_state(self):  # S11: what the screen shows is what gets saved and exported
+        js = read("app.js")
+        body = js[js.index("async function exportPhoto"):js.index("function renderPosition")]
+        self.assertLess(body.index("await commitCarried();"), body.index("api('POST', '/api/export'"))
+        commit = js[js.index("async function commitCarried"):js.index("async function exportPhoto")]
+        self.assertIn("if (!st.image || st.edit || !L.carryHintVisible(ed, true, false)) return;", commit)
+        self.assertIn("scheduleSave();\n  await flushSave();", commit)
+
+    def test_skip_detail_structure(self):  # S12: the full text opens over the preview, the toolbar stays one line
+        html = read("index.html")
+        wrap = html[html.index('<div class="pv-wrap" id="preview">'):html.index('<div class="strength">')]
+        self.assertRegex(wrap, r'<div id="skip-detail" class="skip-detail" role="dialog"[^>]*\shidden>')
+        self.assertRegex(html, r'<span id="skip-banner" class="warnbar" role="button" tabindex="0" hidden>')
+        self.assertRegex(html, r'<span id="skip-note" class="skipnote" role="button" tabindex="0" hidden>')
+        js = read("app.js")
+        self.assertIn("renderSkipDetail(b, n);", js[js.index("async function loadPreset"):js.index("function selectPreset")])
+        self.assertIn("if (e.key === 'Escape' && !$('#skip-detail').hidden) toggleSkipDetail(false);", js)
+        css = read("app.css")
+        self.assertRegex(css, r"\.skip-detail \{[^}]*position: absolute;[^}]*white-space: normal;")
+
+    def test_front_end_housekeeping(self):  # S13 (a)-(h), (j)-(l) and S15
+        js, html, css = read("app.js"), read("index.html"), read("app.css")
+        exp = js[js.index("async function exportSelected"):js.index("// ------------------------------------------------------------------ export (X13)")]
+        self.assertIn("if (!paths.length || exp.busy) return;", exp)                           # (a)
+        self.assertIn("btn.disabled = true; btn.textContent = L.EXPORT_BUSY;", exp)
+        self.assertRegex(exp, r"finally \{\s*exp\.busy = false;")
+        self.assertIn("showGridResult(L.exportSelectedDone(ok, fail), lines);", exp)           # (b)
+        self.assertIn("lines.push(`${L.baseName(r.source)}：${L.explain(r.error)}`)", exp)
+        self.assertIn('<div id="grid-result" class="import-result" role="status" hidden></div>', html)
+        self.assertIn("!inField(e.target) && !e.repeat) step(-1);", js)                        # (c)
+        self.assertIn("!inField(e.target) && !e.repeat) step(1);", js)
+        self.assertIn("el.matches('input, select, textarea')", js)
+        self.assertIn("window.addEventListener('blur', () => { if (st.holding) showOriginal(false); });", js)   # (d)
+        self.assertIn("if (document.hidden && st.holding) showOriginal(false);", js)
+        rel = js[js.index("function releaseGrid"):js.index("function renderGrid")]              # (e)
+        self.assertIn("gridIO.unobserve(cell);", rel)
+        self.assertIn("URL.revokeObjectURL(img.src);", rel)
+        self.assertIn("img.onload = () => URL.revokeObjectURL(url);", js)
+        self.assertIn("if (st.grid.folder !== null) return;", js[js.index("function showGrid"):js.index("async function loadGrid")])   # (f)
+        self.assertIn("function unloadSave()", js)                                                # (g)
+        self.assertIn("if (!job.retried) {", js)
+        paste = js[js.index("async function pasteEdit"):js.index("async function exportSelected")]   # (h)
+        self.assertLess(paste.index("await flushSave();"), paste.index("confirm(L.pasteConfirm("))
+        self.assertIn("const GRID_EMPTY = '這個資料夾沒有支援的照片（JPEG／PNG／TIFF／HEIC）';", read("logic.js"))   # (j)
+        self.assertIn("e.textContent = L.GRID_EMPTY;", js)
+        self.assertRegex(css, r"#grid-count \{[^}]*white-space: nowrap;")                        # (k)
+        self.assertIn('<link rel="icon" href="/static/logo.svg" type="image/svg+xml">', html)    # (l)
+        with open(os.path.join(STATIC, "logo.svg"), "rb") as f, \
+                open(os.path.join(_util.REPO, "docs", "assets", "logo.svg"), "rb") as g:
+            self.assertEqual(f.read(), g.read())
+        init = js[js.index("async function init"):]                                               # S15
+        self.assertIn("if (q) $('#photo-path').value = q;", init)
+        self.assertIn("else if (last) { $('#photo-path').value = last; openPhoto(last); }", init)
+        self.assertNotRegex(init, r"openPhoto\(q\)")
+
+    def test_toasts_go_through_explain(self):  # S14: every toast shows the explained sentence
+        js = read("app.js")
+        self.assertIn("t.textContent = L.explain(msg); t.title = original || msg;", js[js.index("function toast"):js.index("function setStatus")])
+
     def test_restore_uses_snapshot_values(self):  # CONTRACT-s1-experience S3
         js = read("app.js")
         lp = js[js.index("async function loadPreset"):js.index("function selectPreset")]
@@ -383,7 +442,7 @@ class TestPageStructure(unittest.TestCase):
         self.assertIn("confirm(L.pasteConfirm(st.clipboard.name, targets.length))", grid_js)
         self.assertIn("api('POST', '/api/edit/paste', {targets, edit: st.clipboard.edit})", grid_js)
         self.assertIn("toast(L.copied(st.clipboard.name));", grid_js)
-        self.assertIn("toast(L.pasteDone(ok, res.results.length - ok)", grid_js)
+        self.assertIn("gridBatchDone(L.pasteDone, targets, res.results);", grid_js)
         export_sel = grid_js[grid_js.index("async function exportSelected"):]
         self.assertIn("L.exportItems(paths, edits)", export_sel)
         self.assertIn("api('POST', '/api/export', body)", export_sel)

@@ -297,6 +297,7 @@
   const CARRY_HINT = '沿用上一張的設定（還不是這張的編輯，會再沿用到下一張）';   // S11 (replaces R5's sentence)
   const CARRY_HINT_SHORT = '沿用中';
   const openFailed = (fileName, reason) => `開啟失敗：${fileName}：${reason}`;
+  const GRID_EMPTY = '這個資料夾沒有支援的照片（JPEG／PNG／TIFF／HEIC）';   // S13 (j)
   const PRESET_CHANGED = 'preset 已變更，這份編輯用的是當時的 preset 快照';
   const PRESET_MISSING = 'preset 已不在庫裡，這份編輯用的是當時的 preset 快照';
   const presetStatusText = (status) => (status === 'changed' ? PRESET_CHANGED : status === 'missing' ? PRESET_MISSING : '');
@@ -367,7 +368,7 @@
           EXPORT_BUSY, EXPORT_DEFAULT_QUALITY, baseName, exportDone, exportFailed, exportBody, exportMessage,
           USER_GROUP, FAV_EMPTY, UPLOAD_BATCH_CHARS, presetSaved, importSummary, importedLine, canSavePreset, favMark,
           groupCreated, saveBody, uploadBatches, importReport,
-          explain, EXPLAIN_EXACT, EXPLAIN_PREFIX, openFailed, SAVE_RETRY_MS, CARRY_HINT, CARRY_HINT_SHORT,
+          explain, EXPLAIN_EXACT, EXPLAIN_PREFIX, openFailed, SAVE_RETRY_MS, CARRY_HINT, CARRY_HINT_SHORT, GRID_EMPTY,
           AUTOSAVE_MS, PRESET_CHANGED, PRESET_MISSING, presetStatusText, copied, pasteConfirm, pasteDone,
           exportSelectedDone, gridCount, editBody, editRequest, detailFromSnapshot, gridSelect, exportItems,
           saveEditFailed, loadEditFailed, loadFolderFailed};

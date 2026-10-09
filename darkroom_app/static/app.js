@@ -332,11 +332,28 @@ async function loadPreset(id) {
   const b = st.detail ? st.detail.banner : '', n = st.detail ? st.detail.note : '';
   banner.textContent = b; banner.title = b; banner.hidden = !b;
   note.textContent = n; note.title = n; note.hidden = !n;
+  renderSkipDetail(b, n);
   renderStrength();
   renderTree();
 }
 
 function selectPreset(id) { return dispatch({type: 'selectPreset', id}); }   // strength and tweaks are kept (R5)
+
+// S12: the one-line toolbar keeps its height (R4); the full text opens over the preview instead
+function renderSkipDetail(banner, note) {
+  const box = $('#skip-detail');
+  box.innerHTML = '';
+  for (const t of [banner, note]) {
+    if (!t) continue;
+    const p = document.createElement('p'); p.textContent = t; box.appendChild(p);
+  }
+  if (!banner && !note) box.hidden = true;
+}
+function toggleSkipDetail(on) {
+  const box = $('#skip-detail');
+  box.hidden = on === undefined ? !box.hidden : !on;
+  if (box.hidden && box.contains(document.activeElement)) $('#skip-banner').focus();
+}
 
 // ------------------------------------------------------------------ inline value editing (R6)
 function editValue(span, current, spec, commit) {
@@ -737,9 +754,10 @@ function showGrid(on) {
   $('#grid').hidden = !on;
   $('#grid-btn').setAttribute('aria-pressed', String(on));
   if (!on) return;
+  if (st.grid.folder !== null) return;    // S13 (f): a folder the user loaded by hand stays, with its selection
   const folder = st.image ? st.image.path.replace(/[\\/][^\\/]*$/, '') : $('#grid-path').value;
   if (folder && !$('#grid-path').value) $('#grid-path').value = folder;
-  if (folder && folder !== st.grid.folder) loadGrid(folder);
+  if (folder) loadGrid(folder);
 }
 
 async function loadGrid(folder) {
@@ -753,9 +771,22 @@ async function loadGrid(folder) {
   renderGrid();
 }
 
+function releaseGrid(box) {             // S13 (e): nothing of the old grid stays behind
+  for (const cell of box.querySelectorAll('.cell')) {
+    if (gridIO) gridIO.unobserve(cell);
+    const img = cell.querySelector('img');
+    if (img && img.src.startsWith('blob:')) URL.revokeObjectURL(img.src);
+  }
+  box.innerHTML = '';
+}
+
 function renderGrid() {
   const box = $('#grid-cells');
-  box.innerHTML = '';
+  releaseGrid(box);
+  if (!st.grid.items.length) {           // S13 (j)
+    const e = document.createElement('div'); e.className = 'grid-empty'; e.textContent = L.GRID_EMPTY;
+    box.appendChild(e);
+  }
   st.grid.items.forEach((it, i) => {
     const cell = document.createElement('div');
     cell.className = 'cell' + (it.edited ? ' edited' : '');
@@ -788,12 +819,15 @@ async function loadThumb(cell) {        // only once the cell is visible; the by
     const r = await api('GET', '/api/thumbnail?path=' + encodeURIComponent(cell.dataset.path));
     cell.classList.toggle('edited', r.headers.get('X-Edited') === '1');
     const img = document.createElement('img');
-    img.alt = ''; img.src = URL.createObjectURL(await r.blob());
+    img.alt = '';
+    const url = URL.createObjectURL(await r.blob());
+    img.onload = () => URL.revokeObjectURL(url);     // decoded: the blob's bytes are freed (S13 e)
+    img.src = url;
     pic.innerHTML = ''; pic.appendChild(img);
   } catch (e) {
     cell.classList.add('missing');
     pic.textContent = cell.querySelector('.nm').textContent;
-    pic.title = e.message;
+    pic.title = L.explain(e.message);
   }
 }
 
@@ -830,45 +864,84 @@ function copyEdit() {
   refreshCopy();
 }
 
+function showGridResult(summary, lines) {   // S13 (b): every failed item stays readable, not only a count
+  const box = $('#grid-result');
+  box.innerHTML = '';
+  const head = document.createElement('div'); head.className = 'ir-head'; head.textContent = summary;
+  const close = document.createElement('button'); close.className = 'icon'; close.textContent = '×'; close.title = '關閉';
+  close.onclick = () => { box.hidden = true; };
+  head.appendChild(close);
+  box.appendChild(head);
+  for (const l of lines) { const d = document.createElement('div'); d.className = 'err'; d.textContent = l; box.appendChild(d); }
+  box.hidden = !lines.length;
+}
+
+function gridBatchDone(summaryFn, targets, results) {   // results: [{ok, target|source, error}] in target order
+  const ok = results.filter((r) => r.ok).length;
+  const lines = results.map((r, k) => (r.ok ? null : `${L.baseName(targets[k])}：${L.explain(r.error)}`)).filter(Boolean);
+  const summary = summaryFn(ok, results.length - ok);
+  showGridResult(summary, lines);
+  toast(summary, lines.length > 0);
+  return ok;
+}
+
+function markCells(targets, results, cls) {
+  results.forEach((r, k) => {
+    if (!r.ok) return;
+    const i = st.grid.items.findIndex((it) => it.path === targets[k]);
+    const cell = $('#grid-cells').querySelector(`.cell[data-i="${i}"]`);
+    if (i >= 0) st.grid.items[i].edited = cls === 'edited';
+    if (cell) { cell.classList.toggle('edited', cls === 'edited'); cell.classList.remove('stale'); }
+  });
+}
+
 async function pasteEdit() {
   const targets = selectedPaths();
   if (!st.clipboard || !targets.length) return;
+  await flushSave();                    // S13 (h): the open photo's pending save never races the paste
   if (!confirm(L.pasteConfirm(st.clipboard.name, targets.length))) return;
   let res;
   try { res = await (await api('POST', '/api/edit/paste', {targets, edit: st.clipboard.edit})).json(); }
   catch (e) { toast(e.message, true); return; }
-  const ok = res.results.filter((r) => r.ok).length;
-  toast(L.pasteDone(ok, res.results.length - ok), ok < res.results.length);
-  res.results.forEach((r, k) => {
-    if (!r.ok) return;
-    const cell = $('#grid-cells').querySelector(`.cell[data-i="${st.grid.items.findIndex((it) => it.path === targets[k])}"]`);
-    if (cell) cell.classList.add('edited');
-  });
+  gridBatchDone(L.pasteDone, targets, res.results);
+  markCells(targets, res.results, 'edited');
   if (st.image && targets.includes(st.image.path)) await loadEdit(st.image.path);
 }
 
 async function exportSelected() {       // each photo with its own saved edit; format / quality from the toolbar
   const paths = selectedPaths();
-  if (!paths.length) return;
-  await flushSave();
-  const edits = {};
-  for (const p of paths) {
-    try { edits[p] = await (await api('GET', '/api/edit?path=' + encodeURIComponent(p))).json(); }
-    catch (e) { edits[p] = null; }
+  if (!paths.length || exp.busy) return;
+  exp.busy = true;                      // S13 (a): a second click must not export everything twice
+  const btn = $('#export-selected-btn');
+  btn.disabled = true; btn.textContent = L.EXPORT_BUSY;
+  try {
+    await flushSave();
+    const edits = {}, lines = [];
+    for (const p of paths) {
+      try { edits[p] = await (await api('GET', '/api/edit?path=' + encodeURIComponent(p))).json(); }
+      catch (e) { edits[p] = null; lines.push(`${L.baseName(p)}：${L.loadEditFailed(L.explain(e.message))}`); }
+    }
+    const {items, failed} = L.exportItems(paths, edits);
+    let ok = 0, fail = failed;
+    if (items.length) {
+      const format = $('#export-format').value;
+      const body = {items, format};
+      if (format === 'jpeg') body.quality = L.exportBody({}, format, $('#export-quality').value).quality;
+      try {
+        const res = await (await api('POST', '/api/export', body)).json();
+        ok = res.results.filter((r) => r.ok).length;
+        fail += res.results.length - ok;
+        res.results.forEach((r) => { if (!r.ok) lines.push(`${L.baseName(r.source)}：${L.explain(r.error)}`); });
+      } catch (e) { fail += items.length; lines.push(L.explain(e.message)); }
+    }
+    showGridResult(L.exportSelectedDone(ok, fail), lines);
+    toast(L.exportSelectedDone(ok, fail), fail > 0);
+  } finally {
+    exp.busy = false;
+    btn.textContent = '匯出所選';
+    refreshCopy();
+    refreshExport();
   }
-  const {items, failed} = L.exportItems(paths, edits);
-  let ok = 0, fail = failed;
-  if (items.length) {
-    const format = $('#export-format').value;
-    const body = {items, format};
-    if (format === 'jpeg') body.quality = L.exportBody({}, format, $('#export-quality').value).quality;
-    try {
-      const res = await (await api('POST', '/api/export', body)).json();
-      ok = res.results.filter((r) => r.ok).length;
-      fail += res.results.length - ok;
-    } catch (e) { fail += items.length; toast(e.message, true); }
-  }
-  toast(L.exportSelectedDone(ok, fail), fail > 0);
 }
 
 // ------------------------------------------------------------------ export (X13): reads the edit, never changes it
@@ -881,11 +954,18 @@ function refreshExport() {
   $('#export-quality').disabled = $('#export-format').value !== 'jpeg';
 }
 
+async function commitCarried() {        // S11: a carried-over state becomes this photo's edit before it is exported
+  if (!st.image || st.edit || !L.carryHintVisible(ed, true, false)) return;
+  scheduleSave();
+  await flushSave();
+}
+
 async function exportPhoto() {
   if (!st.image || exp.busy) return;
   exp.busy = true;
   refreshExport();
   const name = L.baseName(st.image.path);
+  await commitCarried();
   try {
     const res = await (await api('POST', '/api/export',
       L.exportBody(currentRequest(), $('#export-format').value, $('#export-quality').value))).json();
@@ -925,6 +1005,7 @@ function toggleLib() {
 
 // ------------------------------------------------------------------ wiring
 const typing = (el) => el && (el.matches('input[type=text], input[type=search], input[type=number]') || el.isContentEditable);
+const inField = (el) => !!(el && el.matches && el.matches('input, select, textarea'));   // S13 (c): arrows stay there
 
 async function init() {
   $('#open-form').addEventListener('submit', (e) => { e.preventDefault(); openPhoto($('#photo-path').value); });
@@ -950,6 +1031,12 @@ async function init() {
   document.addEventListener('click', (e) => { if (!e.target.closest('.menu-pop')) closeMenu(); });
   $('#export-format').addEventListener('change', refreshExport);
   refreshExport();
+  for (const id of ['#skip-banner', '#skip-note']) {       // S12
+    $(id).addEventListener('click', () => toggleSkipDetail());
+    $(id).addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleSkipDetail(); } });
+  }
+  $('#skip-detail').addEventListener('click', () => toggleSkipDetail(false));
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('#skip-detail').hidden) toggleSkipDetail(false); });
   $('#grid-btn').onclick = () => showGrid(!document.body.classList.contains('grid-open'));
   $('#grid-load').onclick = () => loadGrid($('#grid-path').value);
   $('#grid-path').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); loadGrid($('#grid-path').value); } });
@@ -970,10 +1057,13 @@ async function init() {
     if ((e.ctrlKey || e.metaKey) && k === 'y') { e.preventDefault(); redo(); return; }
     if (e.target.closest && (e.target.closest('#preset-tree') || e.target.closest('#grid'))) return;
     if (e.key === '\\' && !e.repeat) showOriginal(true);
-    else if (e.key === 'ArrowLeft' && !e.target.matches('input')) step(-1);
-    else if (e.key === 'ArrowRight' && !e.target.matches('input')) step(1);
+    else if (e.key === 'ArrowLeft' && !inField(e.target) && !e.repeat) step(-1);
+    else if (e.key === 'ArrowRight' && !inField(e.target) && !e.repeat) step(1);
   });
   document.addEventListener('keyup', (e) => { if (e.key === '\\' && st.holding) showOriginal(false); });
+  // S13 (d): a window that loses focus never gets the keyup; the original must not stay stuck on screen
+  window.addEventListener('blur', () => { if (st.holding) showOriginal(false); });
+  document.addEventListener('visibilitychange', () => { if (document.hidden && st.holding) showOriginal(false); });
 
   const [presets, sl, flags, groups] = await Promise.all([
     api('GET', '/api/presets').then((r) => r.json()),
@@ -990,9 +1080,12 @@ async function init() {
   renderSliders();
   refreshUndo();
   refreshSavePreset();
+  // S15: ?path= only fills the box (a link from outside the browser must not make the app read a path);
+  // the last opened photo is restored as before
   const q = new URLSearchParams(location.search).get('path');
-  const last = q || loadPref('lastPath', '');
-  if (last) { $('#photo-path').value = last; openPhoto(last); }
+  const last = loadPref('lastPath', '');
+  if (q) $('#photo-path').value = q;
+  else if (last) { $('#photo-path').value = last; openPhoto(last); }
 }
 
 window.darkroom = {st, pv, get ed() { return ed; }, dispatch, requestPreview, selectPreset, openPhoto, step, undo, redo, setStrength,
