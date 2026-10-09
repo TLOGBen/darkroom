@@ -88,8 +88,9 @@
   const strengthInEffect = (ed) => (ed.presetId === null ? 100 : ed.strength);
   const canUndo = (ed) => ed.past.length > 0;
   const canRedo = (ed) => ed.future.length > 0;
-  const carryHintVisible = (ed, hasImage) =>
-    !!hasImage && (ed.presetId !== null || Object.keys(ed.tweaks).length > 0);
+  // S11: the hint only while the state is carried over (no edit of this photo yet); a saved edit needs no hint
+  const carryHintVisible = (ed, hasImage, hasEdit) =>
+    !!hasImage && !hasEdit && (ed.presetId !== null || Object.keys(ed.tweaks).length > 0);
 
   function change(ed, next, gesture) {
     const now = snap(ed);
@@ -263,10 +264,39 @@
             lines: results.map((r) => (r.ok ? importedLine(r.id) : r.error))};
   }
 
+  // ---------------------------------------------------------------- S14 English service sentences, explained
+  // The services' sentences (CONTRACT-layering L3, photo library constants) are never changed; the page shows
+  // the Chinese explanation and keeps the original in the tooltip. Exact sentences first, then prefix forms.
+  const EXPLAIN_EXACT = {
+    'path is required': '請輸入照片路徑',
+    'unsupported photo format (JPEG/PNG/TIFF/HEIC)': '不支援的照片格式（只接受 JPEG／PNG／TIFF／HEIC）',
+    'unknown image_id': '照片已不在記憶體裡，請重新開啟',
+    'strength must be a number in 0..200': '強度要在 0～200 之間',
+    'body must be JSON': '請求格式錯誤（不是 JSON）',
+  };
+  const EXPLAIN_PREFIX = [
+    ['photo not found: ', (x) => `找不到照片：${x}`],
+    ['unknown or unsupported preset ', (x) => `找不到或不支援的 preset：${x}`],
+    ['unknown preset ', (x) => `找不到 preset：${x}`],
+    ['strength must be within 0..200, got ', (x) => `強度要在 0～200 之間：${x}`],
+    ['unknown slider key ', (x) => `未知的滑桿：${x}`],
+    ['request refused: ', (x) => `伺服器拒絕了這個請求：${x}`],
+  ];
+  function explain(msg) {
+    const m = String(msg == null ? '' : msg);
+    if (Object.prototype.hasOwnProperty.call(EXPLAIN_EXACT, m)) return EXPLAIN_EXACT[m];
+    for (const [prefix, fn] of EXPLAIN_PREFIX) if (m.startsWith(prefix)) return fn(m.slice(prefix.length));
+    return m;
+  }
+
   // ---------------------------------------------------------------- PL15 / PLP9 photo library
   // The edit of the open photo is saved AUTOSAVE_MS after the last change (latest wins); restoring a saved edit
   // goes through the reducer's restoreEdit and never schedules a save. The grid selects, copies, pastes, exports.
   const AUTOSAVE_MS = 500;
+  const SAVE_RETRY_MS = 2000;                                // S13 (g): one retry after a failed save
+  const CARRY_HINT = '沿用上一張的設定（還不是這張的編輯，會再沿用到下一張）';   // S11 (replaces R5's sentence)
+  const CARRY_HINT_SHORT = '沿用中';
+  const openFailed = (fileName, reason) => `開啟失敗：${fileName}：${reason}`;
   const PRESET_CHANGED = 'preset 已變更，這份編輯用的是當時的 preset 快照';
   const PRESET_MISSING = 'preset 已不在庫裡，這份編輯用的是當時的 preset 快照';
   const presetStatusText = (status) => (status === 'changed' ? PRESET_CHANGED : status === 'missing' ? PRESET_MISSING : '');
@@ -283,6 +313,27 @@
     const overrides = {};
     for (const [k, d] of Object.entries(ed.tweaks)) if (d) overrides[k] = d;
     return {path, preset_id: ed.presetId, strength: strengthInEffect(ed), overrides};
+  }
+
+  // S2 (CONTRACT-s1-experience): the autosave request for the state `ed` of the photo at `path`. When the page
+  // remembers a snapshot for the chosen preset (from GET / PUT /api/edit of this photo), the edit is written
+  // through paste with that snapshot (PL8: never re-read from the library), else through PUT (PL4).
+  function editRequest(ed, path, snapshots, fingerprint) {
+    const body = editBody(ed, path);
+    const snap = ed.presetId !== null && snapshots ? snapshots[ed.presetId] : null;
+    if (!snap) return {method: 'PUT', body};
+    const edit = {schema: 'darkroom-edit/1', fingerprint: fingerprint || '', preset: snap,
+                  strength: body.strength, overrides: body.overrides};
+    return {method: 'PASTE', body: {targets: [path], edit}};
+  }
+
+  // S3: slider base values and curves come from the edit's snapshot, never from the library's current file;
+  // banner / note (the skipped settings) still come from the library detail when the preset is still there.
+  function detailFromSnapshot(snapshot, detail) {
+    const p = snapshot.params || {};
+    return {id: snapshot.id, name: snapshot.name, group: snapshot.group,
+            values: Object.assign({}, p.values || {}), curves: Object.assign({}, p.curves || {}),
+            banner: detail ? detail.banner : '', note: detail ? detail.note : '', snapshot: true};
   }
 
   function gridSelect(sel, i, mods, anchor) {   // click = only i; Ctrl = toggle i; Shift = anchor..i
@@ -316,7 +367,8 @@
           EXPORT_BUSY, EXPORT_DEFAULT_QUALITY, baseName, exportDone, exportFailed, exportBody, exportMessage,
           USER_GROUP, FAV_EMPTY, UPLOAD_BATCH_CHARS, presetSaved, importSummary, importedLine, canSavePreset, favMark,
           groupCreated, saveBody, uploadBatches, importReport,
+          explain, EXPLAIN_EXACT, EXPLAIN_PREFIX, openFailed, SAVE_RETRY_MS, CARRY_HINT, CARRY_HINT_SHORT,
           AUTOSAVE_MS, PRESET_CHANGED, PRESET_MISSING, presetStatusText, copied, pasteConfirm, pasteDone,
-          exportSelectedDone, gridCount, editBody, gridSelect, exportItems, saveEditFailed, loadEditFailed,
-          loadFolderFailed};
+          exportSelectedDone, gridCount, editBody, editRequest, detailFromSnapshot, gridSelect, exportItems,
+          saveEditFailed, loadEditFailed, loadFolderFailed};
 });

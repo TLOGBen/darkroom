@@ -13,8 +13,10 @@ const NARROW = window.matchMedia('(max-width: 960px)');
 const st = {
   presets: [], byId: {}, flags: {}, sliders: [], groups: [], byKey: {}, libGroups: {groups: [], ungrouped: 0},
   image: null, folder: null,
+  loading: null,                                                 // S1: an open photo whose edit is not restored yet
   detail: null,
   edit: null, clipboard: null,                                   // the open photo's saved edit; the copied edit (PL15)
+  snapshots: {}, fingerprint: null, previous: false, editStatus: null,   // S2 / S4: what the photo library told us
   grid: {folder: null, items: [], sel: new Set(), anchor: 0},   // the thumbnail grid (PLP9)
   search: '', openFolders: {'\u0001fav': true}, openGroups: loadPref('openGroups', {basic: true}), hslTab: 'h', focusKey: null,
   holding: false, originalUrl: null, originalFor: null,
@@ -27,8 +29,9 @@ function loadPref(k, dflt) {
 function savePref(k, v) { try { localStorage.setItem('darkroom.' + k, JSON.stringify(v)); } catch (e) { /* optional */ } }
 
 let toastT = null;
-function toast(msg, err) {
-  const t = $('#toast'); t.textContent = msg; t.className = 'show' + (err ? ' err' : '');
+function toast(msg, err, original) {    // S14: the shown sentence is Chinese; the original sits in the tooltip
+  const t = $('#toast'); t.textContent = L.explain(msg); t.title = original || msg;
+  t.className = 'show' + (err ? ' err' : '');
   clearTimeout(toastT); toastT = setTimeout(() => { t.className = ''; }, 2600);
 }
 function setStatus(msg, cls, detail) {
@@ -50,7 +53,8 @@ async function api(method, url, body, extra) {
 
 // ------------------------------------------------------------------ state (R5): dispatch -> L.reduce -> sync DOM
 function refreshUndo() { $('#undo').disabled = !L.canUndo(ed); $('#redo').disabled = !L.canRedo(ed); }
-function renderHint() { $('#carry-hint').hidden = !L.carryHintVisible(ed, !!st.image); }
+function renderHint() { $('#carry-hint').hidden = !L.carryHintVisible(ed, !!st.image, !!st.edit); }   // S11
+function refreshRestorePrevious() { $('#restore-previous-btn').disabled = !(st.image && !st.edit && st.previous); }   // S10
 
 async function dispatch(action, opts) {
   const prev = ed;
@@ -315,11 +319,15 @@ function onTreeKey(e) {
 async function loadPreset(id) {
   st.detail = null;
   if (id !== null) {
-    try { st.detail = await (await api('GET', '/api/presets/' + encodeURIComponent(id))).json(); }
-    catch (e) { toast('讀取 preset 失敗：' + e.message, true); }
+    let detail = null;
+    try { detail = await (await api('GET', '/api/presets/' + encodeURIComponent(id))).json(); }
+    catch (e) { if (!st.snapshots[id]) toast('讀取 preset 失敗：' + e.message, true); }   // missing: the snapshot serves
     if (ed.presetId !== id) return;
+    // S3: a remembered snapshot (the photo's saved edit) is the slider baseline, not the library's current file
+    st.detail = st.snapshots[id] ? L.detailFromSnapshot(st.snapshots[id], detail) : detail;
   }
-  $('#preset-name').textContent = id === null ? NO_PRESET : st.byId[id].name;
+  $('#preset-name').textContent = id === null ? NO_PRESET
+    : (st.byId[id] ? st.byId[id].name : (st.detail && st.detail.name) || id);
   const banner = $('#skip-banner'), note = $('#skip-note');
   const b = st.detail ? st.detail.banner : '', n = st.detail ? st.detail.note : '';
   banner.textContent = b; banner.title = b; banner.hidden = !b;
@@ -587,62 +595,118 @@ async function savePreset() {
 }
 
 // ------------------------------------------------------------------ photos
+let openSeq = 0;                        // S1: the newest openPhoto wins; older responses are dropped
+
 async function openPhoto(path) {
   path = (path || '').trim().replace(/^"|"$/g, '');
   if (!path) return;
   await flushSave();                    // the previous photo's last change goes out first (PL15)
+  const token = ++openSeq;
   setStatus('讀取照片中…', 'busy');
   let info;
   try { info = await (await api('POST', '/api/open', {path})).json(); }
-  catch (e) { setStatus('預覽：待命'); toast('開啟失敗：' + e.message, true); return; }
+  catch (e) { if (token === openSeq) openFailed(path, e.message); return; }
+  if (token !== openSeq) return;
+  // from here until the saved edit is restored nothing is scheduled for saving (S1): the state is in transit
+  st.loading = token;
   st.image = Object.assign(info, {path});
+  st.snapshots = {}; st.fingerprint = null; st.previous = false; st.editStatus = null;
   $('#photo-path').value = path;
   savePref('lastPath', path);
   $('#photo-size').textContent = `${info.width}×${info.height}`;
   $('#photo-size').title = `預覽 ${info.preview_width}×${info.preview_height}`;
   try { st.folder = await (await api('GET', '/api/folder?image_id=' + info.image_id)).json(); }
   catch (e) { st.folder = null; }
+  if (token !== openSeq) return;
   renderPosition();
   refreshExport();
-  await loadEdit(path);
-  if (st.image && st.image.path === path) requestPreview();
+  await loadEdit(path, token);
+  if (token !== openSeq) return;
+  st.loading = null;
+  requestPreview();
+}
+
+function openFailed(path, reason) {     // S13 (i): the old picture goes away, the reason is readable
+  st.image = null; st.folder = null; st.loading = null;
+  applyEditInfo({fingerprint: null, edit: null, preset_status: null, previous: false});
+  const img = $('#preview-img'); img.hidden = true; img.removeAttribute('src');
+  const empty = $('#preview-empty'); empty.hidden = false;
+  empty.textContent = L.openFailed(L.baseName(path), L.explain(reason)); empty.title = reason;
+  $('#photo-size').textContent = '';
+  renderPosition();
+  refreshExport();
+  setStatus('預覽：待命');
+  toast(L.openFailed(L.baseName(path), L.explain(reason)), true, reason);
 }
 
 // ------------------------------------------------------------------ photo library: autosave (PL15 / PLP9)
 // The open photo's edit is sent AUTOSAVE_MS after the last change; only the newest state waits (latest wins).
-const save = {timer: null, dirty: false, promise: null};
+// S1: what is sent (path and body) is fixed when the change is scheduled, never read later from st.image.
+const save = {timer: null, dirty: false, pending: null, promise: null};
 
 function scheduleSave() {
-  if (!st.image) return;
+  if (!st.image || st.loading) return;
+  const path = st.image.path;
+  save.pending = {path, req: L.editRequest(ed, path, st.snapshots, st.fingerprint), retried: false};
   save.dirty = true;
   clearTimeout(save.timer);
   save.timer = setTimeout(flushSave, L.AUTOSAVE_MS);
 }
 
-async function sendSave(path, body) {
+async function sendSave(job) {
+  const {path, req} = job;
   try {
-    // keepalive: a save sent from beforeunload survives the page going away (seal F3)
-    const res = await (await api('PUT', '/api/edit', body, {keepalive: true})).json();
+    let res;
+    if (req.method === 'PASTE') {       // S2: the remembered snapshot goes back as it is (PL8), then re-read
+      const r = await (await api('POST', '/api/edit/paste', req.body, {keepalive: true})).json();
+      const bad = r.results.find((x) => !x.ok);
+      if (bad) throw new Error(bad.error);
+      res = await (await api('GET', '/api/edit?path=' + encodeURIComponent(path))).json();
+    } else {
+      const body = req.body;
+      // keepalive: a save sent from beforeunload survives the page going away (seal F3)
+      res = await (await api('PUT', '/api/edit', body, {keepalive: true})).json();
+    }
     if (st.image && st.image.path === path) applyEditInfo(res);
-  } catch (e) { toast(L.saveEditFailed(e.message), true); }
+  } catch (e) {
+    toast(L.saveEditFailed(L.explain(e.message)), true, e.message);
+    if (!job.retried) {                 // S13 (g): one more try after a short back-off, latest state wins
+      setTimeout(() => {
+        if (!save.pending && st.image && st.image.path === path) {
+          save.pending = Object.assign({}, job, {retried: true}); save.dirty = true; flushSave();
+        }
+      }, L.SAVE_RETRY_MS);
+    }
+  }
 }
 
 async function flushSave() {            // sends what is pending and waits until nothing is in flight
   clearTimeout(save.timer); save.timer = null;
-  while (save.dirty || save.promise) {
+  while (save.pending || save.promise) {
     if (save.promise) { await save.promise; continue; }
-    save.dirty = false;
-    if (!st.image) break;
-    const path = st.image.path;
-    save.promise = sendSave(path, L.editBody(ed, path)).finally(() => { save.promise = null; });
+    const job = save.pending; save.pending = null; save.dirty = false;
+    save.promise = sendSave(job).finally(() => { save.promise = null; });
   }
 }
 
-function applyEditInfo(res) {           // {fingerprint, edit, preset_status} from get_edit / set_edit
+function unloadSave() {                 // S13 (g): the newest body goes out at once, not after the one in flight
+  const job = save.pending;
+  if (!job) return;
+  save.pending = null; save.dirty = false;
+  sendSave(job);
+}
+
+function applyEditInfo(res) {           // {fingerprint, edit, preset_status, previous} from the photo library
   st.edit = res.edit;
+  st.fingerprint = res.fingerprint || null;
+  st.previous = !!res.previous;
+  st.editStatus = res.preset_status || null;
+  if (res.edit && res.edit.preset) st.snapshots[res.edit.preset.id] = res.edit.preset;   // S2: remembered
   const s = $('#edit-status'), text = L.presetStatusText(res.preset_status);
   s.textContent = text; s.title = text; s.hidden = !text;
+  renderHint();
   refreshCopy();
+  refreshRestorePrevious();
 }
 
 function restore(res) {                 // a saved edit comes back: through the reducer, never scheduling a save
@@ -651,9 +715,16 @@ function restore(res) {                 // a saved edit comes back: through the 
   dispatch({type: 'restoreEdit', edit: res.edit}, {restore: true});
 }
 
-async function loadEdit(path) {         // after opening: restore the saved edit, else keep today's state (R5)
-  try { restore(await (await api('GET', '/api/edit?path=' + encodeURIComponent(path))).json()); }
-  catch (e) { applyEditInfo({edit: null, preset_status: null}); toast(L.loadEditFailed(e.message), true); }
+async function loadEdit(path, token) {  // after opening: restore the saved edit, else keep today's state (R5)
+  let res;
+  try { res = await (await api('GET', '/api/edit?path=' + encodeURIComponent(path))).json(); }
+  catch (e) {
+    if (!st.image || st.image.path !== path) return;
+    applyEditInfo({edit: null, preset_status: null}); toast(L.loadEditFailed(L.explain(e.message)), true, e.message);
+    return;
+  }
+  if (!st.image || st.image.path !== path || (token !== undefined && token !== openSeq)) return;   // S1
+  restore(res);
 }
 
 // ------------------------------------------------------------------ photo library: the grid (PL15 / PLP9)
@@ -676,7 +747,7 @@ async function loadGrid(folder) {
   if (!folder) return;
   let res;
   try { res = await (await api('GET', '/api/folder/thumbnails?folder=' + encodeURIComponent(folder))).json(); }
-  catch (e) { toast(L.loadFolderFailed(e.message), true); return; }
+  catch (e) { toast(L.loadFolderFailed(L.explain(e.message)), true, e.message); return; }
   st.grid = {folder: res.folder, items: res.items, sel: new Set(), anchor: 0};
   $('#grid-path').value = res.folder;
   renderGrid();
@@ -885,7 +956,7 @@ async function init() {
   $('#copy-edit-btn').onclick = copyEdit;
   $('#paste-edit-btn').onclick = pasteEdit;
   $('#export-selected-btn').onclick = exportSelected;
-  window.addEventListener('beforeunload', () => { if (save.dirty) flushSave(); });
+  window.addEventListener('beforeunload', () => { if (save.dirty) unloadSave(); });
   refreshCopy();
   $('#search').addEventListener('input', (e) => { st.search = e.target.value.trim(); renderTree(); });
   $('#preset-tree').addEventListener('keydown', onTreeKey);

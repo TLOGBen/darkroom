@@ -18,7 +18,7 @@
   <span id="position" class="mute">尚未開啟照片</span>
   <button id="next" title="下一張（→）" disabled>▶</button>
   <button id="grid-btn" title="縮圖格：看照片資料夾、多選、複製／貼上編輯、匯出所選" aria-pressed="false"><span class="btn-icon" aria-hidden="true">▦</span><span class="btn-text">縮圖格</span></button>
-  <span id="carry-hint" class="hint" title="目前修改尚未儲存，切換照片會沿用" hidden><span class="hint-icon" aria-hidden="true">⚑ 未儲存</span><span class="hint-text">目前修改尚未儲存，切換照片會沿用</span></span>
+  <span id="carry-hint" class="hint" title="沿用上一張的設定（還不是這張的編輯，會再沿用到下一張）" hidden><span class="hint-icon" aria-hidden="true">沿用中</span><span class="hint-text">沿用上一張的設定（還不是這張的編輯，會再沿用到下一張）</span></span>
   <span class="sp"></span>
   <button id="undo" class="icon" title="復原（Ctrl+Z）" disabled>↶</button>
   <button id="redo" class="icon" title="重做（Ctrl+Shift+Z）" disabled>↷</button>
@@ -45,6 +45,7 @@
       <button id="hold" title="按住看原圖（快捷鍵：按住 \）">按住看原圖</button>
       <span id="skip-banner" class="warnbar" hidden></span><span id="skip-note" class="skipnote" hidden></span>
       <span id="edit-status" class="editstatus" hidden></span>
+      <button id="restore-previous-btn" title="取回上一份：把最近一次被還原（清除）的編輯拿回來" disabled>取回上一份</button>
       <span class="sp"></span>
       <span class="mute" id="photo-size"></span>
       <select id="export-format" title="匯出格式：JPEG 8-bit 或 TIFF 16-bit"><option value="jpeg" selected>JPEG</option><option value="tiff">TIFF</option></select>

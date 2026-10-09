@@ -1065,6 +1065,40 @@ class TestPhotoLibraryHttp(AioHTTPTestCase):
         r = await self.client.post("/api/edit/save-preset", json={"path": a, "name": "網頁"})
         self.assertEqual((r.status, await r.json()), (404, {"error": NO_EDIT.format(file_name="a.jpg")}))
 
+    async def test_autosave_uses_remembered_snapshot(self):  # CONTRACT-s1-experience S2: the page's save path
+        """What the page sends when it remembers a snapshot: paste with that snapshot, then GET. After the
+        preset file changed in the library, and after switching to another preset and back, the old snapshot is
+        what lands on disk (never the library's current file); a preset gone from the library still saves."""
+        from darkroom_app.server import FACADE
+        lib = self.app[FACADE]._photo_library
+        a = write_photo(os.path.join(self.photos, "a.jpg"), 400, 300)
+        r = await self.client.put("/api/edit", json={"path": a, "preset_id": "p-expo", "strength": 100})
+        first = await r.json()
+        snap = first["edit"]["preset"]
+        old = snap["params"]
+        _xmpgen.write(self.presets, "p-expo.xmp", _xmpgen.xmp_text({"Exposure2012": "+2.50"}, name="變了", group="風景 - 海邊"))
+        self.app[FACADE].rebuild_library()
+        self.assertNotEqual(lib.library.get("p-expo").to_dict(), old)
+        r = await self.client.put("/api/edit", json={"path": a, "preset_id": "p-strong", "strength": 100})   # switched away
+        self.assertEqual((await r.json())["edit"]["preset"]["id"], "p-strong")
+        # back to p-expo the page's way: paste with the remembered snapshot, strength changed meanwhile
+        edit = {"schema": "darkroom-edit/1", "fingerprint": first["fingerprint"], "preset": snap, "strength": 130,
+                "overrides": {"Contrast2012": 5}}
+        r = await self.client.post("/api/edit/paste", json={"targets": [a], "edit": edit})
+        self.assertEqual((r.status, [x["ok"] for x in (await r.json())["results"]]), (200, [True]))
+        r = await self.client.get("/api/edit", params={"path": a})
+        got = await r.json()
+        self.assertEqual((got["edit"]["preset"]["params"], got["edit"]["strength"], got["edit"]["overrides"],
+                          got["preset_status"]), (old, 130, {"Contrast2012": 5}, "changed"))
+        # the preset gone from the library: the same path still saves (PUT would be not_found)
+        os.remove(os.path.join(self.presets, "p-expo.xmp"))
+        self.app[FACADE].rebuild_library()
+        r = await self.client.post("/api/edit/paste", json={"targets": [a], "edit": dict(edit, strength=140)})
+        self.assertEqual([x["ok"] for x in (await r.json())["results"]], [True])
+        r = await self.client.get("/api/edit", params={"path": a})
+        got = await r.json()
+        self.assertEqual((got["edit"]["strength"], got["preset_status"]), (140, "missing"))
+
 
 if __name__ == "__main__":
     unittest.main()

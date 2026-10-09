@@ -234,14 +234,59 @@ test('R5: tweaks are measured at the strength in effect', () => {
   assert.deepEqual(e2.tweaks, {});                             // back to the base value removes the key
 });
 
-test('R5 / F4: photo-switch hint only with a photo and a preset or a tweak', () => {
+test('R5 / F4 / S11: carry-over hint only with a photo, a preset or a tweak, and no edit of this photo yet', () => {
   const ed = L.initialEditor();
-  assert.equal(L.carryHintVisible(ed, true), false);
-  assert.equal(L.carryHintVisible(L.reduce(ed, {type: 'selectPreset', id: 'a'}), false), false);
-  assert.equal(L.carryHintVisible(L.reduce(ed, {type: 'selectPreset', id: 'a'}), true), true);
+  assert.equal(L.carryHintVisible(ed, true, false), false);
+  assert.equal(L.carryHintVisible(L.reduce(ed, {type: 'selectPreset', id: 'a'}), false, false), false);
+  assert.equal(L.carryHintVisible(L.reduce(ed, {type: 'selectPreset', id: 'a'}), true, false), true);
+  assert.equal(L.carryHintVisible(L.reduce(ed, {type: 'selectPreset', id: 'a'}), true, true), false);   // saved: no hint
   const tw = L.reduce(ed, {type: 'setValue', slider: S_CONTRAST, presetValue: 0, value: 30});
-  assert.equal(L.carryHintVisible(tw, true), true);
-  assert.equal(L.carryHintVisible(L.reduce(tw, {type: 'resetAll'}), true), false);
+  assert.equal(L.carryHintVisible(tw, true, false), true);
+  assert.equal(L.carryHintVisible(L.reduce(tw, {type: 'resetAll'}), true, false), false);
+  assert.equal(L.CARRY_HINT, '沿用上一張的設定（還不是這張的編輯，會再沿用到下一張）');
+  assert.equal(L.CARRY_HINT_SHORT, '沿用中');
+});
+
+test('S1 / S2: the autosave request carries the remembered snapshot through paste, else PUT', () => {
+  let ed = L.reduce(L.initialEditor(), {type: 'selectPreset', id: 'p'});
+  ed = L.reduce(ed, {type: 'setStrength', value: 80});
+  ed = L.reduce(ed, {type: 'setValue', slider: S_CONTRAST, presetValue: 0, value: 30});
+  const snap = {id: 'p', name: 'n', group: 'g', params: {schema: 'darkroom-params/1', values: {Exposure2012: 1}, curves: {}, masks: [], skipped: []}};
+  assert.deepEqual(L.editRequest(ed, 'D:/x.jpg', {}, 'f'),
+                   {method: 'PUT', body: {path: 'D:/x.jpg', preset_id: 'p', strength: 80, overrides: {Contrast2012: 30}}});
+  assert.deepEqual(L.editRequest(ed, 'D:/x.jpg', {p: snap}, 'f'),
+                   {method: 'PASTE', body: {targets: ['D:/x.jpg'], edit: {schema: 'darkroom-edit/1', fingerprint: 'f', preset: snap,
+                                                                          strength: 80, overrides: {Contrast2012: 30}}}});
+  assert.equal(L.editRequest(ed, 'D:/x.jpg', {q: snap}, 'f').method, 'PUT');              // another preset: library
+  assert.equal(L.editRequest(L.reduce(ed, {type: 'selectPreset', id: null}), 'x', {p: snap}, 'f').method, 'PUT');
+  assert.equal(L.editRequest(ed, 'x', {p: snap}, null).body.edit.fingerprint, '');
+  assert.equal(L.SAVE_RETRY_MS, 2000);
+});
+
+test('S3: slider baseline comes from the snapshot; banner and note from the library detail when present', () => {
+  const snap = {id: 'p', name: '舊名', group: 'g', params: {schema: 'darkroom-params/1', values: {Exposure2012: 1.0}, curves: {ToneCurvePV2012: [[0, 0], [255, 200]]}, masks: [], skipped: []}};
+  const d = L.detailFromSnapshot(snap, {values: {Exposure2012: 0.3}, curves: {}, banner: 'B', note: 'N'});
+  assert.deepEqual([d.values, d.curves, d.banner, d.note, d.name, d.snapshot], [{Exposure2012: 1.0}, {ToneCurvePV2012: [[0, 0], [255, 200]]}, 'B', 'N', '舊名', true]);
+  const m = L.detailFromSnapshot(snap, null);                                        // missing from the library
+  assert.deepEqual([m.values, m.banner, m.note, m.name], [{Exposure2012: 1.0}, '', '', '舊名']);
+  assert.notEqual(d.values, snap.params.values);                                      // copies
+});
+
+test('S14: English service sentences are explained in Chinese, unknown ones pass through', () => {
+  assert.equal(L.explain('path is required'), '請輸入照片路徑');
+  assert.equal(L.explain('photo not found: D:/a.jpg'), '找不到照片：D:/a.jpg');
+  assert.equal(L.explain('unsupported photo format (JPEG/PNG/TIFF/HEIC)'), '不支援的照片格式（只接受 JPEG／PNG／TIFF／HEIC）');
+  assert.equal(L.explain('unknown image_id'), '照片已不在記憶體裡，請重新開啟');
+  assert.equal(L.explain('unknown preset p1'), '找不到 preset：p1');
+  assert.equal(L.explain('unknown or unsupported preset p1'), '找不到或不支援的 preset：p1');
+  assert.equal(L.explain('strength must be a number in 0..200'), '強度要在 0～200 之間');
+  assert.equal(L.explain('strength must be within 0..200, got 250'), '強度要在 0～200 之間：250');
+  assert.equal(L.explain("unknown slider key 'X'"), "未知的滑桿：'X'");
+  assert.equal(L.explain('body must be JSON'), '請求格式錯誤（不是 JSON）');
+  assert.equal(L.explain('request refused: X-Darkroom header required'), '伺服器拒絕了這個請求：X-Darkroom header required');
+  assert.equal(L.explain('照片讀取失敗：a.jpg：壞了'), '照片讀取失敗：a.jpg：壞了');
+  assert.equal(L.explain(''), '');
+  assert.equal(L.openFailed('a.jpg', '找不到照片：D:/a.jpg'), '開啟失敗：a.jpg：找不到照片：D:/a.jpg');
 });
 
 test('R5: a drag whose first event changes nothing still records one step', () => {

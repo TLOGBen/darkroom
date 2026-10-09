@@ -171,8 +171,12 @@ class TestPageStructure(unittest.TestCase):
     def test_photo_path_hint_lists_heic(self):  # H7 / seal round 2 N2: the on-screen format hint lists HEIC
         self.assertRegex(read("index.html"), r'id="photo-path" placeholder="照片路徑（JPEG／PNG／TIFF／HEIC），')
 
-    def test_photo_switch_hint(self):  # R5 constant
-        self.assertIn("目前修改尚未儲存，切換照片會沿用", read("index.html"))
+    def test_photo_switch_hint(self):  # R5 constant as revised by S11 (CONTRACT-s1-experience)
+        html = read("index.html")
+        self.assertIn("沿用上一張的設定（還不是這張的編輯，會再沿用到下一張）", html)
+        self.assertNotIn("目前修改尚未儲存", html)
+        self.assertIn("const CARRY_HINT = '沿用上一張的設定（還不是這張的編輯，會再沿用到下一張）';", read("logic.js"))
+        self.assertIn("$('#carry-hint').hidden = !L.carryHintVisible(ed, !!st.image, !!st.edit);", read("app.js"))
 
     def test_strength_reset_is_a_button_and_values_are_text(self):  # R6
         html = read("index.html")
@@ -198,7 +202,7 @@ class TestPageStructure(unittest.TestCase):
                       "grid-btn", "copy-edit-btn", "paste-edit-btn", "export-selected-btn"):           # + PLP9
             tag = re.search(r'<[a-z]+ id="%s"[^>]*>' % ident, html).group(0)
             self.assertNotRegex(tag, r"\shidden(?:[\s=>])", ident)
-        self.assertRegex(html, r'<span id="carry-hint"[^>]*title="目前修改尚未儲存，切換照片會沿用"')
+        self.assertRegex(html, r'<span id="carry-hint"[^>]*title="沿用上一張的設定（還不是這張的編輯，會再沿用到下一張）"')
         self.assertRegex(html, r'<button id="reset-all"[^>]*title="[^"]+"')
 
     def test_app_changes_state_only_through_the_reducer(self):  # F2: the tested reducer is the only path
@@ -315,8 +319,8 @@ class TestPageStructure(unittest.TestCase):
         self.assertEqual(js.count("api('PUT'"), 1)
         send = js[js.index("async function sendSave"):js.index("async function flushSave")]
         self.assertIn("api('PUT', '/api/edit', body, {keepalive: true})", send)      # seal F3: survives unload
-        self.assertIn("toast(L.saveEditFailed(e.message), true);", send)
-        self.assertIn("window.addEventListener('beforeunload', () => { if (save.dirty) flushSave(); });", js)
+        self.assertIn("toast(L.saveEditFailed(L.explain(e.message)), true, e.message);", send)
+        self.assertIn("window.addEventListener('beforeunload', () => { if (save.dirty) unloadSave(); });", js)
         self.assertIn("fetch(url, Object.assign({method, headers:", js)
         self.assertIn("save.timer = setTimeout(flushSave, L.AUTOSAVE_MS);", js)
         # restoring a saved edit goes through the reducer with {restore: true} and never schedules a save
@@ -326,13 +330,47 @@ class TestPageStructure(unittest.TestCase):
         self.assertNotRegex(restore, r"(?<![\w.$])ed\s*=(?!=)")
         load = js[js.index("async function loadEdit"):js.index("// ------------------------------------------------------------------ photo library: the grid")]
         self.assertNotIn("scheduleSave", load)                      # get_edit failed: never saved over
-        self.assertIn("applyEditInfo({edit: null, preset_status: null}); toast(L.loadEditFailed(e.message), true);", load)
-        self.assertIn("catch (e) { toast(L.loadFolderFailed(e.message), true); return; }", js)
+        self.assertIn("applyEditInfo({edit: null, preset_status: null}); toast(L.loadEditFailed(L.explain(e.message)), true, e.message);", load)
+        self.assertIn("catch (e) { toast(L.loadFolderFailed(L.explain(e.message)), true, e.message); return; }", js)
         for raw in ("'儲存編輯失敗：'", "'讀取編輯失敗：'", "'讀取資料夾失敗：'"):   # seal F6: sentences live in logic.js
             self.assertNotIn(raw, js, raw)
-        opened = js[js.index("async function openPhoto"):js.index("// ------------------------------------------------------------------ photo library: autosave")]
+        opened = js[js.index("async function openPhoto"):js.index("function openFailed")]
         self.assertLess(opened.index("await flushSave();"), opened.index("api('POST', '/api/open'"))
-        self.assertLess(opened.index("await loadEdit(path);"), opened.index("requestPreview();"))
+        self.assertLess(opened.index("await loadEdit(path, token);"), opened.index("requestPreview();"))
+
+    def test_autosave_targets_the_photo_it_was_scheduled_for(self):  # CONTRACT-s1-experience S1 / S2
+        js = read("app.js")
+        sched = js[js.index("function scheduleSave"):js.index("async function sendSave")]
+        # the path and the request body are fixed when the change is scheduled; nothing is scheduled while a
+        # photo is loading (between the st.image swap and the restore of its saved edit)
+        self.assertIn("if (!st.image || st.loading) return;", sched)
+        self.assertIn("save.pending = {path, req: L.editRequest(ed, path, st.snapshots, st.fingerprint), retried: false};", sched)
+        flush = js[js.index("async function flushSave"):js.index("function unloadSave")]
+        self.assertNotIn("st.image", flush)                         # flushSave never reads the open photo
+        self.assertIn("const job = save.pending; save.pending = null; save.dirty = false;", flush)
+        send = js[js.index("async function sendSave"):js.index("async function flushSave")]
+        self.assertIn("const {path, req} = job;", send)
+        self.assertIn("if (req.method === 'PASTE') {", send)        # S2: the remembered snapshot goes through paste
+        self.assertIn("api('POST', '/api/edit/paste', req.body, {keepalive: true})", send)
+        self.assertIn("if (st.image && st.image.path === path) applyEditInfo(res);", send)
+        opened = js[js.index("async function openPhoto"):js.index("function openFailed")]
+        self.assertLess(opened.index("await flushSave();"), opened.index("st.loading = token;"))
+        self.assertLess(opened.index("st.loading = token;"), opened.index("st.image = Object.assign(info, {path});"))
+        self.assertIn("st.snapshots = {}; st.fingerprint = null; st.previous = false; st.editStatus = null;", opened)
+        self.assertEqual(opened.count("if (token !== openSeq) return;"), 3)   # latest open wins, at every await
+        self.assertLess(opened.index("await loadEdit(path, token);"), opened.index("st.loading = null;"))
+        load = js[js.index("async function loadEdit"):js.index("// ------------------------------------------------------------------ photo library: the grid")]
+        self.assertIn("if (!st.image || st.image.path !== path || (token !== undefined && token !== openSeq)) return;", load)
+        apply = js[js.index("function applyEditInfo"):js.index("function restore(res)")]
+        self.assertIn("if (res.edit && res.edit.preset) st.snapshots[res.edit.preset.id] = res.edit.preset;", apply)
+
+    def test_restore_uses_snapshot_values(self):  # CONTRACT-s1-experience S3
+        js = read("app.js")
+        lp = js[js.index("async function loadPreset"):js.index("function selectPreset")]
+        self.assertIn("st.detail = st.snapshots[id] ? L.detailFromSnapshot(st.snapshots[id], detail) : detail;", lp)
+        self.assertIn("catch (e) { if (!st.snapshots[id]) toast(", lp)     # missing preset with a snapshot: no error
+        self.assertIn(": (st.byId[id] ? st.byId[id].name : (st.detail && st.detail.name) || id);", lp)
+        self.assertNotRegex(lp, r"st\.byId\[id\]\.name(?!\s*:)")
         # the grid: thumbnails through api() once visible, selection through L.gridSelect
         grid_js = js[js.index("// ------------------------------------------------------------------ photo library: the grid"):js.index("// ------------------------------------------------------------------ export (X13)")]
         self.assertIn("api('GET', '/api/thumbnail?path=' + encodeURIComponent(cell.dataset.path))", grid_js)
