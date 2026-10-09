@@ -33,10 +33,11 @@ LIBRARY_WRITES = {"darkroom_preset_rename": True, "darkroom_preset_move": True, 
                   "darkroom_presets_rebuild": True, "darkroom_group_create": False, "darkroom_group_rename": False,
                   "darkroom_presets_import": False, "darkroom_preset_save": False}   # idempotentHint (K16)
 PHOTO_TOOLS = ["darkroom_edit_get", "darkroom_edit_set", "darkroom_edit_clear", "darkroom_edit_paste",
-               "darkroom_folder_thumbnails", "darkroom_thumbnail", "darkroom_edit_save_preset"]   # verbatim (PL6, PLP6)
+               "darkroom_folder_thumbnails", "darkroom_thumbnail", "darkroom_edit_save_preset",   # verbatim (PL6, PLP6)
+               "darkroom_edit_restore"]                                                           # S4: operation 25
 EDIT_WRITES = {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": True, "openWorldHint": False}  # PL6
 PHOTO_ANNOTATIONS = {"darkroom_edit_set": EDIT_WRITES, "darkroom_edit_clear": EDIT_WRITES,
-                     "darkroom_edit_paste": EDIT_WRITES,
+                     "darkroom_edit_paste": EDIT_WRITES, "darkroom_edit_restore": EDIT_WRITES,
                      "darkroom_edit_save_preset": {"readOnlyHint": False, "destructiveHint": False,
                                                    "idempotentHint": False, "openWorldHint": False}}   # PLP6
 NATIVE_WRITES = ("write_image", "imwrite", ".save(", ".tofile(")   # G10: no audit event, banned everywhere
@@ -285,8 +286,22 @@ class TestLayering(unittest.TestCase):
                                             "rebuild_library",   # CONTRACT-preset-library K16
                                             "get_edit", "set_edit", "clear_edit", "paste_edit", "folder_thumbnails",
                                             "thumbnail", "save_edit_as_preset",   # CONTRACT-photo-library PL6, PLP6
-                                            "semantic_build", "semantic_status"])   # CONTRACT-semantic-index SI1
+                                            "restore_edit",                       # CONTRACT-s1-experience S4: 25
+                                            "semantic_build", "semantic_status"])   # CONTRACT-semantic-index SI1: 26, 27 (merge patch)
         self.assertTrue(issubclass(DarkroomFacade, Facade))
+
+    def test_docs_tool_count(self):  # CONTRACT-s1-experience S19: the four docs state the real tool count, list restore
+        from darkroom_app.mcp_server.tools import Tools
+        n = len(Tools(lambda: None).list())
+        need = {"AGENTS.md": (f"{n} 個 `darkroom_*` 工具", f"（共 {n} 個）", "`edit restore <photo>`", "`darkroom_edit_restore`"),
+                "README.md": (f"{n} 個 `darkroom_*` 工具", "`edit restore`", "`darkroom_edit_restore`"),
+                "docs/agent-install.md": (f"lists {n} tools named `darkroom_*`", "`edit restore`", "`darkroom_edit_restore`"),
+                "CLAUDE.md": (f"{n} 個工具 `darkroom_*`", "save-preset|restore", "`darkroom_edit_restore`")}
+        for name, texts in need.items():
+            with open(os.path.join(_util.REPO, name), encoding="utf-8") as f:
+                doc = f.read()
+            for t in texts:
+                self.assertIn(t, doc, f"{name}: {t}")
 
     def test_operation_coverage(self):  # L2: every registered route, subcommand and tool exists
         import inspect
@@ -326,8 +341,8 @@ class TestLayering(unittest.TestCase):
         self.assertEqual(listed["darkroom_export"], {"readOnlyHint": False, "destructiveHint": False,
                                                      "idempotentHint": False, "openWorldHint": False})
         self.assertEqual(list(listed)[8:17], LIBRARY_TOOLS)
-        self.assertEqual(list(listed)[17:24], PHOTO_TOOLS)                 # PL6 / PLP6: operations 18..24
-        self.assertEqual(list(listed)[24:], SEMANTIC_TOOLS)                # SI1 / SI11: operations 25, 26
+        self.assertEqual(list(listed)[17:25], PHOTO_TOOLS)                 # PL6 / PLP6: operations 18..24, S4: 25
+        self.assertEqual(list(listed)[25:], SEMANTIC_TOOLS)                # SI1 / SI11: operations 26, 27 (merge patch)
         for name, ann in listed.items():
             if name in LIBRARY_WRITES:
                 self.assertEqual(ann, {"readOnlyHint": False, "destructiveHint": False,

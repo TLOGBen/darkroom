@@ -56,6 +56,8 @@ class Facade(Protocol):
 
     def save_edit_as_preset(self, path, name, group=None): ...
 
+    def restore_edit(self, path): ...
+
     def semantic_build(self, limit=None, dry_run=False, wait_seconds=None): ...
 
     def semantic_status(self): ...
@@ -144,7 +146,11 @@ class DarkroomFacade:
     def save_edit_as_preset(self, path, name, group=None):
         return self._photo_library.save_edit_as_preset(path, name, group)
 
-    # CONTRACT-semantic-index SI1: operations 25, 26
+    # CONTRACT-s1-experience S4: operation 25
+    def restore_edit(self, path):
+        return self._photo_library.restore_edit(path)
+
+    # CONTRACT-semantic-index SI1: operations 26, 27 (merge patch: restore_edit stays 25, after save_edit_as_preset)
     def semantic_build(self, limit=None, dry_run=False, wait_seconds=None):
         return self._semantic.semantic_build(limit, dry_run, wait_seconds)
 

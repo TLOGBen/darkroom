@@ -70,6 +70,8 @@ PL_EDIT_SCHEMA = "schema is {schema!r}, not darkroom-edit/1"
 PL_EDIT_PRESET = "preset must be null or {id, name, group, params}"
 PL_EDIT_PARAMS = "params: {reason}"
 PL_PARENT_MISSING = "上層資料夾不存在：{parent}"      # the reason inside PL_CANNOT_WRITE (PLP17, seal F1)
+PL_NO_PREVIOUS = "這張照片沒有上一份編輯可以取回：{file_name}"   # verbatim (CONTRACT-s1-experience S4), not_found
+PL_RESTORE_OVER_EDIT = "這張照片已經有別的編輯，取回上一份會蓋掉它；要取回請先還原成原圖：{file_name}"   # verbatim (S4a), conflict
 
 # CONTRACT-semantic-index (verbatim constants; SI2, SI3, SI7-SI9)
 SEM_NEED_PACKAGE = "需要 anthropic 套件：python -s -m pip install anthropic==1.13.0"

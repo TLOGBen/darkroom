@@ -15,7 +15,7 @@
     presets semantic build [--limit N] [--dry-run] [--wait-seconds S] | semantic status   (CONTRACT-semantic-index)
     groups create <group> | rename <group> <new>          (CONTRACT-preset-library K16)
     edit get <photo> | set <photo> [--preset ID] [--strength S] [--override KEY=VALUE]... | clear <photo>
-    edit paste --from <photo> <target>... | save-preset <photo> --name N [--group G]
+    edit paste --from <photo> <target>... | save-preset <photo> --name N [--group G] | restore <photo>
     thumbnails <folder> [--offset N] [--limit N] | thumbnail <photo>      (CONTRACT-photo-library PL6)
 
 Every subcommand takes --json: stdout is then exactly one line {"ok":true,"result":...} or
@@ -181,6 +181,8 @@ def _parser():
     p.add_argument("photo")
     p.add_argument("--name", default=None)
     p.add_argument("--group", default=None, help="default: 自存 preset")
+    p = leaf(esub, "restore", "bring back the edit kept when this photo's edit was last cleared")   # S4
+    p.add_argument("photo")
     p = leaf(sub, "thumbnails", "the photos of a folder for the thumbnail grid (thumbnails are made in the background)")
     p.add_argument("folder")
     p.add_argument("--offset", type=int, default=0)
@@ -240,6 +242,8 @@ def _run(a, facade):
             return facade.clear_edit(a.photo)
         if sc == "paste":
             return facade.paste_edit(a.target, a.source, None)
+        if sc == "restore":
+            return facade.restore_edit(a.photo)
         return facade.save_edit_as_preset(a.photo, a.name, a.group)
     if cmd == "thumbnails":
         return facade.folder_thumbnails(a.folder, a.offset, a.limit)

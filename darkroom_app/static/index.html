@@ -4,27 +4,33 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>darkroom</title>
+<link rel="icon" href="/static/logo.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
 <header id="topbar">
-  <button id="toggle-lib" class="icon" title="顯示／收起 preset 欄" aria-controls="col-lib">☰</button>
+  <button id="toggle-lib" class="icon quiet" title="顯示／收起 preset 欄" aria-controls="col-lib"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4h11M2.5 8h11M2.5 12h11"/></svg></button>
   <span class="brand">darkroom</span>
   <form id="open-form" autocomplete="off">
     <input type="text" id="photo-path" placeholder="照片路徑（JPEG／PNG／TIFF／HEIC），例如 D:\Photos\IMG_0001.jpg" spellcheck="false">
     <button type="submit" id="open-btn">開啟</button>
   </form>
-  <button id="prev" title="上一張（←）" disabled>◀</button>
-  <span id="position" class="mute">尚未開啟照片</span>
-  <button id="next" title="下一張（→）" disabled>▶</button>
-  <button id="grid-btn" title="縮圖格：看照片資料夾、多選、複製／貼上編輯、匯出所選" aria-pressed="false"><span class="btn-icon" aria-hidden="true">▦</span><span class="btn-text">縮圖格</span></button>
-  <span id="carry-hint" class="hint" title="目前修改尚未儲存，切換照片會沿用" hidden><span class="hint-icon" aria-hidden="true">⚑ 未儲存</span><span class="hint-text">目前修改尚未儲存，切換照片會沿用</span></span>
+  <span class="seg">
+    <button id="prev" class="icon" title="上一張（←）" disabled><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3 5 8l5 5"/></svg></button>
+    <span id="position" class="mute">尚未開啟照片</span>
+    <button id="next" class="icon" title="下一張（→）" disabled><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 3 5 5-5 5"/></svg></button>
+  </span>
+  <button id="grid-btn" title="縮圖格：看照片資料夾、多選、複製／貼上編輯、匯出所選" aria-pressed="false"><span class="btn-icon" aria-hidden="true"><svg viewBox="0 0 16 16"><rect x="2.5" y="2.5" width="4.5" height="4.5" rx=".8"/><rect x="9" y="2.5" width="4.5" height="4.5" rx=".8"/><rect x="2.5" y="9" width="4.5" height="4.5" rx=".8"/><rect x="9" y="9" width="4.5" height="4.5" rx=".8"/></svg></span><span class="btn-text">縮圖格</span></button>
+  <span id="carry-hint" class="hint" title="沿用上一張的設定（還不是這張的編輯，會再沿用到下一張）" hidden><span class="hint-icon" aria-hidden="true">沿用中</span><span class="hint-text">沿用上一張的設定（還不是這張的編輯，會再沿用到下一張）</span></span>
   <span class="sp"></span>
-  <button id="undo" class="icon" title="復原（Ctrl+Z）" disabled>↶</button>
-  <button id="redo" class="icon" title="重做（Ctrl+Shift+Z）" disabled>↷</button>
-  <button id="reset-all" title="還原全部微調：把所有微調歸零（回到 preset × 強度）"><span class="btn-icon" aria-hidden="true">⟲</span><span class="btn-text">還原全部微調</span></button>
-  <span id="status" class="mute" title="">預覽：待命</span>
-  <button id="toggle-sl" class="icon" title="顯示／收起滑桿欄" aria-controls="col-sl">⚙</button>
+  <span class="seg">
+    <button id="undo" class="icon" title="復原（Ctrl+Z）" disabled><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 4.5H3v-3"/><path d="M3 4.5a5.5 5.5 0 1 1-1 4"/></svg></button>
+    <button id="redo" class="icon" title="重做（Ctrl+Shift+Z）" disabled><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10 4.5h3v-3"/><path d="M13 4.5a5.5 5.5 0 1 0 1 4"/></svg></button>
+  </span>
+  <button id="reset-all" title="還原全部微調：把所有微調歸零（回到 preset × 強度）"><span class="btn-icon" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M5.5 3.5H2.5v-3"/><path d="M2.5 3.5A5.8 5.8 0 1 1 2 8"/></svg></span><span class="btn-text">還原全部微調</span></button>
+  <button id="reset-original-btn" title="還原成原圖：移除 preset 與全部微調（Ctrl+Z 可拿回；離開後可用「取回上一份」）" disabled><span class="btn-icon" aria-hidden="true"><svg viewBox="0 0 16 16"><rect x="2.5" y="2.5" width="11" height="11" rx="1.2"/><path d="M2.5 10.5 6 7l3 3 2-2 2.5 2.5"/></svg></span><span class="btn-text">還原成原圖</span></button>
+  <span id="status" class="mute" title="">待命</span>
+  <button id="toggle-sl" class="icon quiet" title="顯示／收起滑桿欄" aria-controls="col-sl"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11"/><circle cx="10.5" cy="4.5" r="1.6" fill="#191919"/><circle cx="5.5" cy="8" r="1.6" fill="#191919"/><circle cx="9" cy="11.5" r="1.6" fill="#191919"/></svg></button>
 </header>
 
 <main id="editor">
@@ -42,9 +48,10 @@
 
   <section class="col" id="col-pv">
     <div class="pv-tools">
-      <button id="hold" title="按住看原圖（快捷鍵：按住 \）">按住看原圖</button>
-      <span id="skip-banner" class="warnbar" hidden></span><span id="skip-note" class="skipnote" hidden></span>
+      <span class="seg"><button id="hold" title="按住看原圖（快捷鍵：按住 \）">按住看原圖</button><button id="ab-btn" title="對照：左邊原圖、右邊編輯後，拖分隔線比較（快捷鍵：Y）" aria-pressed="false" disabled>對照</button></span>
+      <span id="skip-banner" class="warnbar" role="button" tabindex="0" hidden></span><span id="skip-note" class="skipnote" role="button" tabindex="0" hidden></span>
       <span id="edit-status" class="editstatus" hidden></span>
+      <button id="restore-previous-btn" title="取回上一份：把最近一次被還原（清除）的編輯拿回來" disabled>取回上一份</button>
       <span class="sp"></span>
       <span class="mute" id="photo-size"></span>
       <select id="export-format" title="匯出格式：JPEG 8-bit 或 TIFF 16-bit"><option value="jpeg" selected>JPEG</option><option value="tiff">TIFF</option></select>
@@ -56,6 +63,15 @@
       <img id="preview-img" alt="預覽" hidden>
       <div class="pv-empty" id="preview-empty">在上方輸入照片路徑後按「開啟」</div>
       <span class="pv-label" id="pv-label" hidden>原圖</span>
+      <img id="ab-orig" alt="" aria-hidden="true">
+      <div id="ab-divider"><div id="ab-handle" tabindex="0" role="slider" aria-label="對照分隔線" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50"><i></i><i></i></div></div>
+      <span class="ab-tag" id="ab-tag-a">原圖</span><span class="ab-tag" id="ab-tag-b">編輯後</span>
+      <div id="skip-detail" class="skip-detail" role="dialog" aria-label="無法套用的設定（完整內容）" hidden></div>
+      <div class="canvas-pick" role="group" aria-label="預覽底色">
+        <button class="c-dark" data-canvas="dark" title="底色：深灰" aria-pressed="true"></button>
+        <button class="c-black" data-canvas="black" title="底色：黑" aria-pressed="false"></button>
+        <button class="c-mid" data-canvas="mid" title="底色：中灰" aria-pressed="false"></button>
+      </div>
     </div>
     <div class="strength">
       <div class="row">
@@ -66,8 +82,12 @@
         <div class="strength-track">
           <input type="range" id="strength" min="0" max="200" step="1" value="100" disabled>
           <span class="tick100" aria-hidden="true"></span>
+          <span class="ticks" aria-hidden="true"></span>
+          <span class="scale-num" style="left:5px" aria-hidden="true">0</span>
+          <span class="scale-num" style="left:calc(5px + .5 * (100% - 10px))" aria-hidden="true">100</span>
+          <span class="scale-num" style="left:calc(100% - 5px)" aria-hidden="true">200</span>
         </div>
-        <span class="val editable" id="strength-value" title="點兩下輸入強度">100%</span>
+        <span class="val editable" id="strength-value" title="點兩下輸入強度">100<span class="pct">%</span></span>
         <button id="strength-100" title="強度回到 100%">↺ 100%</button>
       </div>
     </div>
@@ -82,12 +102,17 @@
   <div class="gridbar">
     <input type="text" id="grid-path" placeholder="照片資料夾路徑，例如 D:\Photos" spellcheck="false">
     <button id="grid-load" title="列出這個資料夾的照片">載入</button>
+    <span id="grid-filter" class="seg" role="group" aria-label="篩選"><button data-filter="all" aria-pressed="true" title="顯示全部照片">全部</button><button data-filter="edited" aria-pressed="false" title="只顯示有編輯的照片">已編輯</button><button data-filter="plain" aria-pressed="false" title="只顯示沒有編輯的照片">未編輯</button></span>
     <span id="grid-count" class="mute"></span>
+    <span id="grid-pending" class="mute" hidden></span>
     <span class="sp"></span>
     <button id="copy-edit-btn" title="複製目前照片的編輯（preset 快照、強度、微調）" disabled>複製編輯</button>
     <button id="paste-edit-btn" title="把複製的編輯貼到選取的照片，取代它們原本的編輯" disabled>貼上編輯</button>
+    <button id="grid-reset-original-btn" title="還原成原圖：移除選取照片的編輯（可用「取回上一份」拿回來）" disabled>還原成原圖</button>
+    <button id="grid-restore-btn" title="取回上一份：把選取照片最近一次被清掉的編輯放回去" disabled>取回上一份</button>
     <button id="export-selected-btn" title="用各自的編輯、全解析度匯出選取的照片（格式與品質取上方匯出設定）" disabled>匯出所選</button>
   </div>
+  <div id="grid-result" class="import-result" role="status" hidden></div>
   <div class="scroll cells" id="grid-cells" role="listbox" aria-multiselectable="true" aria-label="照片縮圖格"></div>
 </main>
 

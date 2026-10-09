@@ -12,7 +12,7 @@
 |---|---|---|
 | Web App | 使用者 | `python -s -m darkroom_app`，瀏覽器開 `http://127.0.0.1:8765/` |
 | CLI | 你（代理） | `python -s -m darkroom_app.cli <指令> --json` |
-| MCP | 你（代理，已註冊時） | stdio server `python -s -m darkroom_app.mcp_server`，26 個 `darkroom_*` 工具 |
+| MCP | 你（代理，已註冊時） | stdio server `python -s -m darkroom_app.mcp_server`，27 個 `darkroom_*` 工具 |
 
 本文裡的 `python` 一律指 **這個 repo 用的 Python**：一般使用者是 `.\.venv\Scripts\python.exe`（見 `docs/agent-install.md`）；作者環境是 `config.local.json` 的 `localllms_root` 底下的專用 Python。一律加 `-s`，在 repo 根目錄執行。用詞定義見 `CONTEXT.md`。
 
@@ -86,11 +86,12 @@ pwsh -File tools/start.ps1 -Port 8765 -NoBrowser
 | `folder <photo>` | 同資料夾裡支援的照片（依檔名排序）與這張的位置 | 否 |
 | `preview <photo> [--preset ID] [--strength S] [--override K=V]... [--max-pixels N]` | 渲染縮小的 JPEG 預覽。**不加 `--json` 時 stdout 是 JPEG 位元組**（要 `> out.jpg`）；加 `--json` 回 `jpeg_base64` | 否（導向檔案時是你在寫） |
 | `export <photo>... [--preset ID] [--strength S] [--override K=V]... [--format jpeg|tiff] [--quality N] [--dest-dir D]` | 全解析度匯出成**新檔**（JPEG 品質預設 92；TIFF 16-bit），嵌 sRGB、保留 EXIF；預設寫到 `<照片資料夾>/darkroom 匯出`，同名加序號；每張同一組參數 | 新檔 |
-| `edit get <photo>` | 照片庫裡這張的編輯（以內容指紋對應）：`edit` 為 `null` 或 `{preset(含快照), strength, overrides}`，`preset_status`：`current`／`changed`／`missing` | 否 |
+| `edit get <photo>` | 照片庫裡這張的編輯（以內容指紋對應）：`edit` 為 `null` 或 `{preset(含快照), strength, overrides}`，`preset_status`：`current`／`changed`／`missing`；`previous`：有沒有一份被清掉、可用 `edit restore` 取回的編輯 | 否 |
 | `edit set <photo> [--preset ID] [--strength S] [--override K=V]...` | **取代**這張的編輯（當下把 preset 參數拍快照）；什麼都不給＝移除 | `data_dir/edits/` |
 | `edit clear <photo>` | 移除這張的編輯 | `data_dir/edits/` |
 | `edit paste --from <photo> <target>...` | 把一張的編輯原樣貼到 1～500 張（**取代**它們原本的編輯） | `data_dir/edits/` |
 | `edit save-preset <photo> --name N [--group G]` | 把這張的編輯存成自存 preset（`user/` 新檔） | 庫 `user/`＋索引 |
+| `edit restore <photo>` | 取回上一份：`edit clear`（或 `edit set` 什麼都不給）時被清掉的那份編輯會留著，這個指令把它放回去（留著的那份不刪，可重複）；沒有 → not_found；這張現在已經有別的編輯 → conflict（不會蓋掉；要取回先 `edit clear`） | `data_dir/edits/` |
 | `thumbnails <folder> [--offset N] [--limit N]` | 縮圖格清單（背景產縮圖；`fingerprint`／`edited` 產好前是 `null`） | `data_dir/thumbs/`、`index/` |
 | `thumbnail <photo>` | 一張的縮圖（長邊 256）；不加 `--json` 是 JPEG 位元組 | `data_dir/thumbs/` |
 
@@ -99,7 +100,7 @@ pwsh -File tools/start.ps1 -Port 8765 -NoBrowser
 
 ## MCP 工具總表
 
-註冊方式見 `docs/agent-install.md` 第 7 步。工具順序、名稱、參數都來自 `darkroom_app/operations.py`（共 26 個）；參數名跟 CLI 對應（`preset_id`、`strength`、`overrides`、`max_pixels`、`dest_dir`…）。回傳 `structuredContent` 是結構化結果，錯誤時 `isError: true` 且文字就是那句錯誤訊息。
+註冊方式見 `docs/agent-install.md` 第 7 步。工具順序、名稱、參數都來自 `darkroom_app/operations.py`（共 27 個）；參數名跟 CLI 對應（`preset_id`、`strength`、`overrides`、`max_pixels`、`dest_dir`…）。回傳 `structuredContent` 是結構化結果，錯誤時 `isError: true` 且文字就是那句錯誤訊息。
 
 | 工具 | 用途 | 寫檔？ |
 |---|---|---|
@@ -127,10 +128,11 @@ pwsh -File tools/start.ps1 -Port 8765 -NoBrowser
 | `darkroom_folder_thumbnails` | 縮圖格清單（`folder`、`offset`、`limit`） | `data_dir/thumbs/`、`index/` |
 | `darkroom_thumbnail` | 一張縮圖（`path`）；回傳 `image/jpeg` | `data_dir/thumbs/` |
 | `darkroom_edit_save_preset` | 把一張的編輯存成自存 preset（`path`、`name`、`group`） | 庫 `user/`＋索引 |
+| `darkroom_edit_restore` | 取回一張最近一次被清掉的編輯（`path`）；`darkroom_edit_get` 的 `previous` 為 true 時才有東西可取回 | `data_dir/edits/` |
 | `darkroom_semantic_build` | 建立語意索引（`limit`、`dry_run`、`wait_seconds` 預設 0＝送出就回）；**會花錢、會連 Anthropic**（`openWorldHint: true`），先確認再呼叫；先用 `dry_run: true` 看預估費用 | `semantic.json` |
 | `darkroom_semantic_status` | 語意索引狀態（能不能建、原因、進度、預算、上次用量） | 否 |
 
-每個工具都帶 MCP annotations：唯讀的 `readOnlyHint: true`；`darkroom_edit_set`／`clear`／`paste` 標 `destructiveHint: true`（會取代舊編輯）。傳了 schema 以外的參數會直接被拒（`Unknown argument for …`）。
+每個工具都帶 MCP annotations：唯讀的 `readOnlyHint: true`；`darkroom_edit_set`／`clear`／`paste`／`restore` 標 `destructiveHint: true`（會取代舊編輯）。傳了 schema 以外的參數會直接被拒（`Unknown argument for …`）。
 
 ## 常見任務食譜
 

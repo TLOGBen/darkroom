@@ -253,7 +253,8 @@ OPERATIONS = {
         "mcp": "darkroom_edit_get",
         "description": "The edit darkroom keeps for a photo (by its content fingerprint, in the app's data folder): "
                        "{fingerprint, edit: null | {schema, fingerprint, preset: null | {id, name, group, params "
-                       "snapshot}, strength, overrides}, preset_status: null | current | changed | missing}.",
+                       "snapshot}, strength, overrides}, preset_status: null | current | changed | missing, "
+                       "previous: whether a cleared edit is kept for darkroom_edit_restore}.",
         "input_schema": _schema({"path": dict(_STR, description="absolute path of the photo")}, ["path"]),
         "mcp_defaults": {},
     },
@@ -338,7 +339,19 @@ OPERATIONS = {
         "mcp_defaults": {},
         "mcp_annotations": _writes(False),
     },
-    # ---- CONTRACT-semantic-index SI1 / SI11: operations 25, 26
+    # ---- CONTRACT-s1-experience S4: operation 25
+    "restore_edit": {
+        "http": ("POST", "/api/edit/restore"),
+        "cli": "edit restore",
+        "mcp": "darkroom_edit_restore",
+        "description": "Bring back the edit that was kept when this photo's edit was last cleared (edit clear, or "
+                       "edit set with nothing chosen): it becomes the photo's edit again; the kept copy stays, so this "
+                       "can be repeated. Returns the same shape as darkroom_edit_get; not_found when nothing was kept.",
+        "input_schema": _schema({"path": dict(_STR, description="absolute path of the photo")}, ["path"]),
+        "mcp_defaults": {},
+        "mcp_annotations": _edits(),
+    },
+    # ---- CONTRACT-semantic-index SI1 / SI11: operations 26, 27 (merge patch: after S1's restore_edit, 25)
     "semantic_build": {
         "http": ("POST", "/api/preset-library/semantic/build"),     # refused over HTTP (SI11): CLI / MCP only
         "cli": "presets semantic build",

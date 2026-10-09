@@ -98,7 +98,9 @@ def hides(body):
 PROTECTED = ("#carry-hint", ".hint", "#reset-all", "#undo", "#redo", "#toggle-lib", "#toggle-sl",
              "#prev", "#next", "#strength-100", "#export-btn", "#export-format", "#export-quality",   # + X13
              ".fav", ".row-menu", "#import-btn", "#save-preset-btn",                             # + K19
-             "#grid-btn", "#copy-edit-btn", "#paste-edit-btn", "#export-selected-btn")           # + PL15 / PLP9
+             "#grid-btn", "#copy-edit-btn", "#paste-edit-btn", "#export-selected-btn",           # + PL15 / PLP9
+             "#ab-btn", "#reset-original-btn", "#restore-previous-btn", "#grid-filter",          # + S18
+             "#grid-reset-original-btn", "#grid-restore-btn", ".canvas-pick")
 
 
 def hidden_in_media(css):
@@ -171,8 +173,12 @@ class TestPageStructure(unittest.TestCase):
     def test_photo_path_hint_lists_heic(self):  # H7 / seal round 2 N2: the on-screen format hint lists HEIC
         self.assertRegex(read("index.html"), r'id="photo-path" placeholder="照片路徑（JPEG／PNG／TIFF／HEIC），')
 
-    def test_photo_switch_hint(self):  # R5 constant
-        self.assertIn("目前修改尚未儲存，切換照片會沿用", read("index.html"))
+    def test_photo_switch_hint(self):  # R5 constant as revised by S11 (CONTRACT-s1-experience)
+        html = read("index.html")
+        self.assertIn("沿用上一張的設定（還不是這張的編輯，會再沿用到下一張）", html)
+        self.assertNotIn("目前修改尚未儲存", html)
+        self.assertIn("const CARRY_HINT = '沿用上一張的設定（還不是這張的編輯，會再沿用到下一張）';", read("logic.js"))
+        self.assertIn("$('#carry-hint').hidden = !L.carryHintVisible(ed, !!st.image, !!st.edit);", read("app.js"))
 
     def test_strength_reset_is_a_button_and_values_are_text(self):  # R6
         html = read("index.html")
@@ -187,6 +193,17 @@ class TestPageStructure(unittest.TestCase):
         for col, n in (("col-lib", 1), ("col-pv", 2), ("col-sl", 3)):
             self.assertRegex(css, r"#%s \{ grid-column: %d;" % (col, n))
 
+    def test_layout_820(self):  # S18: at 820 px the strength track keeps >= 200 px and the preview >= 400 px
+        css = re.sub(r"/\*.*?\*/", "", read("app.css"), flags=re.S)
+        self.assertRegex(css, r"\.strength-track \{[^}]*min-width: 200px;")
+        narrow = [(ctx, sel, body) for ctx, sel, body in css_rules(css) if "@media (max-width: 960px)" in ctx]
+        root = "".join(body for _, sel, body in narrow if sel == ":root")
+        sl_w = int(re.search(r"--sl-w:\s*(\d+)px", root).group(1))
+        grid = "".join(body for _, sel, body in narrow if sel == "#editor")
+        self.assertIn("grid-template-columns: 0 minmax(0, 1fr) var(--sl-w);", grid)   # the preset column folds to 0
+        self.assertGreaterEqual(820 - sl_w, 400)                                     # what is left is the preview
+        # measured in a browser (S1 seal evidence): #strength 319 px, .pv-wrap 529 px, every S18 button in view
+
     def test_narrow_windows_keep_function_buttons(self):  # F1 / R6 / N2 (H11): never hidden in a media query
         found, checked = hidden_in_media(read("app.css"))
         self.assertEqual(found, [])
@@ -195,10 +212,12 @@ class TestPageStructure(unittest.TestCase):
         for ident in ("reset-all", "undo", "redo", "toggle-lib", "toggle-sl", "prev", "next", "strength-100",
                       "export-btn", "export-format", "export-quality",                                 # + X13
                       "import-btn", "save-preset-btn",                                                 # + K19
-                      "grid-btn", "copy-edit-btn", "paste-edit-btn", "export-selected-btn"):           # + PLP9
+                      "grid-btn", "copy-edit-btn", "paste-edit-btn", "export-selected-btn",            # + PLP9
+                      "ab-btn", "reset-original-btn", "restore-previous-btn", "grid-filter",            # + S18
+                      "grid-reset-original-btn", "grid-restore-btn"):
             tag = re.search(r'<[a-z]+ id="%s"[^>]*>' % ident, html).group(0)
             self.assertNotRegex(tag, r"\shidden(?:[\s=>])", ident)
-        self.assertRegex(html, r'<span id="carry-hint"[^>]*title="目前修改尚未儲存，切換照片會沿用"')
+        self.assertRegex(html, r'<span id="carry-hint"[^>]*title="沿用上一張的設定（還不是這張的編輯，會再沿用到下一張）"')
         self.assertRegex(html, r'<button id="reset-all"[^>]*title="[^"]+"')
 
     def test_app_changes_state_only_through_the_reducer(self):  # F2: the tested reducer is the only path
@@ -315,8 +334,8 @@ class TestPageStructure(unittest.TestCase):
         self.assertEqual(js.count("api('PUT'"), 1)
         send = js[js.index("async function sendSave"):js.index("async function flushSave")]
         self.assertIn("api('PUT', '/api/edit', body, {keepalive: true})", send)      # seal F3: survives unload
-        self.assertIn("toast(L.saveEditFailed(e.message), true);", send)
-        self.assertIn("window.addEventListener('beforeunload', () => { if (save.dirty) flushSave(); });", js)
+        self.assertIn("toast(L.saveEditFailed(L.explain(e.message)), true, e.message);", send)
+        self.assertIn("window.addEventListener('beforeunload', () => { if (save.dirty) unloadSave(); });", js)
         self.assertIn("fetch(url, Object.assign({method, headers:", js)
         self.assertIn("save.timer = setTimeout(flushSave, L.AUTOSAVE_MS);", js)
         # restoring a saved edit goes through the reducer with {restore: true} and never schedules a save
@@ -326,13 +345,305 @@ class TestPageStructure(unittest.TestCase):
         self.assertNotRegex(restore, r"(?<![\w.$])ed\s*=(?!=)")
         load = js[js.index("async function loadEdit"):js.index("// ------------------------------------------------------------------ photo library: the grid")]
         self.assertNotIn("scheduleSave", load)                      # get_edit failed: never saved over
-        self.assertIn("applyEditInfo({edit: null, preset_status: null}); toast(L.loadEditFailed(e.message), true);", load)
-        self.assertIn("catch (e) { toast(L.loadFolderFailed(e.message), true); return; }", js)
+        self.assertIn("applyEditInfo({edit: null, preset_status: null}); toast(L.loadEditFailed(L.explain(e.message)), true, e.message);", load)
+        self.assertIn("catch (e) { toast(L.loadFolderFailed(L.explain(e.message)), true, e.message); return; }", js)
         for raw in ("'儲存編輯失敗：'", "'讀取編輯失敗：'", "'讀取資料夾失敗：'"):   # seal F6: sentences live in logic.js
             self.assertNotIn(raw, js, raw)
-        opened = js[js.index("async function openPhoto"):js.index("// ------------------------------------------------------------------ photo library: autosave")]
+        opened = js[js.index("async function openPhoto"):js.index("function openFailed")]
         self.assertLess(opened.index("await flushSave();"), opened.index("api('POST', '/api/open'"))
-        self.assertLess(opened.index("await loadEdit(path);"), opened.index("requestPreview();"))
+        self.assertLess(opened.index("await loadEdit(path, token);"), opened.index("requestPreview();"))
+
+    def test_autosave_targets_the_photo_it_was_scheduled_for(self):  # CONTRACT-s1-experience S1 / S2
+        js = read("app.js")
+        sched = js[js.index("function scheduleSave"):js.index("async function sendSave")]
+        # the path and the request body are fixed when the change is scheduled; nothing is scheduled while a
+        # photo is loading (between the st.image swap and the restore of its saved edit)
+        self.assertIn("if (!st.image || st.loading) return;", sched)
+        self.assertIn("save.pending = {path, req: L.editRequest(ed, path, st.snapshots, st.fingerprint), retried: false};", sched)
+        flush = js[js.index("async function flushSave"):js.index("function unloadSave")]
+        self.assertNotIn("st.image", flush)                         # flushSave never reads the open photo
+        self.assertIn("const job = save.pending; save.pending = null; save.dirty = false;", flush)
+        send = js[js.index("async function sendSave"):js.index("async function flushSave")]
+        self.assertIn("const {path, req} = job;", send)
+        self.assertIn("if (req.method === 'PASTE') {", send)        # S2: the remembered snapshot goes through paste
+        self.assertIn("api('POST', '/api/edit/paste', req.body, {keepalive: true})", send)
+        paste = send[send.index("if (req.method === 'PASTE') {"):send.index("} else {")]
+        # seal F5: after the paste the page re-reads the edit, so st.edit is the saved edit (no carry hint)
+        self.assertIn("res = await (await api('GET', '/api/edit?path=' + encodeURIComponent(path))).json();", paste)
+        self.assertNotRegex(paste, r"res\s*=\s*r\b")
+        # seal F4 / S13 (g): a failed save is dirty again at once and kept for unload during its back-off
+        self.assertIn("save.retries.set(path, Object.assign({}, job, {retried: true})); save.dirty = true;", send)
+        self.assertIn("setTimeout(() => flushRetry(path), L.SAVE_RETRY_MS);", send)
+        unload = js[js.index("function unloadSave"):js.index("function applyEditInfo")]
+        self.assertIn("const jobs = L.unloadJobs(save.pending, [...save.retries.values()]);", unload)
+        self.assertIn("for (const job of jobs) sendSave(job);", unload)
+        flush = js[js.index("async function flushSave"):js.index("async function flushRetry")]
+        self.assertIn("if (save.retries.size) save.dirty = true;", flush)
+        # S13g'''' (seal H4): flushSave waits until nothing is in flight - every flush before a re-read rests on it
+        self.assertEqual([l.strip() for l in flush.splitlines()[1:] if l.strip()][:-1], [
+            "clearTimeout(save.timer); save.timer = null;",
+            "while (save.pending || save.promise) {",
+            "if (save.promise) { await save.promise; continue; }",
+            "const job = save.pending; save.pending = null; save.dirty = false;",
+            "if (save.retries.size) save.dirty = true;   // a failed save still waits for its retry: unload must send it",
+            "save.promise = sendSave(job).finally(() => { save.promise = null; });",
+            "}"])
+        self.assertIn("save.retries.delete(path);", sched)
+        # seal round 2 (N1 / N1b / N2): the retry really goes out - once, after other photos, never over newer
+        retry = js[js.index("async function flushRetry"):js.index("async function flushRetries")]
+        self.assertEqual([l.strip() for l in retry.splitlines()[1:] if l.strip()][:-1], [
+            "const r = save.retries.get(path);",
+            "if (!r) return;",
+            "const due = L.retryDue(save.pending && save.pending.path, path);",
+            "if (due === 'superseded') { save.retries.delete(path); return; }",
+            "if (due === 'after') await flushSave();          // another photo's pending save goes first",
+            "if (save.retries.get(path) !== r) return;          // superseded (or sent) meanwhile",
+            "save.retries.delete(path);",
+            "if (save.pending && save.pending.path === path) return;",
+            "save.pending = r;",
+            "await flushSave();"])
+        retries = js[js.index("async function flushRetries"):js.index("function unloadSave")]
+        self.assertIn("for (const path of [...save.retries.keys()]) await flushRetry(path);", retries)
+        # S13g'''' (seal F2): a retry another caller already took is waited out before anything is read
+        self.assertRegex(retries, r"await flushRetry\(path\);\n\s*await flushSave\(\);[^\n]*\n\}")
+        op = js[js.index("async function openPhoto"):js.index("function openFailed")]
+        self.assertLess(op.index("await flushSave();"), op.index("await flushRetries();"))   # N5: both settled
+        self.assertLess(op.index("await flushRetries();"), op.index("api('POST', '/api/open'"))  # before re-read
+        # S13g'''' (seal F2): the newest click wins even while the flushes wait - token first, checked after them
+        self.assertLess(op.index("const token = ++openSeq;"), op.index("await flushSave();"))
+        self.assertRegex(op, r"await flushRetries\(\);[^\n]*\n\s*if \(token !== openSeq\) return;\n\s*setStatus\('讀取照片中…'")
+        # S13g'''' (seal F1 / F4): restore previous re-checks after the flushes - same photo, not loading, still no edit
+        rp = js[js.index("async function restorePrevious"):js.index("function copyEdit")]
+        guard = "if (!st.image || st.image.path !== path || st.loading || st.edit) return;"
+        self.assertLess(rp.index("const path = st.image.path;"), rp.index("await flushSave();"))
+        self.assertLess(rp.index("await flushRetries();"), rp.index(guard))
+        self.assertLess(rp.index(guard), rp.index("api('POST', '/api/edit/restore'"))
+        # N6 (seal re-verification 2): every user-level write or read of saved edits settles the retries first
+        for start, end in (("async function openPhoto", "function openFailed"),
+                           ("async function savePreset", "// ------------------------------------------------------------------ photo library: autosave"),
+                           ("async function gridResetOriginal", "async function gridRestore"),
+                           ("async function gridRestore", "async function resetOriginal"),
+                           ("async function restorePrevious", "// ------------------------------------------------------------------ export (X13)"),
+                           ("async function pasteEdit", "async function exportSelected"),
+                           ("async function exportSelected", "// ------------------------------------------------------------------ export (X13)")):
+            body = js[js.index(start):js.index(end, js.index(start))]
+            i = body.index("await flushSave();")
+            self.assertRegex(body[i:], r"^await flushSave\(\);[^\n]*\n\s*await flushRetries\(\);", start)
+        self.assertIn("if (st.image && st.image.path === path) applyEditInfo(res);", send)
+        opened = js[js.index("async function openPhoto"):js.index("function openFailed")]
+        self.assertLess(opened.index("await flushSave();"), opened.index("st.loading = token;"))
+        self.assertLess(opened.index("st.loading = token;"), opened.index("st.image = Object.assign(info, {path});"))
+        self.assertIn("st.snapshots = {}; st.fingerprint = null; st.previous = false; st.editStatus = null;", opened)
+        self.assertEqual(opened.count("if (token !== openSeq) return;"), 4)   # latest open wins, at every await
+        self.assertLess(opened.index("await loadEdit(path, token);"), opened.index("st.loading = null;"))
+        load = js[js.index("async function loadEdit"):js.index("// ------------------------------------------------------------------ photo library: the grid")]
+        self.assertIn("if (!st.image || st.image.path !== path || (token !== undefined && token !== openSeq)) return;", load)
+        apply = js[js.index("function applyEditInfo"):js.index("function restore(res)")]
+        self.assertIn("if (res.edit && res.edit.preset) st.snapshots[res.edit.preset.id] = res.edit.preset;", apply)
+
+    def test_export_commits_carried_state(self):  # S11: what the screen shows is what gets saved and exported
+        js = read("app.js")
+        body = js[js.index("async function exportPhoto"):js.index("function renderPosition")]
+        self.assertLess(body.index("await commitCarried();"), body.index("api('POST', '/api/export'"))
+        commit = js[js.index("async function commitCarried"):js.index("async function exportPhoto")]
+        self.assertIn("if (!st.image || st.edit || !L.carryHintVisible(ed, true, false)) return;", commit)
+        self.assertIn("scheduleSave();\n  await flushSave();", commit)
+
+    def test_skip_detail_structure(self):  # S12: the full text opens over the preview, the toolbar stays one line
+        html = read("index.html")
+        wrap = html[html.index('<div class="pv-wrap" id="preview">'):html.index('<div class="strength">')]
+        self.assertRegex(wrap, r'<div id="skip-detail" class="skip-detail" role="dialog"[^>]*\shidden>')
+        self.assertRegex(html, r'<span id="skip-banner" class="warnbar" role="button" tabindex="0" hidden>')
+        self.assertRegex(html, r'<span id="skip-note" class="skipnote" role="button" tabindex="0" hidden>')
+        js = read("app.js")
+        self.assertIn("renderSkipDetail(b, n);", js[js.index("async function loadPreset"):js.index("function selectPreset")])
+        self.assertIn("if (e.key === 'Escape' && !$('#skip-detail').hidden) toggleSkipDetail(false);", js)
+        css = read("app.css")
+        self.assertRegex(css, r"\.skip-detail \{[^}]*position: absolute;[^}]*white-space: normal;")
+
+    def test_front_end_housekeeping(self):  # S13 (a)-(h), (j)-(l)
+        js, html, css = read("app.js"), read("index.html"), read("app.css")
+        exp = js[js.index("async function exportSelected"):js.index("// ------------------------------------------------------------------ export (X13)")]
+        self.assertIn("if (!paths.length || exp.busy) return;", exp)                           # (a)
+        self.assertIn("btn.disabled = true; btn.textContent = L.EXPORT_BUSY;", exp)
+        self.assertRegex(exp, r"finally \{\s*exp\.busy = false;")
+        self.assertIn("showGridResult(L.exportSelectedDone(ok, fail), lines);", exp)           # (b)
+        self.assertIn("lines.push(`${L.baseName(r.source)}：${L.explain(r.error)}`)", exp)
+        self.assertIn('<div id="grid-result" class="import-result" role="status" hidden></div>', html)
+        self.assertIn("!inField(e.target) && !e.repeat) step(-1);", js)                        # (c)
+        self.assertIn("!inField(e.target) && !e.repeat) step(1);", js)
+        self.assertIn("el.matches('input, select, textarea')", js)
+        self.assertIn("window.addEventListener('blur', () => { if (st.holding) showOriginal(false); });", js)   # (d)
+        self.assertIn("if (document.hidden && st.holding) showOriginal(false);", js)
+        rel = js[js.index("function releaseGrid"):js.index("function renderGrid")]              # (e)
+        self.assertIn("gridIO.unobserve(cell);", rel)
+        self.assertIn("URL.revokeObjectURL(img.src);", rel)
+        self.assertIn("img.onload = () => URL.revokeObjectURL(url);", js)
+        self.assertIn("if (st.grid.folder !== null) return;", js[js.index("function showGrid"):js.index("async function loadGrid")])   # (f)
+        self.assertIn("function unloadSave()", js)                                                # (g)
+        self.assertIn("if (!job.retried) {", js)
+        paste = js[js.index("async function pasteEdit"):js.index("async function exportSelected")]   # (h)
+        self.assertLess(paste.index("await flushSave();"), paste.index("confirm(L.pasteConfirm("))
+        self.assertIn("const GRID_EMPTY = '這個資料夾沒有支援的照片（JPEG／PNG／TIFF／HEIC）';", read("logic.js"))   # (j)
+        self.assertIn("e.textContent = L.GRID_EMPTY;", js)
+        self.assertRegex(css, r"#grid-count(?:, #grid-pending)? \{[^}]*white-space: nowrap;")    # (k)
+        self.assertIn('<link rel="icon" href="/static/logo.svg" type="image/svg+xml">', html)    # (l)
+        with open(os.path.join(STATIC, "logo.svg"), "rb") as f, \
+                open(os.path.join(_util.REPO, "docs", "assets", "logo.svg"), "rb") as g:
+            self.assertEqual(f.read(), g.read())
+
+    def test_query_path_not_auto_opened(self):  # S15: ?path= only fills the box; lastPath still reopens
+        js = read("app.js")
+        init = js[js.index("async function init"):]
+        self.assertIn("if (q) $('#photo-path').value = q;", init)
+        self.assertIn("else if (last) { $('#photo-path').value = last; openPhoto(last); }", init)
+        self.assertNotRegex(init, r"openPhoto\(q\)")
+        self.assertNotRegex(init, r"openPhoto\(\s*(?:params|new URLSearchParams|location)")
+
+    def test_ab_compare_structure(self):  # S7
+        html, js, css = read("index.html"), read("app.js"), read("app.css")
+        toolbar = html[html.index('<div class="pv-tools">'):html.index("</div>", html.index('<div class="pv-tools">'))]
+        self.assertRegex(toolbar, r'<span class="seg"><button id="hold"[^>]*>按住看原圖</button><button id="ab-btn"[^>]*aria-pressed="false" disabled>對照</button></span>')
+        wrap = html[html.index('<div class="pv-wrap" id="preview">'):html.index('<div class="strength">')]
+        self.assertIn('<img id="ab-orig" alt="" aria-hidden="true">', wrap)
+        self.assertRegex(wrap, r'<div id="ab-divider"><div id="ab-handle" tabindex="0" role="slider"[^>]*aria-valuemin="0" aria-valuemax="100" aria-valuenow="50">')
+        self.assertIn('<span class="ab-tag" id="ab-tag-a">原圖</span><span class="ab-tag" id="ab-tag-b">編輯後</span>', wrap)
+        self.assertRegex(css, r"#ab-orig \{[^}]*clip-path: inset\(0 calc\(100% - var\(--split, 50%\)\) 0 0\);")
+        mod = js[js.index("const ab = {on: false, split: L.AB_DEFAULT_SPLIT};"):js.index("// ------------------------------------------------------------------ preset tree")]
+        for banned in ("api(", "requestPreview", "dispatch(", "L.reduce", "/api/preview"):   # dragging never renders
+            self.assertNotIn(banned, mod, banned)
+        self.assertIn("abSetSplit((clientX - r.left) / r.width);", mod)
+        self.assertIn("div.addEventListener('dblclick', () => abSetSplit(L.AB_DEFAULT_SPLIT));", mod)
+        self.assertIn("const v = L.abStep(ab.split, e.key, e.shiftKey);", mod)
+        self.assertIn("sessionStorage.setItem(L.AB_STORAGE_KEY, String(ab.split));", mod)
+        self.assertIn("if (k === L.AB_KEY && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && !e.repeat) { abToggle(); return; }", js)
+        self.assertNotIn("ab.", read("logic.js"))                              # not editor state (R5 reducer)
+        self.assertIn("$('#preview-img').addEventListener('load', abRefresh);", js)
+
+    def test_grid_badge_structure(self):  # S8
+        html, js = read("index.html"), read("app.js")
+        thumb = js[js.index("async function loadThumb"):js.index("function selectCell")]
+        self.assertIn("JSON.parse(decodeURIComponent(r.headers.get('X-Edit')))", thumb)
+        self.assertIn("cell.classList.toggle('stale', edited && L.stale(info));", thumb)
+        self.assertIn("cell.querySelector('.mark').title = edited ? L.badgeTitle(info) : '';", thumb)
+        self.assertIn('<span class="mark" aria-hidden="true"></span>', js)
+        css = read("app.css")
+        self.assertRegex(css, r"\.cell\.edited \.mark \{")
+        self.assertRegex(css, r"\.cell\.edited\.stale \.mark \{")
+
+    def test_grid_filter_structure(self):  # S9
+        html, js = read("index.html"), read("app.js")
+        self.assertRegex(html, r'<span id="grid-filter" class="seg" role="group" aria-label="篩選"><button data-filter="all" aria-pressed="true"[^>]*>全部</button><button data-filter="edited" aria-pressed="false"[^>]*>已編輯</button><button data-filter="plain" aria-pressed="false"[^>]*>未編輯</button></span>')
+        self.assertIn('<span id="grid-pending" class="mute" hidden></span>', html)
+        sel = js[js.index("function selectCell"):js.index("function renderGridSelection")]
+        self.assertIn("st.grid.sel = L.onlyShown(r.sel, st.grid.shown);", sel)         # selection only among shown
+        grid = js[js.index("function renderGrid"):js.index("async function loadThumb")]
+        self.assertIn("st.grid.shown = shownSet;", grid)
+        self.assertIn("st.grid.sel = L.onlyShown(st.grid.sel, shownSet);", grid)
+        self.assertIn("const {shown, pending} = L.gridFilter(st.grid.items, st.grid.filter);", grid)
+        self.assertIn("$('#grid-pending').textContent = pending ? L.gridPending(pending) : '';", grid)
+        flt = js[js.index("async function setGridFilter"):js.index("function releaseGrid")]
+        self.assertIn("if (st.grid.folder) await loadGrid(st.grid.folder); else renderGrid();", flt)   # re-read the listing
+        self.assertIn("$('#grid-count').textContent = L.gridCount(st.grid.sel.size, cells.length);", js)
+
+    def test_reset_original_structure(self):  # S10
+        html, js = read("index.html"), read("app.js")
+        self.assertRegex(html, r'<button id="reset-original-btn" title="[^"]+" disabled>.*還原成原圖.*</button>')
+        self.assertRegex(html, r'<button id="restore-previous-btn" title="[^"]+" disabled>取回上一份</button>')
+        self.assertRegex(html, r'<button id="grid-reset-original-btn" title="[^"]+" disabled>還原成原圖</button>')
+        self.assertRegex(html, r'<button id="grid-restore-btn" title="[^"]+" disabled>取回上一份</button>')
+        self.assertIn("await dispatch({type: 'resetToOriginal'});", js[js.index("async function resetOriginal"):js.index("async function restorePrevious")])
+        rp = js[js.index("async function restorePrevious"):js.index("// ------------------------------------------------------------------ export (X13)")]
+        self.assertIn("if (!st.image || st.edit || !st.previous) return;", rp)
+        self.assertIn("api('POST', '/api/edit/restore', {path})", rp)
+        self.assertIn("if (st.image && st.image.path === path) { restore(res); requestPreview(); toast(L.RESTORE_TOAST); }", rp)
+        self.assertIn("$('#restore-previous-btn').disabled = !(st.image && !st.edit && st.previous);", js)
+        g = js[js.index("async function gridResetOriginal"):js.index("async function resetOriginal")]
+        self.assertIn("if (!confirm(L.resetConfirm(targets.length))) return;", g)
+        self.assertIn("await gridEach('DELETE', '/api/edit', targets, L.resetDone, 'plain');", g)
+        self.assertIn("await gridEach('POST', '/api/edit/restore', targets, L.restoreDone, 'edited');", g)
+        self.assertIn("gridBatchDone(summaryFn, targets, results);", js)       # failures listed per photo
+
+    def test_css_palette_is_neutral(self):  # S16: grey interface, four muted semantic colours on small marks only
+        css = re.sub(r"/\*.*?\*/", "", read("app.css"), flags=re.S)
+        root = css[css.index(":root {"):css.index("}", css.index(":root {"))]
+        for token in ("--bg0: #121212", "--bg1: #191919", "--bg2: #202020", "--bg3: #2a2a2a",
+                      "--line: rgba(255,255,255,.07)", "--line-2: rgba(255,255,255,.12)",
+                      "--text: #e6e6e6", "--text-2: #a9a9a9", "--text-3: #8a8a8a",
+                      "--tweak: #d9a85b", "--clamp: #d27a7a", "--err: #e06b6b", "--ok: #8fbf93", "--canvas: #151515"):
+            self.assertIn(token, root, token)
+        self.assertIn('body[data-canvas="black"] { --canvas: #000000; }', css)
+        self.assertIn('body[data-canvas="mid"] { --canvas: #4a4a4a; }', css)
+        semantic = {"#d9a85b", "#d27a7a", "#e06b6b", "#8fbf93"}
+        for m in re.finditer(r"#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})\b", css):
+            h = m.group(1).lower()
+            full = "".join(c * 2 for c in h) if len(h) == 3 else h
+            if "#" + full in semantic:
+                continue
+            self.assertTrue(full[0:2] == full[2:4] == full[4:6], f"coloured hex {m.group(0)} in app.css")
+        for m in re.finditer(r"rgba?\((\d+),\s*(\d+),\s*(\d+)", css):
+            r, g, b = (int(m.group(i)) for i in (1, 2, 3))
+            self.assertEqual((r == g == b) or (r, g, b) == (217, 168, 91), True, m.group(0))
+        for blue in ("#4a9eff", "#2f6fbf", "#29466b", "#3b82d6", "#33404f", "#8fb6df"):
+            self.assertNotIn(blue, css, blue)
+        self.assertIn(".tnode.preset.active { color: #ffffff; background: rgba(255,255,255,.07); border-left-color: #e6e6e6; }", css)
+        self.assertIn('button.on, button[aria-pressed="true"], #grid-btn[aria-pressed="true"] { background: #e6e6e6; color: #141414; border-color: #e6e6e6; }', css)
+        self.assertIn("#preview-img[hidden] { display: none; }", css)
+        self.assertNotRegex(css, r"#preview-img[^{]*\{[^}]*transition")   # the preview image never animates
+        self.assertIn("@media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; } }", css)
+        self.assertIn('--font: "Segoe UI Variable Text", "Segoe UI", "Noto Sans TC", "Microsoft JhengHei UI", system-ui, sans-serif;', css)
+        self.assertIn('--num: "Bahnschrift", "Segoe UI Variable Small", "Segoe UI", system-ui, sans-serif;', css)
+        self.assertNotIn("@import", css); self.assertNotIn("url(", css)     # no downloaded fonts or assets
+
+    def test_slider_vars_structure(self):  # S17: drawn sliders, dial, hue dots, canvas, icons
+        html, js, css = read("index.html"), read("app.js"), read("app.css")
+        row = js[js.index("function updateRow"):js.index("function sliderRow")]
+        self.assertIn("const vars = L.sliderVars(s, v);", row)
+        self.assertIn("inp.style.setProperty('--base', vars.base); inp.style.setProperty('--lo', vars.lo); inp.style.setProperty('--hi', vars.hi);", row)
+        self.assertIn("row.classList.toggle('at-min', v.clamped === 'min');", row)
+        sr = js[js.index("function sliderRow"):js.index("function curveBox")]
+        self.assertIn("row.className = 'sl' + (L.bipolar(s) ? ' bipolar' : '');", sr)
+        self.assertIn("const dot = L.hueDot(s.key);", sr)
+        st = js[js.index("function renderStrength"):js.index("function setCanvas")]
+        self.assertIn("const vars = L.strengthVars(on ? ed.strength : 100);", st)
+        self.assertIn("acc.querySelector('.tc').textContent = n ? `微調 ${n} 項` : '';", js)
+        self.assertIn("setStatus('已更新', 'mute', `預覽已更新：後端 ${(+ms).toFixed(0)} ms，往返 ${rt.toFixed(0)} ms`);", js)
+        self.assertIn("setCanvas(loadPref('canvas', 'dark'));", js)
+        self.assertRegex(css, r"input\[type=range\] \{ -webkit-appearance: none; appearance: none;")
+        self.assertIn("--lo: 50%; --hi: 50%; --base: 50%;", css)
+        self.assertIn(".sl.bipolar input[type=range] {", css)
+        self.assertIn(".sl.clamped input[type=range]::-webkit-slider-thumb { border-radius: 1px;", css)
+        self.assertRegex(html, r'<div class="canvas-pick" role="group" aria-label="預覽底色">')
+        for c in ("dark", "black", "mid"):
+            self.assertRegex(html, r'<button class="c-%s" data-canvas="%s" title="[^"]+" aria-pressed="(true|false)"></button>' % (c, c))
+        self.assertIn('<span class="ticks" aria-hidden="true"></span>', html)
+        self.assertEqual(html.count('class="scale-num"'), 3)
+        for ident in ("toggle-lib", "toggle-sl", "undo", "redo", "prev", "next"):   # inline SVG, no Unicode glyphs
+            tag = re.search(r'<button id="%s"[^>]*>(.*?)</button>' % ident, html, re.S).group(1)
+            self.assertIn("<svg", tag, ident)
+        for glyph in ("☰", "⚙", "↶", "↷", "⟲", "▦", "◀", "▶"):
+            self.assertNotIn(glyph, html, glyph)
+        self.assertEqual(html.count('<span class="seg">'), 3)                 # browse, history, views
+
+    def test_toasts_go_through_explain(self):  # S14: every toast shows the explained sentence
+        js = read("app.js")
+        self.assertIn("t.textContent = L.explain(msg); t.title = original || msg;", js[js.index("function toast"):js.index("function setStatus")])
+        # seal patch S14a: the status line explains its error too; no error text reaches the screen another way
+        self.assertIn("setStatus(L.explain('預覽失敗：' + e.message), 'err', e.message);", js)
+        for m in re.finditer(r"setStatus\(([^;]*)\);", js):
+            if "e.message" in m.group(1):
+                self.assertTrue(m.group(1).startswith("L.explain("), m.group(0))
+        for m in re.finditer(r"\.(?:textContent|innerHTML)\s*=\s*([^;]*)", js):
+            if "e.message" in m.group(1) or "reason" in m.group(1):
+                self.assertIn("L.explain(", m.group(1), m.group(0))
+
+    def test_restore_uses_snapshot_values(self):  # CONTRACT-s1-experience S3
+        js = read("app.js")
+        lp = js[js.index("async function loadPreset"):js.index("function selectPreset")]
+        self.assertIn("st.detail = st.snapshots[id] ? L.detailFromSnapshot(st.snapshots[id], detail) : detail;", lp)
+        self.assertIn("catch (e) { if (!st.snapshots[id]) toast(", lp)     # missing preset with a snapshot: no error
+        self.assertIn(": (st.byId[id] ? st.byId[id].name : (st.detail && st.detail.name) || id);", lp)
+        self.assertNotRegex(lp, r"st\.byId\[id\]\.name(?!\s*:)")
         # the grid: thumbnails through api() once visible, selection through L.gridSelect
         grid_js = js[js.index("// ------------------------------------------------------------------ photo library: the grid"):js.index("// ------------------------------------------------------------------ export (X13)")]
         self.assertIn("api('GET', '/api/thumbnail?path=' + encodeURIComponent(cell.dataset.path))", grid_js)
@@ -345,7 +656,7 @@ class TestPageStructure(unittest.TestCase):
         self.assertIn("confirm(L.pasteConfirm(st.clipboard.name, targets.length))", grid_js)
         self.assertIn("api('POST', '/api/edit/paste', {targets, edit: st.clipboard.edit})", grid_js)
         self.assertIn("toast(L.copied(st.clipboard.name));", grid_js)
-        self.assertIn("toast(L.pasteDone(ok, res.results.length - ok)", grid_js)
+        self.assertIn("gridBatchDone(L.pasteDone, targets, res.results);", grid_js)
         export_sel = grid_js[grid_js.index("async function exportSelected"):]
         self.assertIn("L.exportItems(paths, edits)", export_sel)
         self.assertIn("api('POST', '/api/export', body)", export_sel)

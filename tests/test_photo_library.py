@@ -292,7 +292,7 @@ class TestEdits(PhotoLibCase):
         fp = self.f.set_edit(a, None, 100, {"Exposure2012": 0.5})["fingerprint"]
         self.assertTrue(os.path.exists(self.edit_file(fp)))
         r = self.f.set_edit(a, None, 100, {})
-        self.assertEqual(r, {"fingerprint": fp, "edit": None, "preset_status": None})
+        self.assertEqual(r, {"fingerprint": fp, "edit": None, "preset_status": None, "previous": True})   # S4
         self.assertFalse(os.path.exists(self.edit_file(fp)))
         self.assertEqual(self.f.set_edit(a, None, 100, None)["edit"], None)   # idempotent
 
@@ -317,15 +317,90 @@ class TestEdits(PhotoLibCase):
             self.assertEqual(self.err(fn, txt), ("invalid", "unsupported photo format (JPEG/PNG/TIFF/HEIC)"))
         self.assertFalse(os.path.exists(self.data))
 
-    def test_get_set_clear_shapes(self):  # PL7
+    def test_get_set_clear_shapes(self):  # PL7, as revised by CONTRACT-s1-experience S4 (previous)
         a = self.photo()
         r = self.f.set_edit(a, "p-expo")
-        self.assertEqual(list(r), ["fingerprint", "edit", "preset_status"])
+        self.assertEqual(list(r), ["fingerprint", "edit", "preset_status", "previous"])
+        self.assertIs(r["previous"], False)
         self.assertEqual(self.f.get_edit(a), r)
         c = self.f.clear_edit(a)
-        self.assertEqual(c, {"fingerprint": r["fingerprint"], "edit": None, "preset_status": None})
+        self.assertEqual(c, {"fingerprint": r["fingerprint"], "edit": None, "preset_status": None, "previous": True})
         self.assertEqual(self.f.clear_edit(a), c)                               # idempotent
         self.assertEqual(self.f.get_edit(a)["edit"], None)
+
+    def test_restore_previous_edit(self):  # CONTRACT-s1-experience S4
+        a = self.photo()
+        b = self.photo("b.jpg", seed=3)
+        fp = sha(a)
+        prev_file = os.path.join(self.data, "edits", fp[:2], fp + ".prev.json")
+        self.assertEqual(self.err(self.f.restore_edit, a), ("not_found", "這張照片沒有上一份編輯可以取回：a.jpg"))
+        first = self.f.set_edit(a, "p-expo", 130, {"Contrast2012": 4})
+        self.assertFalse(os.path.exists(prev_file))
+        self.f.set_edit(a, "p-strong", 90)                                  # replacing keeps nothing
+        self.assertFalse(os.path.exists(prev_file))
+        self.f.paste_edit([b], source=a)                                   # pasting keeps nothing
+        self.assertFalse(os.path.exists(os.path.join(self.data, "edits", sha(b)[:2], sha(b) + ".prev.json")))
+        with open(self.edit_file(fp), "rb") as f:
+            cleared_bytes = f.read()
+        c = self.f.clear_edit(a)
+        self.assertEqual((c["edit"], c["previous"]), (None, True))
+        with open(prev_file, "rb") as f:
+            self.assertEqual(f.read(), cleared_bytes)                       # kept byte for byte
+        self.assertEqual(self.f.get_edit(a)["previous"], True)
+        r = self.f.restore_edit(a)
+        self.assertEqual(list(r), ["fingerprint", "edit", "preset_status", "previous"])
+        self.assertEqual((r["edit"]["preset"]["id"], r["edit"]["strength"], r["previous"]), ("p-strong", 90, True))
+        with open(self.edit_file(fp), "rb") as f:
+            self.assertEqual(f.read(), cleared_bytes)
+        self.assertTrue(os.path.exists(prev_file))                          # the kept copy stays
+        self.assertEqual(self.f.restore_edit(a)["edit"], r["edit"])         # repeatable
+        # clearing through set_edit with nothing chosen keeps the previous edit too
+        self.f.set_edit(a, "p-expo", 100)
+        self.f.set_edit(a)
+        self.assertEqual(self.f.restore_edit(a)["edit"]["preset"]["id"], "p-expo")
+        # PL10: nothing else in edits/ is touched; the photo folder is unchanged
+        names = sorted(os.listdir(os.path.join(self.data, "edits", fp[:2])))
+        self.assertEqual(names, [fp + ".json", fp + ".prev.json"])
+        self.assertEqual(sorted(os.listdir(self.photos)), ["a.jpg", "b.jpg"])
+        self.assertEqual(first["edit"]["preset"]["id"], "p-expo")
+
+    def test_restore_never_over_another_edit(self):  # seal patch S4a: the current edit has no copy anywhere
+        a = self.photo()
+        fp = sha(a)
+        self.f.set_edit(a, "p-expo", 130)
+        self.f.clear_edit(a)                                                # previous = p-expo 130
+        self.f.set_edit(a, "p-strong", 70, {"Contrast2012": 5})             # edited again, autosaved
+        with open(self.edit_file(fp), "rb") as f:
+            now = f.read()
+        self.assertEqual(self.err(self.f.restore_edit, a),
+                         ("conflict", "這張照片已經有別的編輯，取回上一份會蓋掉它；要取回請先還原成原圖：a.jpg"))
+        with open(self.edit_file(fp), "rb") as f:
+            self.assertEqual(f.read(), now)                                 # untouched, byte for byte
+        self.assertEqual(self.f.get_edit(a)["edit"]["preset"]["id"], "p-strong")
+        # the documented way: reset to original (the current edit becomes the previous one), then restore
+        self.f.clear_edit(a)
+        self.assertEqual(self.f.restore_edit(a)["edit"]["preset"]["id"], "p-strong")
+        self.assertEqual(self.f.restore_edit(a)["edit"]["strength"], 70)    # the same edit again: a no-op success
+
+    def test_previous_is_written_before_the_edit_is_removed(self):  # seal F2 / S4: no window without a copy
+        a = self.photo()
+        fp = sha(a)
+        self.f.set_edit(a, "p-expo", 130)
+        lib = self.f._photo_library
+        real = lib._write_json
+
+        def failing(target, *args, **kwargs):
+            if target.endswith(".prev.json"):
+                raise DarkroomError("unavailable", "injected: cannot write the previous edit")
+            return real(target, *args, **kwargs)
+        lib._write_json = failing
+        try:
+            for clear in (lambda: self.f.clear_edit(a), lambda: self.f.set_edit(a)):
+                self.assertEqual(self.err(clear), ("unavailable", "injected: cannot write the previous edit"))
+                self.assertTrue(os.path.exists(self.edit_file(fp)))          # the edit is still there
+                self.assertEqual(self.f.get_edit(a)["edit"]["preset"]["id"], "p-expo")
+        finally:
+            lib._write_json = real
 
     def test_snapshot_survives_preset_change(self):  # PL4
         a = self.photo()
@@ -1067,6 +1142,86 @@ class TestPhotoLibraryHttp(AioHTTPTestCase):
         self.assertEqual((await r.json())["id"], "user:網頁")
         r = await self.client.post("/api/edit/save-preset", json={"path": a, "name": "網頁"})
         self.assertEqual((r.status, await r.json()), (404, {"error": NO_EDIT.format(file_name="a.jpg")}))
+
+    async def test_lenient_int_unicode_digits(self):  # CONTRACT-s1-experience S15: isdecimal, never a 500
+        from darkroom_app.server import _lenient_int
+        self.assertEqual([_lenient_int(t) for t in ("12", "²", "①", "x", "", "٣")], [12, "²", "①", "x", "", 3])
+        write_photo(os.path.join(self.photos, "a.jpg"), 400, 300)
+        for odd in ("²", "①", "³", "⑦"):        # digits int() refuses: the service's 400 sentence
+            r = await self.client.get("/api/folder/thumbnails", params={"folder": self.photos, "offset": odd})
+            self.assertEqual((r.status, await r.json()), (400, {"error": "offset must be an integer >= 0"}), odd)
+            r = await self.client.get("/api/folder/thumbnails", params={"folder": self.photos, "limit": odd})
+            self.assertEqual((r.status, await r.json()), (400, {"error": "limit must be an integer in 1..200"}), odd)
+        r = await self.client.get("/api/folder/thumbnails", params={"folder": self.photos, "offset": "٠"})   # decimal: int
+        self.assertEqual(r.status, 200)
+
+    async def test_thumbnail_edit_header(self):  # CONTRACT-s1-experience S8: X-Edit on GET /api/thumbnail
+        from urllib.parse import unquote
+        from darkroom_app.server import FACADE
+        a = write_photo(os.path.join(self.photos, "a.jpg"), 400, 300)
+        r = await self.client.get("/api/thumbnail", params={"path": a})
+        self.assertEqual((r.status, r.headers["X-Edited"]), (200, "0"))
+        self.assertNotIn("X-Edit", r.headers)                                   # no edit: no header at all
+        await self.client.put("/api/edit", json={"path": a, "preset_id": "p-expo", "strength": 130})
+        r = await self.client.get("/api/thumbnail", params={"path": a})
+        self.assertEqual(r.headers["X-Edited"], "1")
+        self.assertRegex(r.headers["X-Edit"], r"^[A-Za-z0-9%._~!'()*-]+$")     # ASCII only (percent-encoded)
+        from darkroom_app.server import x_edit                                 # seal F6: encodeURIComponent exactly
+        self.assertEqual(x_edit({"preset": "A (2)!*'", "strength": 100, "status": "current"}),
+                         "%7B%22preset%22%3A%22A%20(2)!*'%22%2C%22strength%22%3A100%2C%22status%22%3A%22current%22%7D")
+        self.assertEqual(json.loads(unquote(r.headers["X-Edit"])),
+                         {"preset": "曝光一", "strength": 130, "status": "current"})   # Chinese name survives
+        _xmpgen.write(self.presets, "p-expo.xmp", _xmpgen.xmp_text({"Exposure2012": "+2.50"}, name="變了", group="風景 - 海邊"))
+        self.app[FACADE].rebuild_library()
+        r = await self.client.get("/api/thumbnail", params={"path": a})
+        self.assertEqual(json.loads(unquote(r.headers["X-Edit"]))["status"], "changed")
+        os.remove(os.path.join(self.presets, "p-expo.xmp"))
+        self.app[FACADE].rebuild_library()
+        r = await self.client.get("/api/thumbnail", params={"path": a})
+        self.assertEqual(json.loads(unquote(r.headers["X-Edit"]))["status"], "missing")
+        await self.client.put("/api/edit", json={"path": a, "preset_id": None, "overrides": {"Exposure2012": 0.3}})
+        r = await self.client.get("/api/thumbnail", params={"path": a})
+        self.assertEqual(json.loads(unquote(r.headers["X-Edit"])), {"preset": None, "strength": 100, "status": None})
+        # the CLI / MCP thumbnail result shape is unchanged (the summary is an HTTP header only)
+        res = self.app[FACADE].thumbnail(a)
+        self.assertEqual(res.edit, {"preset": None, "strength": 100, "status": None})
+        from darkroom_app.mcp_server.tools import Tools
+        out = Tools(lambda: self.app[FACADE]).call("darkroom_thumbnail", {"path": a})
+        self.assertEqual(set(out["structuredContent"]), {"fingerprint", "edited", "width", "height"})
+
+    async def test_autosave_uses_remembered_snapshot(self):  # CONTRACT-s1-experience S2: the page's save path
+        """What the page sends when it remembers a snapshot: paste with that snapshot, then GET. After the
+        preset file changed in the library, and after switching to another preset and back, the old snapshot is
+        what lands on disk (never the library's current file); a preset gone from the library still saves."""
+        from darkroom_app.server import FACADE
+        lib = self.app[FACADE]._photo_library
+        a = write_photo(os.path.join(self.photos, "a.jpg"), 400, 300)
+        r = await self.client.put("/api/edit", json={"path": a, "preset_id": "p-expo", "strength": 100})
+        first = await r.json()
+        snap = first["edit"]["preset"]
+        old = snap["params"]
+        _xmpgen.write(self.presets, "p-expo.xmp", _xmpgen.xmp_text({"Exposure2012": "+2.50"}, name="變了", group="風景 - 海邊"))
+        self.app[FACADE].rebuild_library()
+        self.assertNotEqual(lib.library.get("p-expo").to_dict(), old)
+        r = await self.client.put("/api/edit", json={"path": a, "preset_id": "p-strong", "strength": 100})   # switched away
+        self.assertEqual((await r.json())["edit"]["preset"]["id"], "p-strong")
+        # back to p-expo the page's way: paste with the remembered snapshot, strength changed meanwhile
+        edit = {"schema": "darkroom-edit/1", "fingerprint": first["fingerprint"], "preset": snap, "strength": 130,
+                "overrides": {"Contrast2012": 5}}
+        r = await self.client.post("/api/edit/paste", json={"targets": [a], "edit": edit})
+        self.assertEqual((r.status, [x["ok"] for x in (await r.json())["results"]]), (200, [True]))
+        r = await self.client.get("/api/edit", params={"path": a})
+        got = await r.json()
+        self.assertEqual((got["edit"]["preset"]["params"], got["edit"]["strength"], got["edit"]["overrides"],
+                          got["preset_status"]), (old, 130, {"Contrast2012": 5}, "changed"))
+        # the preset gone from the library: the same path still saves (PUT would be not_found)
+        os.remove(os.path.join(self.presets, "p-expo.xmp"))
+        self.app[FACADE].rebuild_library()
+        r = await self.client.post("/api/edit/paste", json={"targets": [a], "edit": dict(edit, strength=140)})
+        self.assertEqual([x["ok"] for x in (await r.json())["results"]], [True])
+        r = await self.client.get("/api/edit", params={"path": a})
+        got = await r.json()
+        self.assertEqual((got["edit"]["strength"], got["preset_status"]), (140, "missing"))
 
 
 if __name__ == "__main__":

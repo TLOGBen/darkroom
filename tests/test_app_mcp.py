@@ -23,7 +23,8 @@ TOOLS = ["darkroom_presets_list", "darkroom_preset_show", "darkroom_preset_flags
          "darkroom_presets_rebuild",
          "darkroom_edit_get", "darkroom_edit_set", "darkroom_edit_clear", "darkroom_edit_paste",
          "darkroom_folder_thumbnails", "darkroom_thumbnail", "darkroom_edit_save_preset",   # PL6 / PLP6: 18..24
-         "darkroom_semantic_build", "darkroom_semantic_status"]   # CONTRACT-semantic-index SI1 / SI11: 25, 26
+         "darkroom_edit_restore",                                                           # S4: 25
+         "darkroom_semantic_build", "darkroom_semantic_status"]   # CONTRACT-semantic-index SI1 / SI11: 26, 27 (merge patch)
 SEMANTIC_BUILD_ANNOTATIONS = {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False,
                               "openWorldHint": True}   # verbatim (SI11)
 LIBRARY_IDEMPOTENT = {"darkroom_preset_rename": True, "darkroom_preset_move": True, "darkroom_preset_favorite": True,
@@ -32,7 +33,7 @@ LIBRARY_IDEMPOTENT = {"darkroom_preset_rename": True, "darkroom_preset_move": Tr
                       "darkroom_edit_save_preset": False}   # K16, PLP6
 EDIT_ANNOTATIONS = {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": True,
                     "openWorldHint": False}   # verbatim (CONTRACT-photo-library PL6)
-EDIT_TOOLS = ("darkroom_edit_set", "darkroom_edit_clear", "darkroom_edit_paste")
+EDIT_TOOLS = ("darkroom_edit_set", "darkroom_edit_clear", "darkroom_edit_paste", "darkroom_edit_restore")
 EXPORT_ANNOTATIONS = {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False,
                       "openWorldHint": False}   # verbatim (CONTRACT-export XP4)
 MODERN = {"io.modelcontextprotocol/protocolVersion": "2026-07-28"}

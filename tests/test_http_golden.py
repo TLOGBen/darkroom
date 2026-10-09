@@ -232,7 +232,7 @@ class TestGoldenCrossSite(GoldenCase):  # CONTRACT-export XP16 / app shell R10: 
 
 
 class TestGoldenRoutes(GoldenCase):
-    async def test_exactly_twenty_eight_routes(self):  # nine of L8 + export (XP1) + nine library (K16) + seven photo library (PL6, PLP2) + two semantic (SI11)
+    async def test_exactly_twenty_nine_routes(self):  # nine of L8 + export (XP1) + nine library (K16) + seven photo library (PL6, PLP2) + restore (S1 S4) + two semantic (SI11)
         routes = sorted((r.method, r.resource.canonical) for r in self.app.router.routes()
                         if r.method != "HEAD" and not r.resource.canonical.startswith("/static"))
         self.assertEqual(routes, sorted([
@@ -246,6 +246,7 @@ class TestGoldenRoutes(GoldenCase):
             ("POST", "/api/preset-library/rebuild"),
             ("GET", "/api/edit"), ("PUT", "/api/edit"), ("DELETE", "/api/edit"), ("POST", "/api/edit/paste"),
             ("POST", "/api/edit/save-preset"), ("GET", "/api/folder/thumbnails"), ("GET", "/api/thumbnail"),
+            ("POST", "/api/edit/restore"),   # CONTRACT-s1-experience S4
             ("POST", "/api/preset-library/semantic/build"), ("GET", "/api/preset-library/semantic")]))
 
     async def test_semantic_build_refused_over_http(self):  # CONTRACT-semantic-index SI11: the page never spends money

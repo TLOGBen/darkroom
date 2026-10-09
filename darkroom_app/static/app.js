@@ -13,9 +13,11 @@ const NARROW = window.matchMedia('(max-width: 960px)');
 const st = {
   presets: [], byId: {}, flags: {}, sliders: [], groups: [], byKey: {}, libGroups: {groups: [], ungrouped: 0},
   image: null, folder: null,
+  loading: null,                                                 // S1: an open photo whose edit is not restored yet
   detail: null,
   edit: null, clipboard: null,                                   // the open photo's saved edit; the copied edit (PL15)
-  grid: {folder: null, items: [], sel: new Set(), anchor: 0},   // the thumbnail grid (PLP9)
+  snapshots: {}, fingerprint: null, previous: false, editStatus: null,   // S2 / S4: what the photo library told us
+  grid: {folder: null, items: [], sel: new Set(), anchor: 0, filter: 'all', shown: null},   // the thumbnail grid (PLP9, S9)
   search: '', openFolders: {'\u0001fav': true}, openGroups: loadPref('openGroups', {basic: true}), hslTab: 'h', focusKey: null,
   holding: false, originalUrl: null, originalFor: null,
 };
@@ -27,8 +29,9 @@ function loadPref(k, dflt) {
 function savePref(k, v) { try { localStorage.setItem('darkroom.' + k, JSON.stringify(v)); } catch (e) { /* optional */ } }
 
 let toastT = null;
-function toast(msg, err) {
-  const t = $('#toast'); t.textContent = msg; t.className = 'show' + (err ? ' err' : '');
+function toast(msg, err, original) {    // S14: the shown sentence is Chinese; the original sits in the tooltip
+  const t = $('#toast'); t.textContent = L.explain(msg); t.title = original || msg;
+  t.className = 'show' + (err ? ' err' : '');
   clearTimeout(toastT); toastT = setTimeout(() => { t.className = ''; }, 2600);
 }
 function setStatus(msg, cls, detail) {
@@ -50,7 +53,8 @@ async function api(method, url, body, extra) {
 
 // ------------------------------------------------------------------ state (R5): dispatch -> L.reduce -> sync DOM
 function refreshUndo() { $('#undo').disabled = !L.canUndo(ed); $('#redo').disabled = !L.canRedo(ed); }
-function renderHint() { $('#carry-hint').hidden = !L.carryHintVisible(ed, !!st.image); }
+function renderHint() { $('#carry-hint').hidden = !L.carryHintVisible(ed, !!st.image, !!st.edit); }   // S11
+function refreshRestorePrevious() { $('#restore-previous-btn').disabled = !(st.image && !st.edit && st.previous); }   // S10
 
 async function dispatch(action, opts) {
   const prev = ed;
@@ -111,7 +115,7 @@ async function pump() {
       const job = pv.pending; pv.pending = null;
       const t0 = performance.now();
       let r;
-      try { r = await api('POST', '/api/preview', job.body); } catch (e) { setStatus('預覽失敗：' + e.message, 'err'); continue; }
+      try { r = await api('POST', '/api/preview', job.body); } catch (e) { setStatus(L.explain('預覽失敗：' + e.message), 'err', e.message); continue; }
       const ms = r.headers.get('X-Render-Ms');
       const blob = await r.blob();
       if (job.seq < pv.shownSeq) continue;
@@ -122,7 +126,7 @@ async function pump() {
       pv.url = url;
       if (!pv.pending) {
         const rt = performance.now() - t0;
-        setStatus('預覽：已更新', 'mute', `後端 ${(+ms).toFixed(0)} ms，往返 ${rt.toFixed(0)} ms`);
+        setStatus('已更新', 'mute', `預覽已更新：後端 ${(+ms).toFixed(0)} ms，往返 ${rt.toFixed(0)} ms`);   // S17: ms in the tooltip
       }
     }
   } finally {
@@ -139,6 +143,19 @@ function swapImage(img, url) {
   });
 }
 
+async function ensureOriginal() {      // the untouched preview of the open photo (shared by hold and compare)
+  if (!st.image) return false;
+  const id = st.image.image_id;
+  if (st.originalFor === id) return true;
+  const r = await api('POST', '/api/preview', {image_id: id, preset_id: null, strength: 100, overrides: {}});
+  const blob = await r.blob();
+  if (!st.image || st.image.image_id !== id) return false;
+  if (st.originalUrl) URL.revokeObjectURL(st.originalUrl);
+  st.originalUrl = URL.createObjectURL(blob);
+  st.originalFor = id;
+  return true;
+}
+
 async function showOriginal(on) {
   if (!st.image) return;
   st.holding = on;
@@ -146,13 +163,77 @@ async function showOriginal(on) {
   $('#hold').classList.toggle('on', on);
   const img = $('#preview-img');
   if (!on) { if (pv.url) img.src = pv.url; return; }
-  if (st.originalFor !== st.image.image_id) {
-    const r = await api('POST', '/api/preview', {image_id: st.image.image_id, preset_id: null, strength: 100, overrides: {}});
-    if (st.originalUrl) URL.revokeObjectURL(st.originalUrl);
-    st.originalUrl = URL.createObjectURL(await r.blob());
-    st.originalFor = st.image.image_id;
-  }
+  if (!(await ensureOriginal())) return;
   if (st.holding) img.src = st.originalUrl;
+}
+
+// ------------------------------------------------------------------ S7 A/B compare: the original over the edited
+// picture, clipped at the split; dragging the divider never asks the backend for anything. Not editor state: it
+// stays out of L.reduce and the undo history; the split survives a photo switch (sessionStorage).
+const ab = {on: false, split: L.AB_DEFAULT_SPLIT};
+
+function abLayout() {
+  const img = $('#preview-img'), orig = $('#ab-orig'), wrap = $('#preview');
+  if (!ab.on || img.hidden) return;
+  const l = img.offsetLeft, t = img.offsetTop, w = img.offsetWidth, h = img.offsetHeight;
+  Object.assign(orig.style, {left: l + 'px', top: t + 'px', width: w + 'px', height: h + 'px'});
+  orig.style.setProperty('--split', (ab.split * 100).toFixed(3) + '%');
+  Object.assign($('#ab-divider').style, {left: (l + ab.split * w) + 'px', top: t + 'px', bottom: (wrap.clientHeight - t - h) + 'px'});
+  $('#ab-tag-a').style.left = (l + 10) + 'px'; $('#ab-tag-a').style.top = (t + 10) + 'px';
+  $('#ab-tag-b').style.right = (wrap.clientWidth - l - w + 10) + 'px'; $('#ab-tag-b').style.top = (t + 10) + 'px';
+  $('#ab-handle').setAttribute('aria-valuenow', String(Math.round(ab.split * 100)));
+}
+
+async function abToggle(on) {
+  const want = on === undefined ? !ab.on : !!on;
+  if (want && !st.image) return;
+  if (want) {
+    if (!(await ensureOriginal())) return;
+    const orig = $('#ab-orig');
+    if (orig.src !== st.originalUrl) await new Promise((res) => { orig.onload = res; orig.onerror = res; orig.src = st.originalUrl; });
+  }
+  ab.on = want;
+  $('#preview').classList.toggle('ab', ab.on);
+  $('#ab-btn').classList.toggle('on', ab.on);
+  $('#ab-btn').setAttribute('aria-pressed', String(ab.on));
+  abLayout();
+}
+
+function abSetSplit(v) {
+  ab.split = Math.min(1, Math.max(0, v));
+  try { sessionStorage.setItem(L.AB_STORAGE_KEY, String(ab.split)); } catch (e) { /* optional */ }
+  abLayout();
+}
+
+function abMoveTo(clientX) {
+  const r = $('#preview-img').getBoundingClientRect();
+  abSetSplit((clientX - r.left) / r.width);
+}
+
+function abRefresh() {                   // after a photo switch: the original is another picture now
+  if (!ab.on) return;
+  if (!st.image) { abToggle(false); return; }
+  if (st.originalFor !== st.image.image_id) abToggle(true); else abLayout();
+}
+
+function initCompare() {
+  try { ab.split = L.abSplitFrom(sessionStorage.getItem(L.AB_STORAGE_KEY)); } catch (e) { /* optional */ }
+  const div = $('#ab-divider'), wrap = $('#preview');
+  div.addEventListener('pointerdown', (e) => {
+    e.preventDefault(); div.setPointerCapture(e.pointerId); wrap.classList.add('dragging'); abMoveTo(e.clientX);
+    const mv = (ev) => abMoveTo(ev.clientX);
+    const up = () => { wrap.classList.remove('dragging'); div.removeEventListener('pointermove', mv); div.removeEventListener('pointerup', up); };
+    div.addEventListener('pointermove', mv); div.addEventListener('pointerup', up);
+  });
+  div.addEventListener('dblclick', () => abSetSplit(L.AB_DEFAULT_SPLIT));
+  $('#ab-handle').addEventListener('keydown', (e) => {
+    const v = L.abStep(ab.split, e.key, e.shiftKey);
+    if (v === null) return;
+    e.preventDefault(); abSetSplit(v);
+  });
+  $('#ab-btn').onclick = () => abToggle();
+  if (typeof ResizeObserver === 'function') new ResizeObserver(abLayout).observe(wrap);
+  $('#preview-img').addEventListener('load', abRefresh);
 }
 
 // ------------------------------------------------------------------ preset tree (R4 flags, R6 keyboard)
@@ -315,20 +396,41 @@ function onTreeKey(e) {
 async function loadPreset(id) {
   st.detail = null;
   if (id !== null) {
-    try { st.detail = await (await api('GET', '/api/presets/' + encodeURIComponent(id))).json(); }
-    catch (e) { toast('讀取 preset 失敗：' + e.message, true); }
+    let detail = null;
+    try { detail = await (await api('GET', '/api/presets/' + encodeURIComponent(id))).json(); }
+    catch (e) { if (!st.snapshots[id]) toast('讀取 preset 失敗：' + e.message, true); }   // missing: the snapshot serves
     if (ed.presetId !== id) return;
+    // S3: a remembered snapshot (the photo's saved edit) is the slider baseline, not the library's current file
+    st.detail = st.snapshots[id] ? L.detailFromSnapshot(st.snapshots[id], detail) : detail;
   }
-  $('#preset-name').textContent = id === null ? NO_PRESET : st.byId[id].name;
+  $('#preset-name').textContent = id === null ? NO_PRESET
+    : (st.byId[id] ? st.byId[id].name : (st.detail && st.detail.name) || id);
   const banner = $('#skip-banner'), note = $('#skip-note');
   const b = st.detail ? st.detail.banner : '', n = st.detail ? st.detail.note : '';
   banner.textContent = b; banner.title = b; banner.hidden = !b;
   note.textContent = n; note.title = n; note.hidden = !n;
+  renderSkipDetail(b, n);
   renderStrength();
   renderTree();
 }
 
 function selectPreset(id) { return dispatch({type: 'selectPreset', id}); }   // strength and tweaks are kept (R5)
+
+// S12: the one-line toolbar keeps its height (R4); the full text opens over the preview instead
+function renderSkipDetail(banner, note) {
+  const box = $('#skip-detail');
+  box.innerHTML = '';
+  for (const t of [banner, note]) {
+    if (!t) continue;
+    const p = document.createElement('p'); p.textContent = t; box.appendChild(p);
+  }
+  if (!banner && !note) box.hidden = true;
+}
+function toggleSkipDetail(on) {
+  const box = $('#skip-detail');
+  box.hidden = on === undefined ? !box.hidden : !on;
+  if (box.hidden && box.contains(document.activeElement)) $('#skip-banner').focus();
+}
 
 // ------------------------------------------------------------------ inline value editing (R6)
 function editValue(span, current, spec, commit) {
@@ -359,8 +461,12 @@ function updateRow(row) {
   const key = row.dataset.key, s = st.byKey[key], v = view(key);
   row.classList.toggle('adjusted', !!ed.tweaks[key]);
   row.classList.toggle('clamped', !!v.clamped);
+  row.classList.toggle('at-min', v.clamped === 'min');
+  row.classList.toggle('at-max', v.clamped === 'max');
   const inp = row.querySelector('input[type=range]');
   if (document.activeElement !== inp || !row.dragging) inp.value = v.value;
+  const vars = L.sliderVars(s, v);       // S17: the preset's mark and the tweak line are drawn from these
+  inp.style.setProperty('--base', vars.base); inp.style.setProperty('--lo', vars.lo); inp.style.setProperty('--hi', vars.hi);
   const vs = row.querySelector('.v');
   if (!vs.querySelector('input')) vs.textContent = L.fmtNum(s, v.value);
   row.querySelector('.cn').textContent = L.clampNote(v);
@@ -369,12 +475,14 @@ function updateRow(row) {
 
 function sliderRow(s) {
   const row = document.createElement('div');
-  row.className = 'sl';
+  row.className = 'sl' + (L.bipolar(s) ? ' bipolar' : '');
   row.dataset.key = s.key;
-  row.innerHTML = `<label></label><input type="range" min="${s.min}" max="${s.max}" step="${s.step}">` +
+  row.innerHTML = `<label></label><span class="track"><input type="range" min="${s.min}" max="${s.max}" step="${s.step}"></span>` +
     '<span class="vals"><span class="v editable" title="點兩下輸入數值"></span><span class="cn"></span></span>' +
     '<button class="reset" title="還原這一項的微調（回到 preset × 強度）">↺</button>';
-  row.querySelector('label').textContent = s.label;
+  const dot = L.hueDot(s.key);
+  if (dot) { const h = document.createElement('span'); h.className = 'hue'; h.style.background = dot; row.querySelector('label').appendChild(h); }
+  row.querySelector('label').appendChild(document.createTextNode(s.label));
   const inp = row.querySelector('input');
   inp.setAttribute('aria-label', s.label);
   inp.addEventListener('input', () => { row.dragging = true; setValue(s.key, +inp.value, 'slider:' + s.key); });  // one step per drag
@@ -446,7 +554,7 @@ function refreshBadges() {
   document.querySelectorAll('#sliders .acc').forEach((acc) => {
     const g = acc.dataset.group;
     const n = st.sliders.filter((s) => s.group === g && ed.tweaks[s.key]).length;
-    acc.querySelector('.tc').textContent = n ? `● 微調 ${n} 項` : '';
+    acc.querySelector('.tc').textContent = n ? `微調 ${n} 項` : '';   // the amber dot is drawn by CSS (S17)
   });
 }
 
@@ -462,8 +570,21 @@ function renderStrength() {
   $('#strength').disabled = !on;
   $('#strength-100').disabled = !on;
   if (document.activeElement !== $('#strength')) $('#strength').value = ed.strength;
-  $('#strength-value').textContent = on ? ed.strength + '%' : '—';
+  const val = $('#strength-value');
+  if (!val.querySelector('input')) {
+    val.textContent = on ? String(ed.strength) : '—';
+    if (on) { const p = document.createElement('span'); p.className = 'pct'; p.textContent = '%'; val.appendChild(p); }
+  }
+  const vars = L.strengthVars(on ? ed.strength : 100);   // S17: the dial fills from 100 % toward the thumb
+  for (const [k, v] of Object.entries(vars)) $('#strength').style.setProperty('--' + k, v);
   $('#strength').title = on ? '' : '先選一個 preset';
+}
+
+function setCanvas(name) {              // S17: the preview background, remembered per browser
+  const c = L.canvasFrom(name);
+  document.body.dataset.canvas = c;
+  for (const b of document.querySelectorAll('.canvas-pick button')) b.setAttribute('aria-pressed', String(b.dataset.canvas === c));
+  savePref('canvas', c);
 }
 const setStrength = (v, gesture) => dispatch({type: 'setStrength', value: v, gesture});
 
@@ -573,6 +694,7 @@ async function savePreset() {
   const group = prompt('群組（用「 - 」分層）', L.USER_GROUP);
   if (group === null) return;
   if (st.image) await flushSave();
+  await flushRetries();                 // S13g''': no failed save is left to land over what follows
   if (st.image && st.edit) {            // PLP6: the photo library's edit (its snapshot) is the source
     // (a photo whose state is only carried over, never changed, has no edit yet: the library flow below, seal F4)
     try {
@@ -587,62 +709,139 @@ async function savePreset() {
 }
 
 // ------------------------------------------------------------------ photos
+let openSeq = 0;                        // S1: the newest openPhoto wins; older responses are dropped
+
 async function openPhoto(path) {
   path = (path || '').trim().replace(/^"|"$/g, '');
   if (!path) return;
+  const token = ++openSeq;              // S1: taken before the flushes, so the newest click wins while a save is sent
   await flushSave();                    // the previous photo's last change goes out first (PL15)
+  await flushRetries();                 // S13g''': no failed save is left to land over what follows
+  if (token !== openSeq) return;
   setStatus('讀取照片中…', 'busy');
   let info;
   try { info = await (await api('POST', '/api/open', {path})).json(); }
-  catch (e) { setStatus('預覽：待命'); toast('開啟失敗：' + e.message, true); return; }
+  catch (e) { if (token === openSeq) openFailed(path, e.message); return; }
+  if (token !== openSeq) return;
+  // from here until the saved edit is restored nothing is scheduled for saving (S1): the state is in transit
+  st.loading = token;
   st.image = Object.assign(info, {path});
+  st.snapshots = {}; st.fingerprint = null; st.previous = false; st.editStatus = null;
   $('#photo-path').value = path;
   savePref('lastPath', path);
   $('#photo-size').textContent = `${info.width}×${info.height}`;
   $('#photo-size').title = `預覽 ${info.preview_width}×${info.preview_height}`;
   try { st.folder = await (await api('GET', '/api/folder?image_id=' + info.image_id)).json(); }
   catch (e) { st.folder = null; }
+  if (token !== openSeq) return;
   renderPosition();
   refreshExport();
-  await loadEdit(path);
-  if (st.image && st.image.path === path) requestPreview();
+  await loadEdit(path, token);
+  if (token !== openSeq) return;
+  st.loading = null;
+  requestPreview();
+}
+
+function openFailed(path, reason) {     // S13 (i): the old picture goes away, the reason is readable
+  st.image = null; st.folder = null; st.loading = null;
+  applyEditInfo({fingerprint: null, edit: null, preset_status: null, previous: false});
+  const img = $('#preview-img'); img.hidden = true; img.removeAttribute('src');
+  const empty = $('#preview-empty'); empty.hidden = false;
+  empty.textContent = L.openFailed(L.baseName(path), L.explain(reason)); empty.title = reason;
+  $('#photo-size').textContent = '';
+  renderPosition();
+  refreshExport();
+  setStatus('預覽：待命');
+  toast(L.openFailed(L.baseName(path), L.explain(reason)), true, reason);
 }
 
 // ------------------------------------------------------------------ photo library: autosave (PL15 / PLP9)
 // The open photo's edit is sent AUTOSAVE_MS after the last change; only the newest state waits (latest wins).
-const save = {timer: null, dirty: false, promise: null};
+// S1: what is sent (path and body) is fixed when the change is scheduled, never read later from st.image.
+// retries: path -> a failed save waiting out its back-off (S13 g / S13g'), one per photo
+const save = {timer: null, dirty: false, pending: null, promise: null, retries: new Map()};
 
 function scheduleSave() {
-  if (!st.image) return;
+  if (!st.image || st.loading) return;
+  const path = st.image.path;
+  save.pending = {path, req: L.editRequest(ed, path, st.snapshots, st.fingerprint), retried: false};
+  save.retries.delete(path);            // newer state of this photo supersedes its failed save
   save.dirty = true;
   clearTimeout(save.timer);
   save.timer = setTimeout(flushSave, L.AUTOSAVE_MS);
 }
 
-async function sendSave(path, body) {
+async function sendSave(job) {
+  const {path, req} = job;
   try {
-    // keepalive: a save sent from beforeunload survives the page going away (seal F3)
-    const res = await (await api('PUT', '/api/edit', body, {keepalive: true})).json();
+    let res;
+    if (req.method === 'PASTE') {       // S2: the remembered snapshot goes back as it is (PL8), then re-read
+      const r = await (await api('POST', '/api/edit/paste', req.body, {keepalive: true})).json();
+      const bad = r.results.find((x) => !x.ok);
+      if (bad) throw new Error(bad.error);
+      res = await (await api('GET', '/api/edit?path=' + encodeURIComponent(path))).json();
+    } else {
+      const body = req.body;
+      // keepalive: a save sent from beforeunload survives the page going away (seal F3)
+      res = await (await api('PUT', '/api/edit', body, {keepalive: true})).json();
+    }
     if (st.image && st.image.path === path) applyEditInfo(res);
-  } catch (e) { toast(L.saveEditFailed(e.message), true); }
+  } catch (e) {
+    toast(L.saveEditFailed(L.explain(e.message)), true, e.message);
+    if (!job.retried) {                 // S13 (g): one more try after a short back-off, latest state wins
+      // dirty again at once: a page closed during the back-off still sends this body from beforeunload
+      // (kept apart from save.pending, so a flush already looping does not resend it before the back-off)
+      save.retries.set(path, Object.assign({}, job, {retried: true})); save.dirty = true;
+      setTimeout(() => flushRetry(path), L.SAVE_RETRY_MS);
+    }
+  }
 }
 
 async function flushSave() {            // sends what is pending and waits until nothing is in flight
   clearTimeout(save.timer); save.timer = null;
-  while (save.dirty || save.promise) {
+  while (save.pending || save.promise) {
     if (save.promise) { await save.promise; continue; }
-    save.dirty = false;
-    if (!st.image) break;
-    const path = st.image.path;
-    save.promise = sendSave(path, L.editBody(ed, path)).finally(() => { save.promise = null; });
+    const job = save.pending; save.pending = null; save.dirty = false;
+    if (save.retries.size) save.dirty = true;   // a failed save still waits for its retry: unload must send it
+    save.promise = sendSave(job).finally(() => { save.promise = null; });
   }
 }
 
-function applyEditInfo(res) {           // {fingerprint, edit, preset_status} from get_edit / set_edit
+async function flushRetry(path) {       // S13g': the one retry of a failed save (after its back-off, or now)
+  const r = save.retries.get(path);
+  if (!r) return;
+  const due = L.retryDue(save.pending && save.pending.path, path);
+  if (due === 'superseded') { save.retries.delete(path); return; }
+  if (due === 'after') await flushSave();          // another photo's pending save goes first
+  if (save.retries.get(path) !== r) return;          // superseded (or sent) meanwhile
+  save.retries.delete(path);
+  if (save.pending && save.pending.path === path) return;
+  save.pending = r;
+  await flushSave();
+}
+
+async function flushRetries() {         // before another photo is opened: nothing of a failed save is left behind
+  for (const path of [...save.retries.keys()]) await flushRetry(path);
+  await flushSave();                    // a retry another caller already took may still be in flight: wait it out
+}
+
+function unloadSave() {                 // S13 (g): the newest body goes out at once, not after the one in flight
+  const jobs = L.unloadJobs(save.pending, [...save.retries.values()]);   // failed saves in back-off go out too
+  save.pending = null; save.retries.clear(); save.dirty = false;
+  for (const job of jobs) sendSave(job);
+}
+
+function applyEditInfo(res) {           // {fingerprint, edit, preset_status, previous} from the photo library
   st.edit = res.edit;
+  st.fingerprint = res.fingerprint || null;
+  st.previous = !!res.previous;
+  st.editStatus = res.preset_status || null;
+  if (res.edit && res.edit.preset) st.snapshots[res.edit.preset.id] = res.edit.preset;   // S2: remembered
   const s = $('#edit-status'), text = L.presetStatusText(res.preset_status);
   s.textContent = text; s.title = text; s.hidden = !text;
+  renderHint();
   refreshCopy();
+  refreshRestorePrevious();
 }
 
 function restore(res) {                 // a saved edit comes back: through the reducer, never scheduling a save
@@ -651,9 +850,16 @@ function restore(res) {                 // a saved edit comes back: through the 
   dispatch({type: 'restoreEdit', edit: res.edit}, {restore: true});
 }
 
-async function loadEdit(path) {         // after opening: restore the saved edit, else keep today's state (R5)
-  try { restore(await (await api('GET', '/api/edit?path=' + encodeURIComponent(path))).json()); }
-  catch (e) { applyEditInfo({edit: null, preset_status: null}); toast(L.loadEditFailed(e.message), true); }
+async function loadEdit(path, token) {  // after opening: restore the saved edit, else keep today's state (R5)
+  let res;
+  try { res = await (await api('GET', '/api/edit?path=' + encodeURIComponent(path))).json(); }
+  catch (e) {
+    if (!st.image || st.image.path !== path) return;
+    applyEditInfo({edit: null, preset_status: null}); toast(L.loadEditFailed(L.explain(e.message)), true, e.message);
+    return;
+  }
+  if (!st.image || st.image.path !== path || (token !== undefined && token !== openSeq)) return;   // S1
+  restore(res);
 }
 
 // ------------------------------------------------------------------ photo library: the grid (PL15 / PLP9)
@@ -666,9 +872,10 @@ function showGrid(on) {
   $('#grid').hidden = !on;
   $('#grid-btn').setAttribute('aria-pressed', String(on));
   if (!on) return;
+  if (st.grid.folder !== null) return;    // S13 (f): a folder the user loaded by hand stays, with its selection
   const folder = st.image ? st.image.path.replace(/[\\/][^\\/]*$/, '') : $('#grid-path').value;
   if (folder && !$('#grid-path').value) $('#grid-path').value = folder;
-  if (folder && folder !== st.grid.folder) loadGrid(folder);
+  if (folder) loadGrid(folder);
 }
 
 async function loadGrid(folder) {
@@ -676,19 +883,47 @@ async function loadGrid(folder) {
   if (!folder) return;
   let res;
   try { res = await (await api('GET', '/api/folder/thumbnails?folder=' + encodeURIComponent(folder))).json(); }
-  catch (e) { toast(L.loadFolderFailed(e.message), true); return; }
-  st.grid = {folder: res.folder, items: res.items, sel: new Set(), anchor: 0};
+  catch (e) { toast(L.loadFolderFailed(L.explain(e.message)), true, e.message); return; }
+  const keep = st.grid.folder === res.folder ? st.grid : null;       // S9: a re-read keeps the filter and selection
+  st.grid = {folder: res.folder, items: res.items, sel: keep ? keep.sel : new Set(), anchor: keep ? keep.anchor : 0,
+             filter: st.grid.filter || 'all'};
   $('#grid-path').value = res.folder;
   renderGrid();
 }
 
+async function setGridFilter(filter) {   // S9: re-read the listing (fingerprints land in the background), then show
+  if (!L.FILTERS.includes(filter)) return;
+  st.grid.filter = filter;
+  for (const b of document.querySelectorAll('#grid-filter button')) b.setAttribute('aria-pressed', String(b.dataset.filter === filter));
+  if (st.grid.folder) await loadGrid(st.grid.folder); else renderGrid();
+}
+
+function releaseGrid(box) {             // S13 (e): nothing of the old grid stays behind
+  for (const cell of box.querySelectorAll('.cell')) {
+    if (gridIO) gridIO.unobserve(cell);
+    const img = cell.querySelector('img');
+    if (img && img.src.startsWith('blob:')) URL.revokeObjectURL(img.src);
+  }
+  box.innerHTML = '';
+}
+
 function renderGrid() {
   const box = $('#grid-cells');
-  box.innerHTML = '';
-  st.grid.items.forEach((it, i) => {
+  releaseGrid(box);
+  if (!st.grid.items.length) {           // S13 (j)
+    const e = document.createElement('div'); e.className = 'grid-empty'; e.textContent = L.GRID_EMPTY;
+    box.appendChild(e);
+  }
+  const {shown, pending} = L.gridFilter(st.grid.items, st.grid.filter);   // S9
+  const shownSet = new Set(shown.map(([i]) => i));
+  st.grid.shown = shownSet;
+  st.grid.sel = L.onlyShown(st.grid.sel, shownSet);   // selection only among what is shown
+  $('#grid-pending').textContent = pending ? L.gridPending(pending) : '';
+  $('#grid-pending').hidden = !pending;
+  shown.forEach(([i, it], k) => {
     const cell = document.createElement('div');
     cell.className = 'cell' + (it.edited ? ' edited' : '');
-    cell.dataset.path = it.path; cell.dataset.i = String(i); cell.tabIndex = i ? -1 : 0;
+    cell.dataset.path = it.path; cell.dataset.i = String(i); cell.tabIndex = k ? -1 : 0;
     cell.setAttribute('role', 'option');
     cell.innerHTML = '<div class="pic"></div><span class="mark" aria-hidden="true"></span><span class="nm"></span>';
     cell.querySelector('.nm').textContent = it.name;
@@ -699,8 +934,8 @@ function renderGrid() {
       if (e.key === 'Enter') { e.preventDefault(); openFromGrid(it.path); }
       else if (e.key === ' ') { e.preventDefault(); selectCell(i, {ctrl: true}); }
       else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
-        const n = box.children[i + (e.key === 'ArrowRight' ? 1 : -1)];
-        if (n) { e.preventDefault(); n.focus(); }
+        const n = cell[e.key === 'ArrowRight' ? 'nextElementSibling' : 'previousElementSibling'];
+        if (n && n.classList.contains('cell')) { e.preventDefault(); n.focus(); }
       }
     };
     box.appendChild(cell);
@@ -715,27 +950,38 @@ async function loadThumb(cell) {        // only once the cell is visible; the by
   const pic = cell.querySelector('.pic');
   try {
     const r = await api('GET', '/api/thumbnail?path=' + encodeURIComponent(cell.dataset.path));
-    cell.classList.toggle('edited', r.headers.get('X-Edited') === '1');
+    const edited = r.headers.get('X-Edited') === '1';
+    cell.classList.toggle('edited', edited);
+    const it = st.grid.items[+cell.dataset.i];
+    if (it) it.edited = edited;
+    let info = null;                     // S8: the badge says which preset, how strong, and whether it is stale
+    try { info = r.headers.get('X-Edit') ? JSON.parse(decodeURIComponent(r.headers.get('X-Edit'))) : null; } catch (e) { info = null; }
+    cell.classList.toggle('stale', edited && L.stale(info));
+    cell.querySelector('.mark').title = edited ? L.badgeTitle(info) : '';
+    cell.title = edited ? `${cell.dataset.path}\n${L.badgeTitle(info)}` : cell.dataset.path;
     const img = document.createElement('img');
-    img.alt = ''; img.src = URL.createObjectURL(await r.blob());
+    img.alt = '';
+    const url = URL.createObjectURL(await r.blob());
+    img.onload = () => URL.revokeObjectURL(url);     // decoded: the blob's bytes are freed (S13 e)
+    img.src = url;
     pic.innerHTML = ''; pic.appendChild(img);
   } catch (e) {
     cell.classList.add('missing');
     pic.textContent = cell.querySelector('.nm').textContent;
-    pic.title = e.message;
+    pic.title = L.explain(e.message);
   }
 }
 
 function selectCell(i, mods) {
   const r = L.gridSelect(st.grid.sel, i, mods, st.grid.anchor);
-  st.grid.sel = r.sel; st.grid.anchor = r.anchor;
+  st.grid.sel = L.onlyShown(r.sel, st.grid.shown); st.grid.anchor = r.anchor;   // S9: only what is shown
   renderGridSelection();
 }
 
 function renderGridSelection() {
-  const cells = $('#grid-cells').children;
+  const cells = $('#grid-cells').querySelectorAll('.cell');
   for (const c of cells) c.classList.toggle('selected', st.grid.sel.has(+c.dataset.i));
-  $('#grid-count').textContent = L.gridCount(st.grid.sel.size, st.grid.items.length);
+  $('#grid-count').textContent = L.gridCount(st.grid.sel.size, cells.length);   // S9: m = what is shown
   refreshCopy();
 }
 
@@ -750,6 +996,61 @@ function refreshCopy() {                // copy needs the open photo's edit; pas
   $('#copy-edit-btn').disabled = !st.edit;
   $('#paste-edit-btn').disabled = !(st.clipboard && st.grid.sel.size > 0);
   $('#export-selected-btn').disabled = !(st.grid.sel.size > 0);
+  $('#grid-reset-original-btn').disabled = !(st.grid.sel.size > 0);     // S10
+  $('#grid-restore-btn').disabled = !(st.grid.sel.size > 0);
+}
+
+// S10: reset to original / bring back the previous edit, for the selected photos (one request each, in order)
+async function gridEach(method, url, targets, summaryFn, cls) {
+  const results = [];
+  for (const p of targets) {
+    try {
+      const r = await api(method, url + (method === 'DELETE' ? '?path=' + encodeURIComponent(p) : ''),
+                          method === 'DELETE' ? undefined : {path: p});
+      await r.json();
+      results.push({ok: true, target: p});
+    } catch (e) { results.push({ok: false, target: p, error: e.message}); }
+  }
+  gridBatchDone(summaryFn, targets, results);
+  markCells(targets, results, cls);
+  if (st.image && targets.includes(st.image.path)) await loadEdit(st.image.path);
+}
+
+async function gridResetOriginal() {
+  const targets = selectedPaths();
+  if (!targets.length) return;
+  await flushSave();
+  await flushRetries();                 // S13g''': no failed save is left to land over what follows
+  if (!confirm(L.resetConfirm(targets.length))) return;
+  await gridEach('DELETE', '/api/edit', targets, L.resetDone, 'plain');
+}
+
+async function gridRestore() {
+  const targets = selectedPaths();
+  if (!targets.length) return;
+  await flushSave();
+  await flushRetries();                 // S13g''': no failed save is left to land over what follows
+  await gridEach('POST', '/api/edit/restore', targets, L.restoreDone, 'edited');
+}
+
+async function resetOriginal() {        // the editor: one undo step; the photo library keeps the cleared edit
+  if (!st.image) return;
+  const before = ed;
+  await dispatch({type: 'resetToOriginal'});
+  if (ed !== before) toast(L.RESET_TOAST);
+}
+
+async function restorePrevious() {
+  if (!st.image || st.edit || !st.previous) return;
+  const path = st.image.path;
+  await flushSave();
+  await flushRetries();                 // S13g''': no failed save is left to land over what follows
+  // a retried save just gave this photo an edit, or another photo is being opened: nothing to restore
+  if (!st.image || st.image.path !== path || st.loading || st.edit) return;
+  try {
+    const res = await (await api('POST', '/api/edit/restore', {path})).json();
+    if (st.image && st.image.path === path) { restore(res); requestPreview(); toast(L.RESTORE_TOAST); }
+  } catch (e) { toast(e.message, true); }
 }
 
 function copyEdit() {
@@ -759,45 +1060,86 @@ function copyEdit() {
   refreshCopy();
 }
 
+function showGridResult(summary, lines) {   // S13 (b): every failed item stays readable, not only a count
+  const box = $('#grid-result');
+  box.innerHTML = '';
+  const head = document.createElement('div'); head.className = 'ir-head'; head.textContent = summary;
+  const close = document.createElement('button'); close.className = 'icon'; close.textContent = '×'; close.title = '關閉';
+  close.onclick = () => { box.hidden = true; };
+  head.appendChild(close);
+  box.appendChild(head);
+  for (const l of lines) { const d = document.createElement('div'); d.className = 'err'; d.textContent = l; box.appendChild(d); }
+  box.hidden = !lines.length;
+}
+
+function gridBatchDone(summaryFn, targets, results) {   // results: [{ok, target|source, error}] in target order
+  const ok = results.filter((r) => r.ok).length;
+  const lines = results.map((r, k) => (r.ok ? null : `${L.baseName(targets[k])}：${L.explain(r.error)}`)).filter(Boolean);
+  const summary = summaryFn(ok, results.length - ok);
+  showGridResult(summary, lines);
+  toast(summary, lines.length > 0);
+  return ok;
+}
+
+function markCells(targets, results, cls) {
+  results.forEach((r, k) => {
+    if (!r.ok) return;
+    const i = st.grid.items.findIndex((it) => it.path === targets[k]);
+    const cell = $('#grid-cells').querySelector(`.cell[data-i="${i}"]`);
+    if (i >= 0) st.grid.items[i].edited = cls === 'edited';
+    if (cell) { cell.classList.toggle('edited', cls === 'edited'); cell.classList.remove('stale'); }
+  });
+}
+
 async function pasteEdit() {
   const targets = selectedPaths();
   if (!st.clipboard || !targets.length) return;
+  await flushSave();                    // S13 (h): the open photo's pending save never races the paste
+  await flushRetries();                 // S13g''': no failed save is left to land over what follows
   if (!confirm(L.pasteConfirm(st.clipboard.name, targets.length))) return;
   let res;
   try { res = await (await api('POST', '/api/edit/paste', {targets, edit: st.clipboard.edit})).json(); }
   catch (e) { toast(e.message, true); return; }
-  const ok = res.results.filter((r) => r.ok).length;
-  toast(L.pasteDone(ok, res.results.length - ok), ok < res.results.length);
-  res.results.forEach((r, k) => {
-    if (!r.ok) return;
-    const cell = $('#grid-cells').querySelector(`.cell[data-i="${st.grid.items.findIndex((it) => it.path === targets[k])}"]`);
-    if (cell) cell.classList.add('edited');
-  });
+  gridBatchDone(L.pasteDone, targets, res.results);
+  markCells(targets, res.results, 'edited');
   if (st.image && targets.includes(st.image.path)) await loadEdit(st.image.path);
 }
 
 async function exportSelected() {       // each photo with its own saved edit; format / quality from the toolbar
   const paths = selectedPaths();
-  if (!paths.length) return;
-  await flushSave();
-  const edits = {};
-  for (const p of paths) {
-    try { edits[p] = await (await api('GET', '/api/edit?path=' + encodeURIComponent(p))).json(); }
-    catch (e) { edits[p] = null; }
+  if (!paths.length || exp.busy) return;
+  exp.busy = true;                      // S13 (a): a second click must not export everything twice
+  const btn = $('#export-selected-btn');
+  btn.disabled = true; btn.textContent = L.EXPORT_BUSY;
+  try {
+    await flushSave();
+    await flushRetries();                 // S13g''': no failed save is left to land over what follows
+    const edits = {}, lines = [];
+    for (const p of paths) {
+      try { edits[p] = await (await api('GET', '/api/edit?path=' + encodeURIComponent(p))).json(); }
+      catch (e) { edits[p] = null; lines.push(`${L.baseName(p)}：${L.loadEditFailed(L.explain(e.message))}`); }
+    }
+    const {items, failed} = L.exportItems(paths, edits);
+    let ok = 0, fail = failed;
+    if (items.length) {
+      const format = $('#export-format').value;
+      const body = {items, format};
+      if (format === 'jpeg') body.quality = L.exportBody({}, format, $('#export-quality').value).quality;
+      try {
+        const res = await (await api('POST', '/api/export', body)).json();
+        ok = res.results.filter((r) => r.ok).length;
+        fail += res.results.length - ok;
+        res.results.forEach((r) => { if (!r.ok) lines.push(`${L.baseName(r.source)}：${L.explain(r.error)}`); });
+      } catch (e) { fail += items.length; lines.push(L.explain(e.message)); }
+    }
+    showGridResult(L.exportSelectedDone(ok, fail), lines);
+    toast(L.exportSelectedDone(ok, fail), fail > 0);
+  } finally {
+    exp.busy = false;
+    btn.textContent = '匯出所選';
+    refreshCopy();
+    refreshExport();
   }
-  const {items, failed} = L.exportItems(paths, edits);
-  let ok = 0, fail = failed;
-  if (items.length) {
-    const format = $('#export-format').value;
-    const body = {items, format};
-    if (format === 'jpeg') body.quality = L.exportBody({}, format, $('#export-quality').value).quality;
-    try {
-      const res = await (await api('POST', '/api/export', body)).json();
-      ok = res.results.filter((r) => r.ok).length;
-      fail += res.results.length - ok;
-    } catch (e) { fail += items.length; toast(e.message, true); }
-  }
-  toast(L.exportSelectedDone(ok, fail), fail > 0);
 }
 
 // ------------------------------------------------------------------ export (X13): reads the edit, never changes it
@@ -808,6 +1150,14 @@ function refreshExport() {
   b.disabled = !st.image || exp.busy;
   b.textContent = exp.busy ? L.EXPORT_BUSY : '匯出';
   $('#export-quality').disabled = $('#export-format').value !== 'jpeg';
+  $('#ab-btn').disabled = !st.image;                 // S7
+  $('#reset-original-btn').disabled = !st.image;     // S10
+}
+
+async function commitCarried() {        // S11: a carried-over state becomes this photo's edit before it is exported
+  if (!st.image || st.edit || !L.carryHintVisible(ed, true, false)) return;
+  scheduleSave();
+  await flushSave();
 }
 
 async function exportPhoto() {
@@ -815,6 +1165,7 @@ async function exportPhoto() {
   exp.busy = true;
   refreshExport();
   const name = L.baseName(st.image.path);
+  await commitCarried();
   try {
     const res = await (await api('POST', '/api/export',
       L.exportBody(currentRequest(), $('#export-format').value, $('#export-quality').value))).json();
@@ -853,7 +1204,8 @@ function toggleLib() {
 }
 
 // ------------------------------------------------------------------ wiring
-const typing = (el) => el && (el.matches('input[type=text], input[type=search], input[type=number]') || el.isContentEditable);
+const typing = (el) => !!(el && el.matches && (el.matches('input[type=text], input[type=search], input[type=number]') || el.isContentEditable));
+const inField = (el) => !!(el && el.matches && el.matches('input, select, textarea'));   // S13 (c): arrows stay there
 
 async function init() {
   $('#open-form').addEventListener('submit', (e) => { e.preventDefault(); openPhoto($('#photo-path').value); });
@@ -869,8 +1221,18 @@ async function init() {
   $('#strength-value').addEventListener('dblclick', () => {
     if (!L.strengthEnabled(ed)) return;
     editValue($('#strength-value'), String(ed.strength), STRENGTH, (v) => setStrength(v));
+    const inp = $('#strength-value input');
+    if (inp) inp.addEventListener('blur', () => setTimeout(renderStrength, 0), {once: true});
   });
+  setCanvas(loadPref('canvas', 'dark'));                                         // S17
+  for (const b of document.querySelectorAll('.canvas-pick button')) b.onclick = () => setCanvas(b.dataset.canvas);
   $('#reset-all').onclick = () => dispatch({type: 'resetAll'});
+  $('#reset-original-btn').onclick = resetOriginal;          // S10
+  $('#restore-previous-btn').onclick = restorePrevious;
+  $('#grid-reset-original-btn').onclick = gridResetOriginal;
+  $('#grid-restore-btn').onclick = gridRestore;
+  for (const b of document.querySelectorAll('#grid-filter button')) b.onclick = () => setGridFilter(b.dataset.filter);   // S9
+  initCompare();                                             // S7
   $('#export-btn').onclick = exportPhoto;
   $('#save-preset-btn').onclick = savePreset;
   $('#import-btn').onclick = () => $('#import-file').click();
@@ -879,13 +1241,19 @@ async function init() {
   document.addEventListener('click', (e) => { if (!e.target.closest('.menu-pop')) closeMenu(); });
   $('#export-format').addEventListener('change', refreshExport);
   refreshExport();
+  for (const id of ['#skip-banner', '#skip-note']) {       // S12
+    $(id).addEventListener('click', () => toggleSkipDetail());
+    $(id).addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleSkipDetail(); } });
+  }
+  $('#skip-detail').addEventListener('click', () => toggleSkipDetail(false));
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('#skip-detail').hidden) toggleSkipDetail(false); });
   $('#grid-btn').onclick = () => showGrid(!document.body.classList.contains('grid-open'));
   $('#grid-load').onclick = () => loadGrid($('#grid-path').value);
   $('#grid-path').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); loadGrid($('#grid-path').value); } });
   $('#copy-edit-btn').onclick = copyEdit;
   $('#paste-edit-btn').onclick = pasteEdit;
   $('#export-selected-btn').onclick = exportSelected;
-  window.addEventListener('beforeunload', () => { if (save.dirty) flushSave(); });
+  window.addEventListener('beforeunload', () => { if (save.dirty) unloadSave(); });
   refreshCopy();
   $('#search').addEventListener('input', (e) => { st.search = e.target.value.trim(); renderTree(); });
   $('#preset-tree').addEventListener('keydown', onTreeKey);
@@ -898,11 +1266,15 @@ async function init() {
     if ((e.ctrlKey || e.metaKey) && k === 'z') { e.preventDefault(); if (e.shiftKey) redo(); else undo(); return; }
     if ((e.ctrlKey || e.metaKey) && k === 'y') { e.preventDefault(); redo(); return; }
     if (e.target.closest && (e.target.closest('#preset-tree') || e.target.closest('#grid'))) return;
+    if (k === L.AB_KEY && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && !e.repeat) { abToggle(); return; }   // S7
     if (e.key === '\\' && !e.repeat) showOriginal(true);
-    else if (e.key === 'ArrowLeft' && !e.target.matches('input')) step(-1);
-    else if (e.key === 'ArrowRight' && !e.target.matches('input')) step(1);
+    else if (e.key === 'ArrowLeft' && !inField(e.target) && !e.repeat) step(-1);
+    else if (e.key === 'ArrowRight' && !inField(e.target) && !e.repeat) step(1);
   });
   document.addEventListener('keyup', (e) => { if (e.key === '\\' && st.holding) showOriginal(false); });
+  // S13 (d): a window that loses focus never gets the keyup; the original must not stay stuck on screen
+  window.addEventListener('blur', () => { if (st.holding) showOriginal(false); });
+  document.addEventListener('visibilitychange', () => { if (document.hidden && st.holding) showOriginal(false); });
 
   const [presets, sl, flags, groups] = await Promise.all([
     api('GET', '/api/presets').then((r) => r.json()),
@@ -919,12 +1291,16 @@ async function init() {
   renderSliders();
   refreshUndo();
   refreshSavePreset();
+  // S15: ?path= only fills the box (a link from outside the browser must not make the app read a path);
+  // the last opened photo is restored as before
   const q = new URLSearchParams(location.search).get('path');
-  const last = q || loadPref('lastPath', '');
-  if (last) { $('#photo-path').value = last; openPhoto(last); }
+  const last = loadPref('lastPath', '');
+  if (q) $('#photo-path').value = q;
+  else if (last) { $('#photo-path').value = last; openPhoto(last); }
 }
 
-window.darkroom = {st, pv, get ed() { return ed; }, dispatch, requestPreview, selectPreset, openPhoto, step, undo, redo, setStrength,
+window.darkroom = {st, pv, ab, get ed() { return ed; }, dispatch, requestPreview, selectPreset, openPhoto, step, undo, redo, setStrength,
                    exportPhoto, savePreset, importFiles, reloadLibrary,
-                   flushSave, loadEdit, showGrid, loadGrid, copyEdit, pasteEdit, exportSelected};
+                   flushSave, loadEdit, showGrid, loadGrid, copyEdit, pasteEdit, exportSelected,
+                   abToggle, abSetSplit, setGridFilter, resetOriginal, restorePrevious, gridResetOriginal, gridRestore};
 init().catch((e) => toast('載入失敗：' + e.message, true));

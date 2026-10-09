@@ -193,7 +193,8 @@ class TestPresetDetail(AppCase):
                  "SharpenDetail", "SharpenEdgeMasking", "GrainFrequency", "AutoLateralCA", "LensProfileEnable",
                  "LensProfileVignettingScale", "LensProfileDistortionScale", "DefringePurpleAmount",
                  "DefringeGreenHueLo", "VignetteAmount", "VignetteMidpoint", "PostCropVignetteHighlightContrast",
-                 "PostCropVignetteStyle", "PostCropVignetteRoundness（負值）", "Contrast2012（超出範圍，已夾值）"]
+                 "PostCropVignetteStyle", "PostCropVignetteRoundness（負值）", "Contrast2012（超出範圍，已夾值）",
+                 "Look（Adobe Monochrome，已以黑白近似）"]   # S5: approximated, so a note, not a warning
         for item in major:
             self.assertEqual(skips.level(item), "major", item)
         for item in minor:
@@ -225,6 +226,19 @@ class TestPresetDetail(AppCase):
             self.assertEqual((s["min"], s["max"]), _params.value_range(s["key"]), s["key"])
             self.assertEqual(s["default"], _params.default(s["key"]), s["key"])
             self.assertEqual(s["hue"], _params.is_hue_angle(s["key"]), s["key"])
+
+
+class TestStaticFreshness(AppCase):  # CONTRACT-s1-experience S19: an updated page is never served stale
+    async def test_static_files_revalidate(self):
+        for path in ("/static/app.js", "/static/app.css", "/static/logic.js", "/static/logo.svg"):
+            r = await self.client.get(path)
+            self.assertEqual(r.status, 200, path)
+            self.assertEqual(r.headers.get("Cache-Control"), "no-cache", path)
+            self.assertIn("ETag", r.headers, path)
+        r = await self.client.get("/")
+        self.assertEqual(r.headers.get("Cache-Control"), "no-store")
+        r = await self.client.get("/api/presets")
+        self.assertNotEqual(r.headers.get("Cache-Control"), "no-cache")
 
 
 class TestOpen(AppCase):  # B4

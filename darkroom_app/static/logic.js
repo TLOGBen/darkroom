@@ -88,8 +88,9 @@
   const strengthInEffect = (ed) => (ed.presetId === null ? 100 : ed.strength);
   const canUndo = (ed) => ed.past.length > 0;
   const canRedo = (ed) => ed.future.length > 0;
-  const carryHintVisible = (ed, hasImage) =>
-    !!hasImage && (ed.presetId !== null || Object.keys(ed.tweaks).length > 0);
+  // S11: the hint only while the state is carried over (no edit of this photo yet); a saved edit needs no hint
+  const carryHintVisible = (ed, hasImage, hasEdit) =>
+    !!hasImage && !hasEdit && (ed.presetId !== null || Object.keys(ed.tweaks).length > 0);
 
   function change(ed, next, gesture) {
     const now = snap(ed);
@@ -126,6 +127,8 @@
       }
       case 'resetAll':
         return Object.keys(ed.tweaks).length ? change(ed, {tweaks: {}}) : ed;
+      case 'resetToOriginal':           // S10: no preset, no tweaks, one history step (strength kept for the next preset)
+        return change(ed, {presetId: null, tweaks: {}});
       case 'endGesture':
         return ed.gesture ? Object.assign({}, ed, {gesture: null}) : ed;
       case 'restoreEdit': {             // PL15 / PLP9: a photo's saved edit comes back; history starts afresh
@@ -270,10 +273,129 @@
             lines: results.map((r) => (r.ok ? importedLine(r.id) : r.error))};
   }
 
+  // ---------------------------------------------------------------- S14 English service sentences, explained
+  // The services' sentences (CONTRACT-layering L3, photo library constants) are never changed; the page shows
+  // the Chinese explanation and keeps the original in the tooltip. Exact sentences first, then prefix forms.
+  const EXPLAIN_EXACT = {
+    'path is required': '請輸入照片路徑',
+    'unsupported photo format (JPEG/PNG/TIFF/HEIC)': '不支援的照片格式（只接受 JPEG／PNG／TIFF／HEIC）',
+    'unknown image_id': '照片已不在記憶體裡，請重新開啟',
+    'strength must be a number in 0..200': '強度要在 0～200 之間',
+    'body must be JSON': '請求格式錯誤（不是 JSON）',
+  };
+  const EXPLAIN_PREFIX = [
+    ['photo not found: ', (x) => `找不到照片：${x}`],
+    ['unknown or unsupported preset ', (x) => `找不到或不支援的 preset：${x}`],
+    ['unknown preset ', (x) => `找不到 preset：${x}`],
+    ['strength must be within 0..200, got ', (x) => `強度要在 0～200 之間：${x}`],
+    ['unknown slider key ', (x) => `未知的滑桿：${x}`],
+    ['request refused: ', (x) => `伺服器拒絕了這個請求：${x}`],
+  ];
+  function explainOne(m) {               // one service sentence, whole -> Chinese, or null
+    if (Object.prototype.hasOwnProperty.call(EXPLAIN_EXACT, m)) return EXPLAIN_EXACT[m];
+    for (const [prefix, fn] of EXPLAIN_PREFIX) if (m.startsWith(prefix)) return fn(m.slice(prefix.length));
+    return null;
+  }
+  // S14: the whole message, or - for the page's own composite sentences ("匯出失敗：{file}：{reason}",
+  // "預覽失敗：{reason}") - the service sentence after a full-width colon; everything else unchanged
+  function explain(msg) {
+    const m = String(msg == null ? '' : msg);
+    const whole = explainOne(m);
+    if (whole !== null) return whole;
+    for (let i = m.indexOf('：'); i >= 0; i = m.indexOf('：', i + 1)) {
+      const tail = explainOne(m.slice(i + 1));
+      if (tail !== null) return m.slice(0, i + 1) + tail;
+    }
+    return m;
+  }
+
   // ---------------------------------------------------------------- PL15 / PLP9 photo library
   // The edit of the open photo is saved AUTOSAVE_MS after the last change (latest wins); restoring a saved edit
   // goes through the reducer's restoreEdit and never schedules a save. The grid selects, copies, pastes, exports.
   const AUTOSAVE_MS = 500;
+  const SAVE_RETRY_MS = 2000;                                // S13 (g): one retry after a failed save
+  // S13g': a failed save's retry, given the path of what is pending now: a newer change of the same photo
+  // supersedes it; another photo's pending save goes first; nothing pending -> now
+  const retryDue = (pendingPath, retryPath) =>
+    (pendingPath == null ? 'now' : pendingPath === retryPath ? 'superseded' : 'after');
+  // what beforeunload sends: every failed save still in its back-off (unless the same photo has a newer
+  // pending state), then the pending one - nothing is left behind when the page goes away
+  const unloadJobs = (pending, retries) =>
+    [...retries.filter((r) => !pending || r.path !== pending.path), ...(pending ? [pending] : [])];
+  const CARRY_HINT = '沿用上一張的設定（還不是這張的編輯，會再沿用到下一張）';   // S11 (replaces R5's sentence)
+  const CARRY_HINT_SHORT = '沿用中';
+  const openFailed = (fileName, reason) => `開啟失敗：${fileName}：${reason}`;
+  const GRID_EMPTY = '這個資料夾沒有支援的照片（JPEG／PNG／TIFF／HEIC）';   // S13 (j)
+
+  // ---------------------------------------------------------------- S17 drawn sliders: CSS variables, hue dots, canvas
+  // --base = where the preset puts the value, --lo..--hi = from there to the thumb (your tweak); 0..100 % of the range.
+  const pct = (s, v) => Math.max(0, Math.min(100, (clamp(s, v) - s.min) / (s.max - s.min) * 100));
+  function sliderVars(s, view) {
+    const a = pct(s, view.base), b = pct(s, view.value);
+    return {base: a.toFixed(2) + '%', lo: Math.min(a, b).toFixed(2) + '%', hi: Math.max(a, b).toFixed(2) + '%'};
+  }
+  function strengthVars(strength) {      // the dial: 0..200, 100 is the centre
+    const a = 50, b = Math.max(0, Math.min(100, strength / 2));
+    return {base: '50%', lo: Math.min(a, b).toFixed(2) + '%', hi: Math.max(a, b).toFixed(2) + '%'};
+  }
+  const bipolar = (s) => s.min < 0 && s.max > 0;
+  const HUE_DOTS = {Red: '#e04848', Orange: '#e08a3c', Yellow: '#d9c43a', Green: '#4fb24f', Aqua: '#3fb8a8', Blue: '#4a7fe0',
+                    Purple: '#8c5fd6', Magenta: '#d65aa8'};
+  function hueDot(key) {                 // HSL rows: a 6 px dot of the colour the row is about (never on the track)
+    const m = /^(?:Hue|Saturation|Luminance)Adjustment(\w+)$/.exec(key);
+    return m && HUE_DOTS[m[1]] ? HUE_DOTS[m[1]] : null;
+  }
+  const CANVASES = ['dark', 'black', 'mid'];
+  const CANVAS_STORAGE_KEY = 'darkroom.canvas';
+  const canvasFrom = (stored) => (CANVASES.includes(stored) ? stored : 'dark');
+
+  // ---------------------------------------------------------------- S7 A/B compare: the split (never in the reducer)
+  const AB_KEY = 'y';
+  const AB_STORAGE_KEY = 'darkroom.abSplit';
+  const AB_DEFAULT_SPLIT = 0.5;
+  const clamp01 = (v) => Math.min(1, Math.max(0, v));
+  function abStep(split, key, shift) {    // keyboard on the handle: null when the key is not ours
+    const step = shift ? 0.1 : 0.01;
+    switch (key) {
+      case 'ArrowLeft': return clamp01(split - step);
+      case 'ArrowRight': return clamp01(split + step);
+      case 'Home': return 0;
+      case 'End': return 1;
+      default: return null;
+    }
+  }
+  function abSplitFrom(stored) {          // sessionStorage -> 0..1, else the default
+    const v = parseFloat(stored);
+    return Number.isFinite(v) && v >= 0 && v <= 1 ? v : AB_DEFAULT_SPLIT;
+  }
+
+  // ---------------------------------------------------------------- S8 / S9 / S10 grid badges, filter, reset / restore
+  const FILTERS = ['all', 'edited', 'plain'];
+  const FILTER_LABELS = {all: '全部', edited: '已編輯', plain: '未編輯'};
+  const BADGE_ONLY_TWEAKS = '只有微調';
+  const BADGE_CHANGED = '（preset 已變更）';
+  const BADGE_MISSING = '（preset 已不在庫裡）';
+  function badgeTitle(info) {             // info: {preset, strength, status} from X-Edit; null = edited, no detail
+    if (!info) return '已編輯';
+    const t = `${info.preset || BADGE_ONLY_TWEAKS}　${info.strength}%`;
+    return t + (info.status === 'changed' ? BADGE_CHANGED : info.status === 'missing' ? BADGE_MISSING : '');
+  }
+  const stale = (info) => !!info && (info.status === 'changed' || info.status === 'missing');
+  function gridFilter(items, filter) {    // {shown: [[index, item]], pending: n}: null edited only under "all"
+    const shown = [], unknown = items.filter((it) => it.edited === null || it.edited === undefined).length;
+    items.forEach((it, i) => {
+      if (filter === 'edited' ? it.edited === true : filter === 'plain' ? it.edited === false : true) shown.push([i, it]);
+    });
+    return {shown, pending: filter === 'all' ? 0 : unknown};
+  }
+  // S9: under a filter only the cells shown can be selected - a Shift range never reaches a hidden photo
+  const onlyShown = (sel, shown) => (shown ? new Set([...sel].filter((i) => shown.has(i))) : new Set(sel));
+  const gridPending = (k) => `還有 ${k} 張尚未判定`;
+  const resetConfirm = (n) => `要把 ${n} 張照片還原成原圖嗎？（可用「取回上一份」拿回來）`;
+  const resetDone = (ok, failed) => `已還原 ${ok} 張，失敗 ${failed} 張`;
+  const restoreDone = (ok, failed) => `已取回 ${ok} 張，失敗 ${failed} 張`;
+  const RESET_TOAST = '已還原成原圖（Ctrl+Z 可拿回）';
+  const RESTORE_TOAST = '已取回上一份編輯';
   const PRESET_CHANGED = 'preset 已變更，這份編輯用的是當時的 preset 快照';
   const PRESET_MISSING = 'preset 已不在庫裡，這份編輯用的是當時的 preset 快照';
   const presetStatusText = (status) => (status === 'changed' ? PRESET_CHANGED : status === 'missing' ? PRESET_MISSING : '');
@@ -290,6 +412,27 @@
     const overrides = {};
     for (const [k, d] of Object.entries(ed.tweaks)) if (d) overrides[k] = d;
     return {path, preset_id: ed.presetId, strength: strengthInEffect(ed), overrides};
+  }
+
+  // S2 (CONTRACT-s1-experience): the autosave request for the state `ed` of the photo at `path`. When the page
+  // remembers a snapshot for the chosen preset (from GET / PUT /api/edit of this photo), the edit is written
+  // through paste with that snapshot (PL8: never re-read from the library), else through PUT (PL4).
+  function editRequest(ed, path, snapshots, fingerprint) {
+    const body = editBody(ed, path);
+    const snap = ed.presetId !== null && snapshots ? snapshots[ed.presetId] : null;
+    if (!snap) return {method: 'PUT', body};
+    const edit = {schema: 'darkroom-edit/1', fingerprint: fingerprint || '', preset: snap,
+                  strength: body.strength, overrides: body.overrides};
+    return {method: 'PASTE', body: {targets: [path], edit}};
+  }
+
+  // S3: slider base values and curves come from the edit's snapshot, never from the library's current file;
+  // banner / note (the skipped settings) still come from the library detail when the preset is still there.
+  function detailFromSnapshot(snapshot, detail) {
+    const p = snapshot.params || {};
+    return {id: snapshot.id, name: snapshot.name, group: snapshot.group,
+            values: Object.assign({}, p.values || {}), curves: Object.assign({}, p.curves || {}),
+            banner: detail ? detail.banner : '', note: detail ? detail.note : '', snapshot: true};
   }
 
   function gridSelect(sel, i, mods, anchor) {   // click = only i; Ctrl = toggle i; Shift = anchor..i
@@ -323,7 +466,12 @@
           EXPORT_BUSY, EXPORT_DEFAULT_QUALITY, baseName, exportDone, exportFailed, exportBody, exportMessage,
           USER_GROUP, FAV_EMPTY, UPLOAD_BATCH_CHARS, presetSaved, importSummary, importedLine, canSavePreset, favMark,
           groupCreated, saveBody, uploadBatches, importReport,
+          explain, EXPLAIN_EXACT, EXPLAIN_PREFIX, openFailed, SAVE_RETRY_MS, retryDue, unloadJobs, CARRY_HINT, CARRY_HINT_SHORT, GRID_EMPTY,
+          sliderVars, strengthVars, bipolar, HUE_DOTS, hueDot, CANVASES, CANVAS_STORAGE_KEY, canvasFrom,
+          AB_KEY, AB_STORAGE_KEY, AB_DEFAULT_SPLIT, abStep, abSplitFrom,
+          FILTERS, FILTER_LABELS, badgeTitle, stale, gridFilter, onlyShown, gridPending, resetConfirm, resetDone, restoreDone,
+          RESET_TOAST, RESTORE_TOAST,
           AUTOSAVE_MS, PRESET_CHANGED, PRESET_MISSING, presetStatusText, copied, pasteConfirm, pasteDone,
-          exportSelectedDone, gridCount, editBody, gridSelect, exportItems, saveEditFailed, loadEditFailed,
-          loadFolderFailed};
+          exportSelectedDone, gridCount, editBody, editRequest, detailFromSnapshot, gridSelect, exportItems,
+          saveEditFailed, loadEditFailed, loadFolderFailed};
 });

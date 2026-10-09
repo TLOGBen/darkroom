@@ -111,6 +111,10 @@ class FakeDarkroom:
         return self._do("save_edit_as_preset", (path, name, group),
                         {"id": "user:x", "name": name, "group": group, "file": "user/x.xmp"})
 
+    # CONTRACT-s1-experience S4
+    def restore_edit(self, path):
+        return self._do("restore_edit", (path,), {"fingerprint": FP, "edit": EDIT, "preset_status": None, "previous": True})
+
     # CONTRACT-semantic-index SI1
     def semantic_build(self, limit=None, dry_run=False, wait_seconds=None):
         return self._do("semantic_build", (limit, dry_run, wait_seconds), {"state": "dry_run", "planned": 0})

@@ -18,7 +18,9 @@ preflight, which this server never answers). Over HTTP, export takes no dest_dir
 CLI / MCP only).
 """
 import asyncio
+import json
 import os
+from urllib.parse import quote
 
 from aiohttp import web
 
@@ -52,8 +54,10 @@ PATH_READING_GETS = frozenset(("/api/folder", "/api/edit", "/api/folder/thumbnai
 
 
 def _lenient_int(text):
-    """A query-string number -> int when it is all digits, else the raw string (the service says why; PLP8)."""
-    return int(text) if text.isdigit() else text
+    """A query-string number -> int when it is all decimal digits, else the raw string (the service says why; PLP8).
+
+    isdecimal, not isdigit (CONTRACT-s1-experience S15): '²' and '①' are digits int() refuses."""
+    return int(text) if text.isdecimal() else text
 
 
 @web.middleware
@@ -79,7 +83,10 @@ async def _local_only(request, handler):
         canonical = resource.canonical if resource is not None else request.path
         if canonical in PATH_READING_GETS:
             return web.json_response({"error": DARKROOM_HEADER_REFUSED}, status=403)   # img / script cannot add it
-    return await handler(request)
+    response = await handler(request)
+    if request.path.startswith("/static/"):   # S19: an updated app.js / app.css is revalidated (ETag), never stale
+        response.headers["Cache-Control"] = "no-cache"
+    return response
 
 
 def _error(e):
@@ -252,6 +259,13 @@ async def api_edit_save_preset(request):
     return await _json(request, "save_edit_as_preset", body.get("path"), body.get("name"), body.get("group"))
 
 
+async def api_edit_restore(request):   # CONTRACT-s1-experience S4
+    body = await _json_body(request)
+    if "data_dir" in body:
+        return web.json_response({"error": DATA_DIR_REFUSED}, status=400)
+    return await _json(request, "restore_edit", body.get("path"))
+
+
 async def api_folder_thumbnails(request):
     q = request.query
     offset = _lenient_int(q["offset"]) if "offset" in q else 0
@@ -259,14 +273,20 @@ async def api_folder_thumbnails(request):
     return await _json(request, "folder_thumbnails", q.get("folder"), offset, limit)
 
 
+def x_edit(summary):
+    """S8: encodeURIComponent(JSON.stringify(summary)) byte for byte - encodeURIComponent keeps !'()* as they are."""
+    return quote(json.dumps(summary, ensure_ascii=False, separators=(",", ":")), safe="!'()*")
+
+
 async def api_thumbnail(request):
     try:
         res = await _call(request, "thumbnail", request.query.get("path"))
     except DarkroomError as e:
         return _error(e)
-    return web.Response(body=res.jpeg, content_type="image/jpeg",
-                        headers={"X-Fingerprint": res.fingerprint, "X-Edited": "1" if res.edited else "0",
-                                 "Cache-Control": "no-store"})
+    headers = {"X-Fingerprint": res.fingerprint, "X-Edited": "1" if res.edited else "0", "Cache-Control": "no-store"}
+    if res.edit is not None:            # S8: the grid's badge text, percent-encoded JSON (header values are ASCII)
+        headers["X-Edit"] = x_edit(res.edit)
+    return web.Response(body=res.jpeg, content_type="image/jpeg", headers=headers)
 
 
 async def _on_cleanup(app):
@@ -306,6 +326,7 @@ def make_app(preset_dir, engine=None, library_dir=None, data_dir=None):
     app.router.add_delete("/api/edit", api_edit_clear)
     app.router.add_post("/api/edit/paste", api_edit_paste)
     app.router.add_post("/api/edit/save-preset", api_edit_save_preset)
+    app.router.add_post("/api/edit/restore", api_edit_restore)
     app.router.add_get("/api/folder/thumbnails", api_folder_thumbnails, allow_head=False)
     app.router.add_get("/api/thumbnail", api_thumbnail, allow_head=False)
     app.router.add_static("/static/", STATIC)

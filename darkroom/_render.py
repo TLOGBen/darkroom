@@ -271,16 +271,27 @@ def _tone(x, g):
     return (x * ratio + (Y2 - Y * ratio)).clamp(0, 1)
 
 
+REF_LONG_EDGE = 3000.0   # verbatim (CONTRACT-s1-experience S6 / core patch K4): detail effects scale with L / 3000
+
+
+def _texture_bands(L):
+    """Pyramid levels carrying the texture band at long edge L: (2, 3) at the reference size, one level up or
+    down per doubling / halving, never below (1, 2) (K4)."""
+    s = int(round(math.log2(max(1.0, L) / REF_LONG_EDGE)))
+    lo = max(1, 2 + s)
+    return lo, lo + 1
+
+
 def _texture(Y, t):
-    """Mid-frequency pyramid bands (about 2..8 px at preview size) with soft coring so noise is left alone."""
-    big = max(Y.shape[-2:]) > 2500
-    n = 5 if big else 4
+    """Mid-frequency pyramid bands (the same fraction of the image at every size, K4) with soft coring."""
+    bands = _texture_bands(max(Y.shape[-2:]))
+    n = bands[1] + 2
     G = [Y]
     for _ in range(n - 1):
         G.append(_down(G[-1]))
     lap = [G[i] - _up(G[i + 1], G[i].shape) for i in range(n - 1)]
     gain = 1 + 1.0 * t if t > 0 else 1 - 0.8 * abs(t)
-    for l in ((2, 3) if big else (1, 2)):
+    for l in bands:
         d = lap[l]
         noise = d.abs().mean() * 1.2533
         core = torch.sign(d) * (d.abs() - noise).clamp(min=0)
@@ -563,11 +574,12 @@ def _grain(x, g):
     if not a:
         return x
     H, W = x.shape[-2:]
-    sigma = (0.3 + 1.5 * g("GrainSize") / 100) * max(1.0, max(H, W) / 2000)
+    scale = max(H, W) / REF_LONG_EDGE        # K4: grain size follows the image size; a smaller image also gets a
+    sigma = max(0.3, (0.3 + 1.5 * g("GrainSize") / 100) * scale)   # weaker noise, like the big one scaled down
     n = _grain_noise(H, W, sigma, x.device)
     Y = _color.luma(x).clamp(0, 1)
     wt = 0.3 + 0.7 * (4 * Y * (1 - Y))
-    return x + 0.12 * a * wt * n
+    return x + 0.12 * a * min(1.0, scale) ** 0.5 * wt * n
 
 
 def _sharpen(x, g):
@@ -575,7 +587,8 @@ def _sharpen(x, g):
     if not a:
         return x
     Y = _color.luma(x)
-    return x + a * (Y - _blur(Y, max(0.3, g("SharpenRadius"))))
+    scale = max(x.shape[-2:]) / REF_LONG_EDGE   # K4: the radius is in pixels of a 3000 px image
+    return x + a * (Y - _blur(Y, max(0.3, g("SharpenRadius") * scale)))
 
 
 # --------------------------------------------------------------------------- driver
