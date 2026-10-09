@@ -116,3 +116,5 @@ A/B：按鈕文字「對照」 ｜ 標籤「原圖」「編輯後」 ｜ 快捷�
 - S7a（修訂 S7「無修飾鍵」，F3）：快捷鍵 `Y` 也排除 Shift（`!e.shiftKey`）。釘死：`test_ab_compare_structure`。
 - Verbatim 修正（F6，G3 格式）：字型常數改成與 `app.css` 一致的「逗號後一個空格」寫法（CSS 語意不變，`test_css_palette_is_neutral` 原本就釘這個寫法）。
 - 記錄、不修（低）：F5 `test_detail_effects_scale_with_size` 用合成圖 `synth_photo(4096×2731)`，不是條文寫的 real-landscape-4096（公式與門檻都符合；fixture 偏離未附理由）。瀏覽器量測類（S7 拖動時預覽請求數 0、S17 截圖、S18 820 寬實際像素）本次未重做，沿用第一次封緘的證據。
+- S13g'''''（複驗 1 的資料類例外：判官缺口 H4，程式不變）：`flushSave` 的等待語意（`while (save.pending || save.promise)`，等到沒有在送的存檔）整段逐行釘死；它是 N5、F2、PL15「讀檔前存檔已落地」的基礎。釘死：`test_autosave_targets_the_photo_it_was_scheduled_for`（flushSave 全文逐行）。
+- 記錄、不修（複驗 1，低）：N8 `flushRetries` 只處理呼叫當下已有的 retry；flush 期間新出現的 pending 若在結尾那次 flushSave 失敗，新 retry 照常退避、呼叫端繼續（與 N7 同類）。N9 按「取回上一份」後立刻換照片，S13g'''' 的重查讓取回不做，也不跳 toast。

@@ -379,6 +379,15 @@ class TestPageStructure(unittest.TestCase):
         self.assertIn("for (const job of jobs) sendSave(job);", unload)
         flush = js[js.index("async function flushSave"):js.index("async function flushRetry")]
         self.assertIn("if (save.retries.size) save.dirty = true;", flush)
+        # S13g'''' (seal H4): flushSave waits until nothing is in flight - every flush before a re-read rests on it
+        self.assertEqual([l.strip() for l in flush.splitlines()[1:] if l.strip()][:-1], [
+            "clearTimeout(save.timer); save.timer = null;",
+            "while (save.pending || save.promise) {",
+            "if (save.promise) { await save.promise; continue; }",
+            "const job = save.pending; save.pending = null; save.dirty = false;",
+            "if (save.retries.size) save.dirty = true;   // a failed save still waits for its retry: unload must send it",
+            "save.promise = sendSave(job).finally(() => { save.promise = null; });",
+            "}"])
         self.assertIn("save.retries.delete(path);", sched)
         # seal round 2 (N1 / N1b / N2): the retry really goes out - once, after other photos, never over newer
         retry = js[js.index("async function flushRetry"):js.index("async function flushRetries")]
