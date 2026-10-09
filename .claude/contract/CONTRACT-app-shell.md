@@ -90,3 +90,6 @@ tooltip 後綴（R3，依序接在上兩行之後）：有微調時「；微調 
 
 ## S2 補丁（2026-10-10，`CONTRACT-s2-export-detect.md` 主 session 裁決；與條文同等效力，劃線與「取代」處以本節為準）
 - R12（修訂 R11 清單；S2 E28）：必須帶 `X-Darkroom: 1` 的 GET 由 4 條變 5 條（加 `/api/capabilities`，以 `allow_head=False` 登記）。
+
+## S3 補丁（2026-10-10，`CONTRACT-s3-crop.md` 主 session 裁決；與條文同等效力，劃線與「取代」處以本節為準）
+- R13（修訂 B4、R6；S3 C17、C27）：`POST /api/preview` body 可帶 `geometry`、`frame`；回傳的預覽寬高依 S3 C17；路由數不變。窄視窗清單同 S1 合約 S18′。

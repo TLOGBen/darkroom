@@ -144,3 +144,6 @@ HTTP 帶 dest_dir（400）：{"error": "dest_dir is not accepted over HTTP (use 
 - XP32（修訂 XP4）：`darkroom_export` inputSchema `required` 由 `["items","format"]` 改為 `["items"]`；`format` enum 加 `png`、`webp`；另加 S2 E27 的設定欄位與 `export_preset`。
 - XP33（修訂 X13、R6／H11／S18 清單）：工具列的 `#export-format`、`#export-quality` 移進 `#export-dialog`；不准藏清單裡這兩項改指向對話框內的 `#xd-format`、`#xd-quality`，`#export-btn` 照舊在工具列。
 - XP34（修訂 X15「不做」清單）：「存成 xmp」「縮放尺寸」從「不做」移除（S2 E16、E17、E8）。
+
+## S3 補丁（2026-10-10，`CONTRACT-s3-crop.md` 主 session 裁決；與條文同等效力，劃線與「取代」處以本節為準）
+- XP35（修訂 X2、X3、XP30、E8、E15、E15a、E26；S3 C19）：item 多一個可選鍵 `geometry`（省略＝這張已存的幾何、`null`＝不套）；「三個鍵都省略＝已存編輯」改為四個鍵（`preset_id`、`strength`、`overrides`、`geometry`）。X3「輸出像素寬高＝轉正後的原圖寬高（不縮放、不裁切）」改為「＝S3 C5 輸出尺寸」；E8 縮放以輸出尺寸為 (w, h)；EXIF `PixelXDimension／PixelYDimension`＝最後寫出的寬高。CLI `--no-edit`＝`preset_id: null` 且 `geometry: null`。E15a：編輯器 `currentRequest()` 帶畫面當下的 `geometry`（null 也送）。X2 等式改為「與同幾何、同參數的預覽管線全解析度渲染相同」。

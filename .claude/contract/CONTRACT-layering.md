@@ -77,3 +77,6 @@ MCP caching hints（discover 與 modern tools/list）：{"ttlMs":3600000,"cacheS
 
 ## S2 補丁（2026-10-10，`CONTRACT-s2-export-detect.md` 主 session 裁決；與條文同等效力，劃線與「取代」處以本節為準）
 - L2′（數字；S2 E25）：facade 操作數 27 → 33，第 28～33 個依序為 `list_export_presets`、`save_export_preset`、`delete_export_preset`、`preset_files`、`export_preset_files`、`capabilities`；MCP 工具 27 → 33；HTTP 路由 29 → 35；`export` 簽名擴充為 `export(items, format=None, quality=None, dest_dir=None, *, bit_depth=None, max_kb=None, resize=None, metadata=None, remove_gps=None, sharpen=None, export_preset=None)`（不是新操作）。
+
+## S3 補丁（2026-10-10，`CONTRACT-s3-crop.md` 主 session 裁決；與條文同等效力，劃線與「取代」處以本節為準）
+- L5′（修訂 L5、B4；S3 C17、C20）：`preview(image_id, preset_id=None, strength=100, overrides=None, max_pixels=None, *, geometry=KEEP, frame=False)`；輸出尺寸＝`preview_size(S3 C5 輸出尺寸, max_pixels 或 1500000)`，`frame=True` 時以 W′×H′ 算；沒有幾何時與舊行為相同。facade 33／MCP 33／HTTP 35／G10 白名單 5 全部不變，只改簽名與 schema（`preview`、`set_edit`、`paste_edit`、`export` 的 item）；`FakeDarkroom` 同步新參數。

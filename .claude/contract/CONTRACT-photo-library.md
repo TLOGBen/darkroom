@@ -174,3 +174,11 @@ PLP17 常數：無法寫入照片庫的 reason（上層不存在）：上層資�
 ## S2 補丁（2026-10-10，`CONTRACT-s2-export-detect.md` 主 session 裁決；與條文同等效力，劃線與「取代」處以本節為準）
 - PLP18（修訂 PL1／PLP8 的 data_dir 預設；S2 E18）：設定鍵 `data_dir` 優先；否則 win32 → `{LOCALAPPDATA}/darkroom`（PL1 句逐字不變）；darwin → `{home}/Library/Application Support/darkroom`；其他 → `{XDG_DATA_HOME}/darkroom`（XDG 須為非空絕對路徑），否則 `{home}/.local/share/darkroom`；非 Windows 找不到 → 「找不到照片庫資料區：請在 config.local.json 設定 data_dir，或確認 HOME 存在」。設定鍵是相對路徑時以設定檔所在資料夾為基準（S2 E19）。
 - PLP19（S2 E23 `photo_library`）：資料區解析不到（ConfigError）、不是絕對路徑、上層資料夾不存在、或在使用中的 preset 資料夾裡 → get／set／clear／paste／restore／save_edit_as_preset 與 export 的已存編輯一律 unavailable 同句（HTTP 503、CLI 5、MCP isError），不再是 HTTP 500／CLI「darkroom：…」結束碼 2。
+
+## S3 補丁（2026-10-10，`CONTRACT-s3-crop.md` 主 session 裁決；與條文同等效力，劃線與「取代」處以本節為準）
+- PL3′（修訂 PL3；S3 C12、D3）：沒有幾何的編輯照寫 `darkroom-edit/1`（常數 5 鍵，位元組不變）；有幾何的寫 `darkroom-edit/2`（6 鍵，多一個 `geometry`，值＝S3 C1 正規化後的物件）。「沒有編輯」＝preset null、overrides 空、**而且** geometry null（刪檔）。
+- PL7′（修訂 PL7；S3 C13、D4）：`set_edit(path, preset_id=None, strength=100, overrides=None, *, geometry=KEEP)`：省略＝沿用這張已存的幾何、`null`＝清除、物件＝取代；驗證順序：路徑 → preset → strength → overrides → geometry。
+- PL8′（修訂 PL8；S3 C14）：`edit` 物件可以是 `/1` 或 `/2`；`paste_edit(..., *, with_geometry=False)`：false＝只換顏色（preset 快照、strength、overrides），target 原本的幾何保留；來源顏色是空的 → 整批 invalid、不寫；true＝連幾何整份取代。
+- PL9′（修訂 PL9；S3 C12）：既有編輯檔 `schema` 是 `/1` 或 `/2` 才讀；`/2` 的 `geometry` 不合 S3 C1 → 損壞 unavailable；其他版本照舊 conflict、不覆寫。
+- PLP8′（修訂 PLP8 的編輯檔讀寫）：`_edit_summary`、`saved_params`、`edit_params`、`resolve_params` 都讀兩種版本；L9 擴充照舊：`edit *`、`thumbnails` 不得載入 torch（`Geometry` 驗證與 `apply` 不 import torch）。
+- PL11′／PL13′（修訂 PL11、PL13；S3 C18、D7）：縮圖快取照舊存「未編輯的原圖縮圖」；`thumbnail` 回傳前若這張有幾何，以 `Geometry.apply` 在 256 px 縮圖上套用（不放大），回傳的 `width／height` 是套用後的；不新增快取檔。

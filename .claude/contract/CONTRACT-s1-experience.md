@@ -121,3 +121,12 @@ A/B：按鈕文字「對照」 ｜ 標籤「原圖」「編輯後」 ｜ 快捷�
 - 記錄、不修（複驗 1，低）：N8 `flushRetries` 只處理呼叫當下已有的 retry；flush 期間新出現的 pending 若在結尾那次 flushSave 失敗，新 retry 照常退避、呼叫端繼續（與 N7 同類）。N9 按「取回上一份」後立刻換照片，S13g'''' 的重查讓取回不做，也不跳 toast。
 - 記錄、不修（複驗 2，極低）：N10 `tests/test_app_frontend.py` flushSave 逐行判官的註解寫 `S13g'''' (seal H4)`，合約條號是 `S13g'''''`。
 - 合併補丁（與 CONTRACT-semantic-index 合併；修訂 S4、S19 的數字）：合併後的數字（S1 分支併入 main，2026-10-10）：facade 操作／MCP 工具各 27 個、HTTP 路由 29 條。順序：第 1～24 個照舊，第 25 個 `restore_edit`（`darkroom_edit_restore`、`edit restore`、`POST /api/edit/restore`），第 26、27 個 `semantic_build`、`semantic_status`（`darkroom_semantic_build`、`darkroom_semantic_status`、`presets semantic build|status`、`POST /api/preset-library/semantic/build`、`GET /api/preset-library/semantic`）；路由 29＝原 26＋restore 1＋semantic 2。裁決理由：S4 寫明 restore 「接在 save_edit_as_preset 之後」，SI1 只要求兩個語意操作「依序」，所以語意操作整組往後移一格（SI1／SIP4 的「第 25、26 個」改為第 26、27 個）。測試同步：`test_layering` 的 OPERATIONS 清單、`listed[17:25]`＝`PHOTO_TOOLS`（含 restore）、`listed[25:]`＝`SEMANTIC_TOOLS`；`test_app_mcp.TOOLS` 同序；`test_http_golden.test_exactly_twenty_eight_routes` 改名 `test_exactly_twenty_nine_routes`、清單加 restore；`AGENTS.md`／`README.md`／`docs/agent-install.md`／`CLAUDE.md` 工具數 27。既有斷言一條不刪；G10 白名單維持 4 個（export、preset_library、photo_library、semantic_index）；write-guard 檔案不動。
+
+## S3 補丁（2026-10-10，`CONTRACT-s3-crop.md` 主 session 裁決；與條文同等效力，劃線與「取代」處以本節為準）
+- S2b（修訂 S2；S3 C14）：自動存檔走 PASTE 時一律帶 `with_geometry: true`，`edit` 依 S3 C12 帶 `geometry`（有幾何時 schema `darkroom-edit/2`）；否則剛裁好的框會被「貼上預設只貼顏色」丟掉。
+- S4a′（修訂 S4a 的「與上一份相同」比較）：比較含 `geometry`。
+- S7′（修訂 S7；S3 C25、D9）：A/B 的原圖與按住 `\` 的原圖用同一個幾何、不套調色；快取鍵＝`image_id`＋幾何正規化 JSON；裁切模式中 `#ab-btn` disabled、`Y` 無效。
+- S8b（修訂 S8；S3 C18）：`X-Edit` JSON 多 `geometry`（bool）、`tweaks`（bool）兩鍵；徽章 title 依 S3 常數。
+- S10′（修訂 S10；S3 C16、D8）：`resetToOriginal` 也把幾何清成 null（一步歷史）。
+- S11′（修訂 S11、R5；S3 C24）：換照片的「沿用」只沿用 preset、強度、微調，不沿用幾何。
+- S18′（修訂 S18 清單；S3 C27）：`PROTECTED` 與 `hidden` 檢查加入 `#crop-btn`、`#crop-aspect`、`#crop-orient`、`#crop-angle`、`#rotate-left`、`#rotate-right`、`#flip-h`、`#flip-v`、`#crop-reset`、`#crop-done`、`#crop-cancel`、`#paste-geometry`。
