@@ -7,7 +7,9 @@ folder is never written; the default root is its parent, so library.json, import
 An organising operation: arguments checked -> the cross-process lock (`<root>/library.json.lock`, msvcrt byte lock,
 released by Windows when the holder dies; waiting longer than LOCK_WAIT_S -> conflict) -> the index on disk read
 again and merged with the three folders (K5 rule) -> the change -> `library.json.tmp-{pid}-{12 hex}` written with
-create_new and moved over library.json with replace_into (PermissionError retried, P6) -> the in-process view
+create_new and moved over library.json with replace_into (PermissionError retried, P6 / KP21: a reader holding the
+file open blocks the rename outright on Windows, and collisions come in GIL-phase-coupled streaks, so the budget is
+200 x 0.01 s, not 10 x 0.1 s) -> the in-process view
 adopted. An unreadable index is first kept as `library.json.bad-{unix seconds}` (a byte copy: safe_write has no
 rename). Purchased xmp, imported and user files already there are never rewritten, renamed or deleted.
 `SafeWriteRefused` is never caught (G8).
@@ -34,7 +36,7 @@ from ..presets import (GROUP_SEP, IMPORT_PREFIX, INDEX_NAME, USER_PREFIX, clean_
 
 LOCK_WAIT_S = 5.0                   # verbatim (K15, KP8)
 LOCK_POLL_S = 0.02
-REPLACE_RETRIES, REPLACE_RETRY_S = 10, 0.1   # verbatim (K15: 10 times, about 1 s)
+REPLACE_RETRIES, REPLACE_RETRY_S = 200, 0.01   # verbatim (K15 as revised by KP21: 200 times, about 2 s)
 NAME_MAX = 100                      # K6
 USER_GROUP = "自存 preset"           # verbatim (K12)
 FILE_MAX = 80                       # K14

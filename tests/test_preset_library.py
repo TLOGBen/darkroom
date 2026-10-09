@@ -342,7 +342,7 @@ class TestOrganise(LibCase):
     def test_lock_wait_constant_and_conflict(self):  # K15 / KP8
         from darkroom_app.services import preset_library as pl
         self.assertEqual(pl.LOCK_WAIT_S, 5.0)
-        self.assertEqual((pl.REPLACE_RETRIES, pl.REPLACE_RETRY_S), (10, 0.1))
+        self.assertEqual((pl.REPLACE_RETRIES, pl.REPLACE_RETRY_S), (200, 0.01))    # KP21
         fd = os.open(os.path.join(self.root, "library.json.lock"), os.O_RDWR | os.O_CREAT | os.O_BINARY)
         try:
             msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
@@ -369,7 +369,7 @@ class TestOrganise(LibCase):
             raise PermissionError(5, "Access is denied")
         with mock.patch.object(safe_write, "replace_into", busy), mock.patch.object(pl, "REPLACE_RETRY_S", 0.001):
             kind, msg = self.err(self.f.set_favorite, "p-plain", False)
-        self.assertEqual((kind, len(calls)), ("unavailable", 10))
+        self.assertEqual((kind, len(calls)), ("unavailable", 200))     # KP21
         self.assertTrue(msg.startswith("無法寫入 preset 庫索引："), msg)
         self.assertEqual([n for n in os.listdir(self.root) if ".tmp-" in n], [])
         self.assertTrue(read_json(self.index_path)["presets"]["p-plain"]["favorite"])
