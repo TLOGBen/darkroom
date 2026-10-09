@@ -38,11 +38,13 @@ def pattern(h, w, seed=0):
     return img
 
 
-def exif_app1(orientation=1, dims=None, thumbnail=False):
-    """APP1 Exif segment: IFD0 (Make, Model, Orientation, Software), Exif IFD, GPS IFD; optionally an IFD1."""
+def exif_app1(orientation=1, dims=None, thumbnail=False, endian=">", maker_note=None):
+    """APP1 Exif segment: IFD0 (Make, Model, Orientation, Software), Exif IFD (with an Interop IFD), GPS IFD;
+    optionally an IFD1 and a maker note. endian ">" (PIL's default, MM) or "<" (II, as most cameras write)."""
     from PIL import Image
     from PIL.TiffImagePlugin import IFDRational as R
     ex = Image.Exif()
+    ex.endian = endian
     ex[0x010F] = "DarkCam"
     ex[0x0110] = "DR-1"
     ex[0x0112] = orientation
@@ -51,6 +53,9 @@ def exif_app1(orientation=1, dims=None, thumbnail=False):
            0x920A: R(35, 1), 0xA434: "DR 35mm F2.8"}
     if dims:
         sub[0xA002], sub[0xA003] = dims
+    sub[0xA005] = {1: "R98", 2: b"0100"}                         # Interop IFD (XP20: kept)
+    if maker_note is not None:
+        sub[0x927C] = maker_note
     ex[0x8769] = sub
     ex[0x8825] = {1: "N", 2: (R(25, 1), R(2, 1), R(30, 1)), 3: "E", 4: (R(121, 1), R(33, 1), R(15, 1)),
                   6: R(12, 1)}
@@ -78,13 +83,13 @@ def add_ifd1(t):
     return bytes(t)
 
 
-def write_jpeg(path, rgb, orientation=1, exif=True, thumbnail=False, quality=95):
+def write_jpeg(path, rgb, orientation=1, exif=True, thumbnail=False, quality=95, endian=">", maker_note=None):
     ok, enc = cv2.imencode(".jpg", rgb[..., ::-1], [cv2.IMWRITE_JPEG_QUALITY, quality])
     assert ok
     data = enc.tobytes()
     if exif:
         h, w = rgb.shape[:2]
-        data = data[:2] + exif_app1(orientation, (w, h), thumbnail) + data[2:]
+        data = data[:2] + exif_app1(orientation, (w, h), thumbnail, endian, maker_note) + data[2:]
     with open(path, "wb") as f:
         f.write(data)
     return path
@@ -261,12 +266,28 @@ class TestFiles(ExportCase):
             self.assertEqual(after[k], v)                  # content and mtime of the earlier files unchanged
         self.assertEqual(sorted(os.listdir(out)), ["IMG_1 (3).jpg", "IMG_1 (4).jpg", "IMG_1.jpg", "img_1 (2).JPG"])
 
-    def test_same_stem_in_one_list(self):  # X9
+    def test_same_stem_in_one_list(self):  # X9 + seal F2: names follow the item order, whatever finishes first
+        from darkroom_app import encoding
         a = write_jpeg(self.p("IMG_1.jpg"), pattern(20, 30))
         b = _heicgen.write_heic(self.p("IMG_1.heic"), pattern(20, 30).astype(np.float32) / 255)
-        res = self.export([b, a])
-        self.assertEqual([os.path.basename(r["output"]) for r in res], ["IMG_1.jpg", "IMG_1 (2).jpg"])
-        self.assertEqual([r["source"] for r in res], ["IMG_1.heic", "IMG_1.jpg"])
+        real = encoding.jpeg_bytes
+        calls = []
+
+        def first_is_slow(*args):
+            calls.append(1)
+            if len(calls) % 2 == 1:
+                time.sleep(0.3)                   # the first item finishes encoding after the second
+            return real(*args)
+        for round_ in range(3):
+            dest = os.path.join(self.tmp, f"d{round_}")
+            os.makedirs(dest)
+            with mock.patch.object(encoding, "jpeg_bytes", first_is_slow):
+                res = self.export([b, a], dest_dir=dest)
+            self.assertEqual([os.path.basename(r["output"]) for r in res], ["IMG_1.jpg", "IMG_1 (2).jpg"], round_)
+            self.assertEqual([r["source"] for r in res], ["IMG_1.heic", "IMG_1.jpg"])
+            with open(res[0]["output"], "rb") as f:          # and the first name holds the first item's pixels
+                first = f.read()
+            self.assertEqual(sha(res[0]["output"]), hashlib.sha256(first).hexdigest())
 
     def test_export_concurrent_names(self):  # X9: two exports at the same time never share a name
         photo = write_jpeg(self.p("c.jpg"), pattern(40, 60))
@@ -308,6 +329,24 @@ class TestFiles(ExportCase):
         os.makedirs(dest)
         self.assertEqual(self.export([photo], "tiff", dest_dir=dest)[0]["output"], os.path.join(dest, "a.tif"))
         self.assertEqual(os.listdir(dest), ["a.tif"])
+
+    def test_unexpected_read_error_fails_one_item(self):  # X1 / X12 + seal F1 (cv2.error on a damaged TIFF)
+        from darkroom_app.services import export as export_mod
+        photos = [write_jpeg(self.p(f"IMG_{i}.jpg"), pattern(20, 30, i)) for i in (1, 2, 3)]
+        real = export_mod.read_image
+
+        def read(path):
+            if path.endswith("IMG_2.jpg"):
+                raise cv2.error("OpenCV(5.0.0) loadsave.cpp:77: error: (-215:Assertion failed)\nsize <= limit")
+            return real(path)
+        dest = os.path.join(self.tmp, "dest")
+        os.makedirs(dest)
+        with mock.patch.object(export_mod, "read_image", read):
+            res = self.export(photos, dest_dir=dest)
+        self.assertEqual([r["ok"] for r in res], [True, False, True])
+        self.assertEqual(res[1]["error"], "匯出失敗：IMG_2.jpg：OpenCV(5.0.0) loadsave.cpp:77: error: "
+                                          "(-215:Assertion failed) size <= limit")
+        self.assertEqual(sorted(os.listdir(dest)), ["IMG_1.jpg", "IMG_3.jpg"])
 
     def test_export_failure_leaves_no_file(self):  # X10, X11, X12
         from darkroom_app import safe_write
@@ -387,11 +426,9 @@ class TestContent(ExportCase):
         from PIL import Image
         im = Image.open(out)
         self.assertEqual(im.size, (52, 36))
-        c = np.asarray(im)
-        if c.ndim == 3 and c.dtype == np.uint16:
-            np.testing.assert_array_equal(a, c)
-        else:   # PIL reads 16-bit RGB TIFF as 8-bit RGB: the high bytes must match
-            np.testing.assert_array_equal((a >> 8).astype(np.uint8), c)
+        c = np.asarray(im)       # XP24: PIL 12.3.0 opens 16-bit RGB TIFF as 8-bit RGB = the high bytes
+        self.assertEqual((im.mode, c.dtype), ("RGB", np.dtype("uint8")))
+        np.testing.assert_array_equal((a >> 8).astype(np.uint8), c)
         lib = self.f._presets.library
         final = semantics.effective_params(lib.get("p-mixed"), 0.7, {"Exposure2012": 0.3})
         want = np.floor(np.clip(np.asarray(render(read_image(photo), final)), 0, 1) * 65535 + 0.5)
@@ -478,6 +515,40 @@ class TestContent(ExportCase):
                 else:
                     with open(out, "rb") as f:
                         check_exif_structure(self, f.read(1 << 16))
+
+    def test_export_exif_little_endian_interop_and_maker_note(self):  # X7 / XP20 + seal F6
+        from PIL import Image
+        for endian in ("<", ">"):
+            for note in (b"N" * 200,):
+                with self.subTest(endian=endian, note=len(note)):
+                    photo = write_jpeg(self.p(f"e{len(note)}{endian == '<'}.jpg"), pattern(30, 50), orientation=8,
+                                       endian=endian, maker_note=note)
+                    src = Image.open(photo).getexif()
+                    for fmt in ("jpeg", "tiff"):
+                        out = self.export([photo], fmt)[0]["output"]
+                        im = Image.open(out)
+                        ex = im.getexif()
+                        self.assertEqual((ex[0x0112], ex[0x010F], ex[0x0110]), (1, "DarkCam", "DR-1"), fmt)
+                        self.assertEqual(im.size, (30, 50), fmt)                  # orientation 8 turned
+                        oe = ex.get_ifd(0x8769)
+                        self.assertEqual(oe[0x9003], src.get_ifd(0x8769)[0x9003], fmt)
+                        self.assertEqual(ex.get_ifd(0x8825), src.get_ifd(0x8825), fmt)
+                        self.assertEqual(ex.get_ifd(0xA005), {1: "R98", 2: b"0100"}, fmt)     # Interop kept
+                        self.assertEqual(oe[0x927C], note, fmt)                          # maker note kept
+        # XP20: EXIF over the 64 KB APP1 limit (a TIFF source can carry it) -> the maker note goes, the rest stays
+        from PIL import Image as PILImage
+        from darkroom_app import encoding
+        for endian in ("<", ">"):
+            ex = PILImage.Exif()
+            ex.endian = endian
+            ex[0x010F], ex[0x0112] = "DarkCam", 6
+            ex[0x8769] = {0x9003: "2024:05:06 07:08:09", 0x927C: b"M" * 70000}
+            parsed = encoding.parse_tiff_exif(ex.tobytes()[6:])
+            data = encoding.jpeg_bytes(np.zeros((8, 12, 3), np.uint8), 90, parsed, encoding.srgb_icc())
+            out = PILImage.open(io.BytesIO(data)).getexif()
+            self.assertEqual((out[0x010F], out[0x0112]), ("DarkCam", 1), endian)
+            self.assertEqual(out.get_ifd(0x8769)[0x9003], "2024:05:06 07:08:09", endian)
+            self.assertNotIn(0x927C, out.get_ifd(0x8769), endian)
 
     def test_png_without_exif(self):  # X7: no EXIF in, none out, no error
         from PIL import Image

@@ -15,17 +15,18 @@ import _util
 from darkroom import read_image
 
 
-def exif_segment(orientation):
-    """APP1 Exif segment (marker included) holding only Orientation."""
+def exif_segment(orientation, endian=">"):
+    """APP1 Exif segment (marker included) holding only Orientation; endian ">" (MM) or "<" (II)."""
     from PIL import Image
     ex = Image.Exif()
+    ex.endian = endian
     ex[0x0112] = orientation
     body = ex.tobytes()                      # b"Exif\0\0" + TIFF structure
     return b"\xff\xe1" + struct.pack(">H", len(body) + 2) + body
 
 
-def with_exif(jpeg, orientation):
-    return jpeg[:2] + exif_segment(orientation) + jpeg[2:]
+def with_exif(jpeg, orientation, endian=">"):
+    return jpeg[:2] + exif_segment(orientation, endian) + jpeg[2:]
 
 
 def asymmetric(h, w):
@@ -75,6 +76,10 @@ class TestReadImageOrientation(unittest.TestCase):  # K2
                 want = exif_transposed(rgb, tag)
                 self.assertEqual(out.shape, want.shape)
                 np.testing.assert_array_equal(np.round(out * 65535).astype(np.uint16), want.astype(np.uint16) * 257)
+        for tag in range(1, 9):              # seal F6: little-endian (II) EXIF, as most cameras write it
+            with self.subTest(fmt="jpeg II", orientation=tag):
+                out = read_image(self.write(f"ii{tag}.jpg", with_exif(jpeg, tag, "<")))
+                np.testing.assert_array_equal(np.round(out * 255).astype(np.uint8), exif_transposed(base8, tag))
         portrait = read_image(self.write("o6b.jpg", with_exif(jpeg, 6)))
         self.assertEqual(portrait.shape[:2], (80, 48))                   # 6 -> upright portrait
         self.assertTrue(portrait.flags.c_contiguous)

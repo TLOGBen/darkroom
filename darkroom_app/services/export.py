@@ -7,10 +7,14 @@ output folder (X8), names (X9) and the three-stage pipeline (XP7):
     read (one reader thread, in order) -> render on the Engine's darkroom-gpu executor (one export job at a
     time) -> encode + write (two writer threads)
 
-with at most MAX_IN_FLIGHT full-resolution images between "read started" and "written". Files are written only
+with at most MAX_IN_FLIGHT full-resolution images between "read started" and "written". Encoding runs on both
+writer threads at once, but names are claimed strictly in item order (seal F2: two photos with the same stem get
+`{stem}` and `{stem} (2)` in list order, every time). Any exception while reading a photo makes only that item fail
+(seal F1: OpenCV raises cv2.error, not ValueError, on some damaged TIFFs). Files are written only
 through `safe_write.create_new` into the export folder, which is that call's root, with the preset folder in use
 (CONTRACT-write-guard G10, export XP10 / XP12). `SafeWriteRefused` is never caught here (G8).
 """
+import contextlib
 import os
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -40,6 +44,27 @@ class _Job:
     source: str
     path: str
     params: object
+
+
+class _Turns:
+    """Name claims in submission order: turn(w) waits until claims 0..w-1 are done (or the batch aborts)."""
+
+    def __init__(self, abort):
+        self.next, self.abort, self.cv = 0, abort, threading.Condition()
+
+    @contextlib.contextmanager
+    def turn(self, w):
+        with self.cv:
+            while self.next != w:
+                if self.abort.is_set():
+                    raise _Aborted()
+                self.cv.wait(0.05)
+        try:
+            yield
+        finally:
+            with self.cv:
+                self.next += 1
+                self.cv.notify_all()
 
 
 class _ItemFailed(Exception):
@@ -163,6 +188,7 @@ class ExportService:
         slots = threading.BoundedSemaphore(MAX_IN_FLIGHT)
         abort = threading.Event()
         out = [None] * len(jobs)
+        turns = _Turns(abort)
 
         def read(job):
             while not slots.acquire(timeout=0.05):
@@ -174,9 +200,9 @@ class ExportService:
                 slots.release()
                 raise
 
-        def write(k, job, pixels, exif):
+        def write(k, w, job, pixels, exif):
             try:
-                out[k] = self._write(job, pixels, exif, ext, bits, quality, dest_dir)
+                out[k] = self._write(job, pixels, exif, ext, bits, quality, dest_dir, lambda: turns.turn(w))
             finally:
                 slots.release()
 
@@ -188,8 +214,10 @@ class ExportService:
             for k, (job, rf) in enumerate(zip(jobs, reads)):
                 try:
                     image, exif = rf.result()
-                except (OSError, ValueError) as e:                  # X12: read_image's reason, as is
-                    out[k] = _failed(job.source, str(e))
+                except _Aborted:
+                    raise
+                except Exception as e:      # X12: read_image's reason as is (one line); cv2.error too (seal F1)
+                    out[k] = _failed(job.source, _one_line(e))
                     continue
                 try:
                     pixels = on_gpu(eng, eng.render_full, image, job.params, bits)
@@ -203,7 +231,7 @@ class ExportService:
                     continue
                 finally:
                     del image
-                writes.append(writer.submit(write, k, job, pixels, exif))
+                writes.append(writer.submit(write, k, len(writes), job, pixels, exif))
                 del pixels
             for wf in writes:
                 wf.result()                                         # SafeWriteRefused and the unexpected go out
@@ -214,7 +242,7 @@ class ExportService:
             on_gpu(eng, eng.release_cached_memory)                  # XP7: reserved memory back after the batch
         return out
 
-    def _write(self, job, pixels, exif, ext, bits, quality, dest_dir):
+    def _write(self, job, pixels, exif, ext, bits, quality, dest_dir, claim=contextlib.nullcontext):
         icc = encoding.srgb_icc()
         try:
             if bits == 8:
@@ -222,8 +250,13 @@ class ExportService:
             else:
                 data = encoding.tiff_bytes(pixels, exif, icc)
         except (ValueError, OverflowError) as e:   # cv2 / struct refusing the data
-            return _failed(job.source, M.EXPORT_RENDER_FAILED.format(detail=_one_line(e)))
+            with claim():
+                return _failed(job.source, M.EXPORT_RENDER_FAILED.format(detail=_one_line(e)))
         del pixels
+        with claim():                              # names in item order (seal F2)
+            return self._claim(job, data, ext, dest_dir)
+
+    def _claim(self, job, data, ext, dest_dir):
         folder, make_root = output_folder(job.path, dest_dir)
         stem = os.path.splitext(job.source)[0]
         try:

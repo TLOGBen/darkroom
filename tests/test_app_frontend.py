@@ -224,11 +224,31 @@ class TestPageStructure(unittest.TestCase):
         js = read("app.js")
         body = js[js.index("async function exportPhoto"):js.index("function renderPosition")]
         self.assertIn("api('POST', '/api/export'", body)
-        self.assertIn("L.EXPORT_BUSY", js)
-        self.assertIn("$('#export-quality').disabled = $('#export-format').value !== 'jpeg'", js)
-        self.assertIn("b.disabled = !st.image || exp.busy", js)
+        # seal F3: the real call path, exactly - success / failure entry, request failure, busy text
+        self.assertEqual(re.findall(r"toast\([^;]*\);", body),
+                         ["toast(L.exportMessage(r), !r.ok);", "toast(L.exportFailed(name, e.message), true);"])
+        self.assertIn("const r = res.results[0];", body)
+        self.assertIn("const name = L.baseName(st.image.path);", body)
+        refresh = js[js.index("function refreshExport"):js.index("async function exportPhoto")]
+        self.assertIn("b.textContent = exp.busy ? L.EXPORT_BUSY : '匯出';", refresh)
+        self.assertIn("$('#export-quality').disabled = $('#export-format').value !== 'jpeg'", refresh)
+        self.assertIn("b.disabled = !st.image || exp.busy", refresh)
+        self.assertRegex(body, r"exp\.busy = true;\s*refreshExport\(\);")
+        self.assertRegex(body, r"finally \{\s*exp\.busy = false;\s*refreshExport\(\);")
         for banned in ("dispatch(", "ed =", "ed.", "History", "requestPreview", "dest_dir"):   # never changes the edit
             self.assertNotIn(banned, body, banned)
+
+    def test_exported_sentence_same_in_cli_and_page(self):  # seal F5 / XP25: one sentence, two languages
+        from darkroom_app import cli
+        logic = read("logic.js")
+        m = re.search(r"const exportDone = \(outputPath\) => `([^`]*)`;", logic)
+        self.assertIsNotNone(m)
+        self.assertEqual(m.group(1).replace("${outputPath}", "{output_path}"), cli.EXPORTED)
+        self.assertEqual(cli.EXPORTED, "已匯出：{output_path}")
+        m = re.search(r"const exportFailed = \(fileName, reason\) => `([^`]*)`;", logic)
+        from darkroom_app import messages
+        self.assertEqual(m.group(1).replace("${fileName}", "{file_name}").replace("${reason}", "{reason}"),
+                         messages.EXPORT_FAILED)
 
     def test_section_headers_are_buttons(self):  # R6
         js = read("app.js")
