@@ -121,20 +121,30 @@ class TestLayering(unittest.TestCase):
             for needle in ("0.0.0.0", "--host", "torch.cuda.synchronize", "write_image", "imwrite"):
                 self.assertNotIn(needle, src, path)
 
-    def test_no_file_write_path_anywhere(self):  # L12 / L13 (seal patch S1): no code path in darkroom_app writes
+    def test_no_file_write_path_anywhere(self):  # L12 / L13 (seal patches S1, S7): no code path in darkroom_app writes
         """Photos and presets must never be overwritten: no write-mode open, no file mutation calls at all.
 
         The one exemption is the MCP protocol stream: os.fdopen(protocol_fd, "wb") on the os.dup(1) copy of stdout.
+        The other exact exemption (contract patch S7): Engine.open(path) in services/photos.py - receiver `eng`,
+        exactly one positional argument, no keywords (it reads the photo). Every other .open(...) is checked.
         """
         banned_calls = {"os.open", "os.remove", "os.unlink", "os.rename", "os.renames", "os.replace", "os.rmdir",
                         "os.removedirs", "os.mkdir", "os.makedirs", "os.truncate", "os.link", "os.symlink",
-                        "os.fdopen", "io.FileIO"}
+                        "os.chmod", "os.fdopen", "io.FileIO", "__import__", "exec", "eval", "compile"}
         banned_attrs = {"write_bytes", "write_text", "touch", "unlink", "rmdir", "symlink_to", "hardlink_to",
-                        "imwrite", "write_image", "tofile", "save"}
+                        "rename", "mkdir", "chmod", "imwrite", "write_image", "tofile", "save"}
+        mutating_names = {"open", "write_bytes", "write_text", "replace", "rename", "remove", "unlink", "mkdir",
+                          "makedirs", "rmdir", "touch", "chmod", "truncate", "FileIO", "fdopen"}
+        banned_modules = ("shutil", "tempfile", "pathlib", "builtins")
+        open_funcs = ("open", "io.open", "builtins.open", "codecs.open")
         offenders = []
 
-        def writes(c):
-            return isinstance(c, ast.Constant) and isinstance(c.value, str) and bool(set(c.value) & set("wax+"))
+        def literal_str(c):
+            return isinstance(c, ast.Constant) and isinstance(c.value, str)
+
+        def bad_mode(c):        # a mode that may write: a write letter, or anything that is not a plain literal
+            return c is not None and not (literal_str(c) and not set(c.value) & set("wax+"))
+
         for path in py_files():
             rel = os.path.relpath(path, APP).replace("\\", "/")
             tree = parse(path)
@@ -144,37 +154,52 @@ class TestLayering(unittest.TestCase):
                     alias.update({a.asname: a.name for a in node.names if a.asname})
                 elif isinstance(node, ast.ImportFrom) and node.module and not node.level:
                     alias.update({a.asname or a.name: f"{node.module}.{a.name}" for a in node.names})
+            for mod in imported_modules(path):
+                if mod.split(".")[0] in banned_modules:
+                    offenders.append((rel, 0, "import " + mod))
             for node in ast.walk(tree):
-                if isinstance(node, (ast.Import, ast.ImportFrom)):
-                    for mod in imported_modules(path):
-                        if mod.split(".")[0] in ("shutil", "tempfile"):
-                            offenders.append((rel, node.lineno, mod))
+                if isinstance(node, ast.Name) and node.id in ("builtins", "__builtins__"):
+                    offenders.append((rel, node.lineno, node.id))
                 if not isinstance(node, ast.Call):
                     continue
                 name = dotted(node.func)
                 if name:
                     head, _, rest = name.partition(".")
                     name = alias.get(head, head) + ("." + rest if rest else "")
+                attr = node.func.attr if isinstance(node.func, ast.Attribute) else None
                 mode_kw = next((k.value for k in node.keywords if k.arg == "mode"), None)
-                is_open = name in ("open", "io.open", "builtins.open", "codecs.open") or (
-                    isinstance(node.func, ast.Attribute) and node.func.attr == "open")
-                if is_open:
-                    # any write-mode constant in the first two positions or mode=, for open() and every .open()
-                    # (Path(...).open("wb"), codecs.open(p, "w")); a non-constant mode= is refused outright
-                    if any(writes(a) for a in node.args[:2]) or writes(mode_kw) or (
-                            mode_kw is not None and not isinstance(mode_kw, ast.Constant)):
-                        offenders.append((rel, node.lineno, name or node.func.attr))
-                    elif name in ("open", "io.open", "builtins.open") and len(node.args) > 1                             and not isinstance(node.args[1], ast.Constant):
+                if name in open_funcs:
+                    if bad_mode(node.args[1] if len(node.args) > 1 else None) or bad_mode(mode_kw):
                         offenders.append((rel, node.lineno, name))
-                elif name == "os.fdopen" and rel == "mcp_server/__init__.py" and len(node.args) >= 1                         and isinstance(node.args[0], ast.Name) and node.args[0].id == "protocol_fd":
+                elif attr == "open":          # Path(p).open(m), gzip/lzma/tarfile.open(p, m), zf.open(n, m), ...
+                    # exact exemption (S7): Engine.open(path) in services/photos.py - receiver `eng`, one
+                    # positional argument, no keywords; every other .open(...) gets the full rule
+                    engine_read = (rel == "services/photos.py" and isinstance(node.func.value, ast.Name)
+                                   and node.func.value.id == "eng" and len(node.args) == 1 and not node.keywords)
+                    first_two = node.args[:2]
+                    if not engine_read and (
+                            any(literal_str(a) and set(a.value) & set("wax+") for a in first_two)   # write letter
+                            or (len(node.args) > 1 and not literal_str(node.args[1]))           # computed mode
+                            or (len(node.args) == 1 and not literal_str(node.args[0]))          # Path(p).open(m)
+                            or bad_mode(mode_kw)):
+                        offenders.append((rel, node.lineno, ".open"))
+                elif name == "os.fdopen" and rel == "mcp_server/__init__.py" and len(node.args) >= 1 \
+                        and isinstance(node.args[0], ast.Name) and node.args[0].id == "protocol_fd":
                     continue
                 elif name in banned_calls:
                     offenders.append((rel, node.lineno, name))
-                elif isinstance(node.func, ast.Attribute) and node.func.attr in banned_attrs:
-                    offenders.append((rel, node.lineno, node.func.attr))
+                elif attr in banned_attrs:
+                    offenders.append((rel, node.lineno, attr))
+                elif attr == "replace" and len(node.args) < 2:      # Path.replace(target); str.replace takes two
+                    offenders.append((rel, node.lineno, ".replace"))
+                elif name == "getattr" and len(node.args) >= 2:
+                    target, what = node.args[0], node.args[1]
+                    if (literal_str(what) and what.value in mutating_names) or (
+                            not literal_str(what) and dotted(target) in ("os", "io", "codecs", "shutil")):
+                        offenders.append((rel, node.lineno, "getattr"))
         self.assertEqual(offenders, [])
-        src = open(os.path.join(APP, "mcp_server", "__init__.py"), encoding="utf-8").read()
-        self.assertIn("protocol_fd = os.dup(1)", src)     # the exemption is only for the dup of stdout
+        with open(os.path.join(APP, "mcp_server", "__init__.py"), encoding="utf-8") as fh:
+            self.assertIn("protocol_fd = os.dup(1)", fh.read())     # the exemption is only for the dup of stdout
 
     def test_facade_methods_forward_once(self):  # L2
         from darkroom_app.facade import DarkroomFacade, Facade
