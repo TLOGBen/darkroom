@@ -21,7 +21,7 @@ import torch
 from darkroom import Params, read_image, render
 
 PREVIEW_MAX_PIXELS = 1500000  # verbatim constant (B4)
-PHOTO_EXT = (".jpg", ".jpeg", ".png", ".tif", ".tiff", ".heic", ".heif")   # CONTRACT-heic H7
+from .formats import PHOTO_EXT  # noqa: E402,F401  the one extension table (CONTRACT-heic H7), torch-free home (KP11)
 JPEG_QUALITY = 85
 MAX_OPEN_IMAGES = 8
 

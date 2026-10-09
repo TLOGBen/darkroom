@@ -9,12 +9,17 @@
     preview <photo> [--preset ID] [--strength S] [--override KEY=VALUE]... [--max-pixels N]
     export <photo>... [--preset ID] [--strength S] [--override KEY=VALUE]... [--format jpeg|tiff] [--quality N]
                       [--dest-dir D]
+    presets list ... [--favorites] | groups | rename <id> <name> | move <id> <group> | favorite <id> on|off
+    presets import <path>... [--group G] | save --name N [--group G] [--preset ID] [--strength S] [--override K=V]...
+    presets rebuild
+    groups create <group> | rename <group> <new>          (CONTRACT-preset-library K16)
 
 Every subcommand takes --json: stdout is then exactly one line {"ok":true,"result":...} or
 {"ok":false,"error":{"kind":...,"message":...}} and stderr stays empty. Without --json a failure is one line
-on stderr. Exit codes: 0 ok, 1 unexpected, 2 invalid / usage, 3 not_found (4 conflict, 5 unavailable reserved), 6 export
-with at least one failed photo (stdout still holds every result; CONTRACT-export XP11). Only `export` writes files
-(new files, through the facade); `preview` without --json writes the JPEG bytes to stdout.
+on stderr. Exit codes: 0 ok, 1 unexpected, 2 invalid / usage, 3 not_found, 4 conflict, 5 unavailable, 6 export or
+presets import with at least one failed item (stdout still holds every result; CONTRACT-export XP11, preset library
+KP5). What writes files goes through the facade: `export` (new files) and the preset library commands (the library
+index, import/ and user/); `preview` without --json writes the JPEG bytes to stdout.
 """
 import argparse
 import base64
@@ -28,6 +33,8 @@ from .errors import DarkroomError
 EXIT = {"invalid": 2, "not_found": 3, "conflict": 4, "unavailable": 5}
 EXIT_PARTIAL = 6                        # export: some photos failed (CONTRACT-export XP11)
 EXPORTED = "已匯出：{output_path}"        # verbatim (XP3)
+IMPORTED = "已匯入：{id}"                 # verbatim (KP5)
+FAVORITE_WORDS = {"on": True, "off": False}   # presets favorite <id> on|off; anything else goes to the service (KP9)
 UNEXPECTED = "未預期錯誤：{type_name}：{detail}"
 TTY_REFUSAL = "預覽是 JPEG 位元組，請導向檔案（> out.jpg）或加 --json"
 CONFIG_ERROR = "darkroom：{e}"
@@ -75,9 +82,38 @@ def _parser():
     p.add_argument("--query", default=None, help="substring of the name or group (case-insensitive)")
     p.add_argument("--offset", type=int, default=0)
     p.add_argument("--limit", type=int, default=None)
+    p.add_argument("--favorites", action="store_true", help="only the favorite presets")
     p = leaf(psub, "show", "one preset in detail")
     p.add_argument("preset_id")
     leaf(psub, "flags", "presets with skipped settings")
+    leaf(psub, "groups", "the preset group tree")
+    p = leaf(psub, "rename", "change a preset's display name (the file is never changed)")
+    p.add_argument("preset_id")
+    p.add_argument("name")
+    p = leaf(psub, "move", "move a preset to a group ('A - B' for a sub-group)")
+    p.add_argument("preset_id")
+    p.add_argument("group")
+    p = leaf(psub, "favorite", "mark (on) or unmark (off) a favorite")
+    p.add_argument("preset_id")
+    p.add_argument("state", metavar="on|off")
+    p = leaf(psub, "import", "copy .xmp presets (files or folders) into the library; the sources are never changed")
+    p.add_argument("path", nargs="*")
+    p.add_argument("--group", default=None, help="group for every imported preset")
+    p = leaf(psub, "save", "save a preset x strength + overrides as a new user preset (never overwrites)")
+    p.add_argument("--name", default=None)
+    p.add_argument("--group", default=None, help="default: 自存 preset")
+    p.add_argument("--preset", default=None, help="preset id")
+    p.add_argument("--strength", type=float, default=100, help="percent, 0..200 (default 100)")
+    p.add_argument("--override", type=_override, action="append", default=None, metavar="KEY=VALUE",
+                   help="slider difference added after strength (repeatable)")
+    leaf(psub, "rebuild", "rebuild the library index from the preset folders")
+    groups = sub.add_parser("groups", help="preset groups")
+    gsub = groups.add_subparsers(dest="groups_command", required=True, metavar="SUBCOMMAND")
+    p = leaf(gsub, "create", "create an empty group")
+    p.add_argument("group")
+    p = leaf(gsub, "rename", "rename a group and its sub-groups (new is the full new path)")
+    p.add_argument("group")
+    p.add_argument("new")
     leaf(sub, "sliders", "the editor's sliders")
     p = leaf(sub, "open", "open a photo and describe it")
     p.add_argument("photo")
@@ -107,10 +143,29 @@ def _run(a, facade):
     if cmd == "presets":
         sc = a.presets_command
         if sc == "list":
-            return facade.list_presets(a.query, a.offset, a.limit)
+            return facade.list_presets(a.query, a.offset, a.limit, a.favorites)
         if sc == "show":
             return facade.preset_detail(a.preset_id)
+        if sc == "groups":
+            return facade.preset_groups()
+        if sc == "rename":
+            return facade.rename_preset(a.preset_id, a.name)
+        if sc == "move":
+            return facade.move_preset(a.preset_id, a.group)
+        if sc == "favorite":
+            return facade.set_favorite(a.preset_id, FAVORITE_WORDS.get(a.state, a.state))
+        if sc == "import":
+            return facade.import_presets(a.path, a.group, None)
+        if sc == "save":
+            overrides = dict(a.override) if a.override else None
+            return facade.save_user_preset(a.name, a.group, a.preset, a.strength, overrides)
+        if sc == "rebuild":
+            return facade.rebuild_library()
         return facade.preset_flags()
+    if cmd == "groups":
+        if a.groups_command == "create":
+            return facade.create_group(a.group)
+        return facade.rename_group(a.group, a.new)
     if cmd == "sliders":
         return facade.slider_table()
     if cmd == "export":           # every photo is a path item with the same parameters; nothing is opened first
@@ -127,6 +182,10 @@ def _run(a, facade):
     return facade.preview(info["image_id"], a.preset, a.strength, overrides, a.max_pixels)
 
 
+def _is_import(a):
+    return a.command == "presets" and a.presets_command == "import"
+
+
 def _line(text, stream):
     stream.write(text + "\n")
     stream.flush()
@@ -136,6 +195,8 @@ def _human(a, result):
     if a.command == "export":
         return "\n".join(EXPORTED.format(output_path=r["output"]) if r["ok"] else r["error"]
                          for r in result["results"])
+    if _is_import(a):
+        return "\n".join(IMPORTED.format(id=r["id"]) if r["ok"] else r["error"] for r in result["results"])
     if a.command == "presets" and a.presets_command == "list":
         lines = [f"{r['id']}\t{r['group']}\t{r['name']}" + ("" if r["supported"] else "\t(unsupported)")
                  for r in result["items"]]
@@ -193,7 +254,7 @@ def main(argv=None, facade=None):
         _line(json.dumps({"ok": True, "result": result}, ensure_ascii=False, separators=(",", ":")), sys.stdout)
     else:
         _line(_human(a, result), sys.stdout)
-    if a.command == "export" and not all(r["ok"] for r in result["results"]):
+    if (a.command == "export" or _is_import(a)) and not all(r["ok"] for r in result["results"]):
         return EXIT_PARTIAL
     return 0
 

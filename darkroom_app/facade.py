@@ -8,7 +8,7 @@ from typing import Protocol, runtime_checkable
 
 @runtime_checkable
 class Facade(Protocol):
-    def list_presets(self, query=None, offset=0, limit=None): ...
+    def list_presets(self, query=None, offset=0, limit=None, favorites=False): ...
 
     def preset_detail(self, preset_id): ...
 
@@ -24,16 +24,35 @@ class Facade(Protocol):
 
     def export(self, items, format, quality=None, dest_dir=None): ...
 
+    def preset_groups(self): ...
+
+    def rename_preset(self, preset_id, name): ...
+
+    def move_preset(self, preset_id, group): ...
+
+    def set_favorite(self, preset_id, favorite): ...
+
+    def create_group(self, group): ...
+
+    def rename_group(self, group, new_name): ...
+
+    def import_presets(self, paths=None, group=None, files=None): ...
+
+    def save_user_preset(self, name, group=None, preset_id=None, strength=100, overrides=None): ...
+
+    def rebuild_library(self): ...
+
 
 class DarkroomFacade:
-    def __init__(self, presets, photos, previews, exports):
+    def __init__(self, presets, photos, previews, exports, library):
         self._presets = presets
         self._photos = photos
         self._previews = previews
         self._exports = exports
+        self._library = library
 
-    def list_presets(self, query=None, offset=0, limit=None):
-        return self._presets.list_presets(query, offset, limit)
+    def list_presets(self, query=None, offset=0, limit=None, favorites=False):
+        return self._presets.list_presets(query, offset, limit, favorites)
 
     def preset_detail(self, preset_id):
         return self._presets.preset_detail(preset_id)
@@ -55,3 +74,30 @@ class DarkroomFacade:
 
     def export(self, items, format, quality=None, dest_dir=None):
         return self._exports.export(items, format, quality, dest_dir)
+
+    def preset_groups(self):
+        return self._library.preset_groups()
+
+    def rename_preset(self, preset_id, name):
+        return self._library.rename_preset(preset_id, name)
+
+    def move_preset(self, preset_id, group):
+        return self._library.move_preset(preset_id, group)
+
+    def set_favorite(self, preset_id, favorite):
+        return self._library.set_favorite(preset_id, favorite)
+
+    def create_group(self, group):
+        return self._library.create_group(group)
+
+    def rename_group(self, group, new_name):
+        return self._library.rename_group(group, new_name)
+
+    def import_presets(self, paths=None, group=None, files=None):
+        return self._library.import_presets(paths, group, files)
+
+    def save_user_preset(self, name, group=None, preset_id=None, strength=100, overrides=None):
+        return self._library.save_user_preset(name, group, preset_id, strength, overrides)
+
+    def rebuild_library(self):
+        return self._library.rebuild_library()

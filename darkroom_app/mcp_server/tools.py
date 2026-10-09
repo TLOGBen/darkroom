@@ -51,7 +51,7 @@ class Tools:
                                  "data": base64.b64encode(result.jpeg).decode("ascii")}],
                     "structuredContent": {"render_ms": result.render_ms, "width": result.width,
                                           "height": result.height}}
-        if op == "export":     # CONTRACT-export XP11: partial failure is counted, never an error result
+        if op in ("export", "import_presets"):   # XP11 / KP5: partial failure is counted, never an error result
             result = {**result, "failed": sum(1 for r in result["results"] if not r["ok"])}
         return {"content": [{"type": "text", "text": json.dumps(result, ensure_ascii=False)}],
                 "structuredContent": result}

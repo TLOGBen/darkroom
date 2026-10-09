@@ -1,11 +1,11 @@
-"""Preset library and slider table operations (CONTRACT-layering L3, L4)."""
+"""Preset library and slider table operations (CONTRACT-layering L3, L4; CONTRACT-preset-library K9)."""
 import copy
 
 from .. import messages as M
 from .. import sliders
 from ..errors import DarkroomError
 
-ROW_KEYS = ("id", "group", "name", "supported", "skipped")   # B3
+from ..presets import ROW_KEYS    # B3 as patched by K9: id, group, name, supported, skipped, favorite
 
 
 def _is_int(v):
@@ -16,12 +16,16 @@ class PresetService:
     def __init__(self, library):
         self.library = library
 
-    def list_presets(self, query=None, offset=0, limit=None):
+    def list_presets(self, query=None, offset=0, limit=None, favorites=False):
         if not _is_int(offset) or offset < 0:
             raise DarkroomError("invalid", M.OFFSET_INVALID)
         if limit is not None and (not _is_int(limit) or not 1 <= limit <= M.LIMIT_MAX):
             raise DarkroomError("invalid", M.LIMIT_INVALID)
+        if not isinstance(favorites, bool):
+            raise DarkroomError("invalid", M.LIB_FAVORITE_INVALID)
         entries = self.library.entries
+        if favorites:
+            entries = [e for e in entries if e["favorite"]]
         if query is not None and query != "":
             q = str(query).casefold()
             entries = [e for e in entries if q in e["name"].casefold() or q in e["group"].casefold()]

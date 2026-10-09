@@ -7,7 +7,7 @@ file this process created with `create_new` over `dest`), `remove` and `open_loc
 * the parent of `realpath(path)` is inside `realpath(root)` (normcase + commonpath, junctions and symlinks resolved);
 * the target is not inside the preset folder in use (keyword `preset_dir=`, passed in by the composition:
   CONTRACT-export XP12) nor inside `config.preset_dir()` when that resolves; with neither known it is refused;
-* for `replace_into` (dest) and `remove`, the extension is neither a photo extension (`engine.PHOTO_EXT`) nor `.xmp`.
+* for `replace_into` (dest) and `remove`, the extension is neither a photo extension (`formats.PHOTO_EXT`, re-exported as `engine.PHOTO_EXT`) nor `.xmp`.
 
 A failed check raises `SafeWriteRefused` (an Exception, not an OSError: services must not catch it). Data is bytes
 only; this module never takes a function that opens a file by itself. Which services may import this module is a
@@ -16,6 +16,7 @@ constant whitelist in tests/test_layering.py (`test_only_safe_write_writes`).
 import os
 
 from . import config
+from .formats import PHOTO_EXT     # the one extension table (CONTRACT-heic H7; engine re-exports it)
 
 REFUSED_OUTSIDE = "refused: {path} is outside {root}"                   # verbatim (G8)
 REFUSED_PRESET = "refused: {path} is inside the preset folder"            # verbatim (G8)
@@ -66,7 +67,6 @@ def _check(path, root, protected_ext=False, preset_dir=None):
     if any(_under(real, folder) for folder in _preset_folders(preset_dir)):
         raise SafeWriteRefused(REFUSED_PRESET.format(path=path))
     if protected_ext:
-        from .engine import PHOTO_EXT     # the one extension table (CONTRACT-heic H7)
         if os.path.splitext(real)[1] in PHOTO_EXT + (".xmp",):
             raise SafeWriteRefused(REFUSED_PROTECTED.format(path=path))
     return real
