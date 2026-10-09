@@ -1,0 +1,56 @@
+# CONTRACT — darkroom 寫檔守門（執行期 audit hook＋safe_write；AST 降級為分層規則）
+<!-- 此處採預設：合約未經人工確認即釘死（2026-10-09 工作流程派工；決定由主 session 做完，不問使用者） -->
+
+## 目標
+「不會寫檔」改由執行期證明：測試全程掛 `sys.addaudithook`，任何寫入類事件的目標不在宣告的可寫根目錄就讓該測試變紅並印出堆疊；產品端的寫檔全部集中到 `darkroom_app/safe_write.py`（只建新檔、限定 root）。AST 只剩一條分層規則「只有 safe_write.py 能呼叫寫入 API」，**AST 不負責證明不會寫檔**。排在分層封緘之後、匯出之前；本片產品端白名單＝0 個 service（還沒有人會寫）。
+
+## 前提（Premises）
+- W1 已驗（`tests/test_layering.py:124` `test_no_file_write_path_anywhere`，S1／S7）：現行 AST 黑名單＋兩個精確豁免（`mcp_server/__init__.py` 的 `os.fdopen(protocol_fd, "wb")`、`services/photos.py` 的 `eng.open(path)`）；三輪封緘都撞「寫檔守門漏洞」。
+- W2 已驗（2026-10-09 scratchpad 實測，專用 Python，`test_layering`／`test_api`／`test_app_cli`／`test_xmp`／`test_app_services` 共 57 個測試掛記錄型 hook）：寫入類事件只有：`ctypes.dlopen`（`kernel32`、`kernel32.dll`、`msvcp140.dll`、`vcruntime140.dll`、`vcruntime140_1.dll`，torch 匯入時）、`open('nul')`（os.devnull）、`tempfile.gettempdir()` 的可寫探測（%TEMP% 下亂數檔 open＋`os.remove`）、`darkroom-test-*` 的 mkdtemp／rmtree、19 次 `subprocess.Popen(sys.executable)`；沒看到 pycache 寫入（已快取）。
+- W3 已驗（同次實測）：`open(p,"wb")` 的事件 mode 是 `'w'`；`os.open(O_CREAT)` 的 mode 是 `None`、只有 flags；`os.replace` 發 `os.rename`；`Path.write_bytes`、`gzip.open(…,"wb")`、`shelve` 都發 `open`；sqlite 檔只發 `sqlite3.connect`。C 程式自己開檔（`cv2.imwrite`、原生函式庫）不發任何事件。
+- W4 已驗（`darkroom/_io.py:58`）：核心 `write_image(path, img)` 用 `open(path,"wb")`，會蓋掉既有檔；`cv2.imencode` 產生位元組。
+- W5 已驗（tests/）：沒有 `tests/__init__.py`；`test_http_golden.py` 沒 import `_util`；`test_app_services.py:22`、`test_heic.py:358` 直接 `tempfile.mkdtemp`；測試會開 `sys.executable`（`_util.run_cli`、`test_app_cli`、`test_app_mcp`、`test_app_launch`）、`node`、`pwsh`、`taskkill`；產品唯一的子程序是 `gpucheck.py:24` 的 `nvidia-smi`。
+- W6 未驗、不入條文為事實：帶 CUDA 的整套（`test_render`、`test_heic`、`test_app_server`、`test_interface_parity`）會不會有第三方套件寫到根目錄外（torch／cv2 快取）。處理見 G9。
+
+## 可斷言條文
+- [ ] G1（掛載）：`tests/_writeguard.py` 在第一次被 import 時 `sys.addaudithook` 並武裝；每個 `tests/test_*.py` 模組頂層都 import 它（直接或經 `_util`，`test_every_module_arms_guard` 用 AST 檢查），單獨跑任一模組也有守門。武裝前先呼叫一次 `tempfile.gettempdir()`（W2 的可寫探測不算違規）。禁止：任何暫停、關閉守門的開關或環境變數。
+- [ ] G2（攔哪些事件）：寫入模式的 `open`（mode 含 w／a／x／+，或 flags 含 `O_WRONLY|O_RDWR|O_CREAT|O_TRUNC|O_APPEND`；path 是 int fd 不算）、`os.rename`（兩端都查）、`os.remove`、`os.rmdir`、`os.mkdir`、`os.chmod`、`os.utime`、`os.truncate`、`os.link`、`os.symlink`、`shutil.copyfile`／`copytree`／`move`／`rmtree`／`make_archive`／`unpack_archive`（目的端）、`tempfile.mkstemp`／`mkdtemp`、`sqlite3.connect`（`:memory:` 與 `mode=memory` URI 以外）、`dbm.open`。目標先轉成 str、`os.path.realpath`、`normcase` 再比。
+- [ ] G3（一律違規，不看路徑）：`os.system`、`os.exec`、`os.spawn`、`os.posix_spawn`、`os.startfile`。`subprocess.Popen`：發起者是測試 → 執行檔 basename 只准常數清單；發起者是產品 → 只准 `gpucheck` 的 `nvidia-smi`；發起者是第三方 → 違規。`ctypes.dlopen`：發起者是產品（`darkroom_app/`、`darkroom/`）→ 違規；第三方（site-packages）→ 放行（W2 的 torch）。發起者＝呼叫堆疊上離事件最近、檔案不在 stdlib（`sys.base_prefix` 的 `Lib`，site-packages 除外）的那一格。
+- [ ] G4（可寫根目錄）：只能由 fixture 宣告，產品程式裡沒有任何宣告。`_util.tmpdir(testcase)` 與 class 層級的對應 fixture 先登記路徑、再建資料夾（禁止先 mkdtemp 後登記），cleanup 刪完才註銷；W5 那兩處直接 `mkdtemp` 改用 fixture。另外只放行：`os.devnull`、檔名符合 pycache 常數的寫入。測試用 data_dir、合成 preset 庫都必須落在 fixture 的根目錄裡。
+- [ ] G5（違規怎麼紅）：hook 拋 `WriteGuardViolation`（繼承 `BaseException`，不是 `OSError`／`Exception`），同時記進違規表；違規所在的那個測試本身變紅（產品用 `except Exception`／`except OSError` 吞掉、或發生在 GPU executor／縮圖執行緒裡也一樣），訊息首行恰為常數格式，下面附發起時的完整堆疊。全套最後 `test_zz_writeguard` 再核一次違規表為空。
+- [ ] G6（子程序）：測試開 `sys.executable` 一律經 `tests/_guardrun.py`（先武裝、繼承父程序傳入的根目錄，再 `runpy` 跑 `-m 模組`／`-c 程式`）；子程序違規 → stderr 首行同 G5 常數、結束碼 86，父測試因此變紅。不經 `_guardrun.py` 直接開 `sys.executable` → 違規。`pwsh`（`test_app_launch` 的 start.ps1）再開的 python 不在守門內，只靠 G7 快照，記為已知缺口。
+- [ ] G7（受保護資料夾快照）：武裝時與 `test_zz_writeguard` 各取一次：`_util.PHOTOS`、`dirname(_util.preset_dir())`（整個 preset 庫根，遞迴）、真實 `%LOCALAPPDATA%/darkroom`（存在與否也算），內容＝每個檔的 SHA-256＋遞迴相對檔名清單（含資料夾）；任何差異都紅並列出差異路徑。fixture 宣告為「受保護」的合成照片資料夾在該測試前後同樣比對。`test_presets_untouched_hash` 仍為 `15C015CC0C080FF9`、數量 1466。
+- [ ] G8（`darkroom_app/safe_write.py`，產品端唯一寫檔處）：公開恰 5 個函式：`create_new(path, root, data)`（`O_CREAT|O_EXCL|O_WRONLY|O_BINARY`，絕不覆蓋，已存在 → 原樣 `FileExistsError`；寫失敗刪掉半份檔再往外拋）、`make_dirs(path, root)`、`replace_into(tmp, dest, root)`（tmp 必須是本程序 `create_new` 建的）、`remove(path, root)`、`open_lock(path, root)`（basename 以 `.lock` 結尾，`O_RDWR|O_CREAT`，不截斷）。每個都先檢查：root 是存在的絕對資料夾；`realpath(path)` 的上層在 `realpath(root)` 底下（normcase、`commonpath`，junction／symlink 解開後算）；不在 `config.preset_dir()` 底下；`replace_into` 的 dest 與 `remove` 的目標副檔名不在 `engine.PHOTO_EXT`、也不是 `.xmp`。不合 → `SafeWriteRefused`（繼承 `Exception`、不是 `OSError`，service 不得接住），句子見常數。只收位元組，不收「會自己開檔的函式」。
+- [ ] G9（第三方例外要明列）：實作第一步先用「只記錄」模式跑整套（含 CUDA），把根目錄外的寫入列成清單；任何要放行的第三方寫入都以「事件＋路徑前綴＋發起套件」寫進本合約補丁，禁止用萬用字元或「site-packages 一律放行」。
+- [ ] G10（AST 降級為分層規則）：`test_no_file_write_path_anywhere` 現行規則原樣保留、不再擴充，掃描範圍改為 `darkroom_app/**` 除 `safe_write.py`（W1 兩個精確豁免照舊）；新增 `test_only_safe_write_writes`：`import safe_write`／`from darkroom_app import safe_write` 只准出現在白名單模組（本片 0 個，常數）；`write_image`、`imwrite`、`.save(`、`.tofile(` 在 `darkroom_app/**` 全面禁止，白名單模組也一樣（W3、W4：原生寫檔看不到事件）。docstring 寫明「AST 只管分層，不證明不寫檔；不寫檔由 `_writeguard` 執行期證明」。
+- [ ] G11（探針驗收）：`tests/test_writeguard.py` 常駐探針：以產品身分（編譯時檔名設成 `darkroom_app/` 底下的路徑）對根目錄外的目標各跑一次常數清單的 13 種寫法，每一種都必須被攔、檔案不存在、違規表多一筆該事件；同樣寫法對 fixture 根目錄內 → 放行。另外 `safe_write` 的拒絕情境：root 外、`..` 跳出、junction 指出 root、已存在、preset_dir 內、dest 是照片副檔名或 `.xmp`、tmp 不是本程序建的，各一條。封緘時 seal 另把同 13 種寫法逐一真的插進產品模組（例如 CLI 子指令）跑整套，每一種都要讓整套變紅。
+- [ ] G12（回歸與範圍）：`python -s -m unittest discover -s tests` 結束碼 0；既有測試只准改 import 行、`mkdtemp` 改 fixture、子程序改經 `_guardrun.py`，逐處記成本合約補丁。不新增依賴、不用 Rust（ADR-0003）；產品執行期不掛 audit hook（記為待決）。本片不改 `CONTRACT-export.md`、`CONTRACT-preset-library.md`、`CONTRACT-photo-library.md`，三處補丁內容見下。
+
+## 後續三片要補的條文（本片只列，不改那三份）
+- XP5（匯出）：白名單 0→1：`services/export.py` 可 import `safe_write`；root＝該次 `dest_dir`（X8 決定的資料夾）；輸出檔一律 `create_new`，X9 撞名靠 `FileExistsError` 換編號名；撤銷 XP5 放行 `write_image`／`imwrite` 的部分，改成先編碼成位元組再交給 `safe_write`（編碼函式從哪來由匯出片決定）；`test_only_export_service_writes` 由 G10 的 `test_only_safe_write_writes` 取代。
+- K18（preset 庫）：白名單 1→2：`services/preset_library.py`；root＝K1 的庫根；`library.json` 走 `create_new(tmp)`＋`replace_into`，`.lock` 走 `open_lock`，`import/`、`user/` 只用 `create_new`；`preset_dir` 由 G8 拒絕。測試的合成庫在 fixture 根目錄。
+- PL14（照片庫）：白名單 2→3：`services/photo_library.py`；root＝data_dir；PL3 的暫存＋`os.replace` 改 `create_new`＋`replace_into`，clear 走 `remove`；「執行期監看」直接由 G5 守門擔任，不另寫 mock。
+
+## 錯不起表面（Surface Inventory）
+| 表面 | 格式 | 影響（資產 → 後果｜類別） | 釘死測試 |
+|------|------|--------------------------|----------|
+| 根目錄外的寫入（G2～G6） | 一律紅＋堆疊 | 使用者照片與 preset → 新繞法寫進去卻沒有測試紅，原檔被改無法復原｜不可逆／資料 | `test_writeguard_probes`、`test_violation_swallowed_still_fails`、`test_guardrun_child_violation` |
+| safe_write 檢查（G8） | 只建新檔、限 root | 使用者照片與先前匯出 → 被覆蓋或寫到 root 外｜不可逆／資料 | `test_safe_write_refusals`、`test_safe_write_never_overwrites` |
+| 受保護快照（G7） | SHA-256＋檔名清單 | 照片資料夾、preset 庫、真實 data_dir → 原生程式或子程序繞過 hook 改到它們｜不可逆／資料 | `test_zz_writeguard`、`test_presets_untouched_hash` |
+| 守門掛載（G1、G4） | 每模組都武裝、無暫停 | 之後三片 → 單跑某模組或某段時間沒守門，漏洞進主線｜邏輯核心 | `test_every_module_arms_guard`、`test_guard_has_no_pause` |
+| 分層白名單（G10） | 常數清單 | 匯出／preset 庫／照片庫三片 → 別的模組長出寫檔路徑｜邏輯核心 | `test_only_safe_write_writes`、`test_no_file_write_path_anywhere` |
+| 違規訊息（G5） | 常數首行 | 開發者與 seal → 看不出哪個測試、哪個路徑，誤判成環境問題｜UI/UX | `test_violation_message_format` |
+
+## Verbatim Constants
+```text
+違規首行：寫檔守門：{event} → {target}（測試 {test_id}）
+子程序違規結束碼：86
+SafeWriteRefused：refused: {path} is outside {root} ｜ refused: {path} is inside the preset folder ｜ refused: {path} is a photo or preset file ｜ refused: {tmp} was not created by safe_write ｜ refused: root {root} is not an existing absolute folder
+pycache 檔名（任一層有 __pycache__）：^[^\\/]+\.cpython-\d+(\.opt-\d)?\.pyc(\.\d+)?$
+寫入 flags：O_WRONLY|O_RDWR|O_CREAT|O_TRUNC|O_APPEND ｜ 寫入 mode 字元：w a x +
+測試可開的執行檔 basename：python.exe（僅經 _guardrun.py）｜ node.exe ｜ pwsh.exe ｜ taskkill.exe
+產品可開的子程序：gpucheck → nvidia-smi
+探針 13 種：open(p,"wb") ｜ m="w"+"b"; open(p,m) ｜ os.open(p,O_CREAT|O_WRONLY) ｜ Path(p).write_bytes ｜ Path(a).replace(p) ｜ gzip.open(p,"wb") ｜ zipfile.ZipFile(p,"w") ｜ tarfile.open(p,"w") ｜ lzma.open(p,"wb") ｜ shelve.open(p) ｜ sqlite3.connect(p) ｜ subprocess.run(["cmd","/c","echo x>"+p]) ｜ ctypes.WinDLL("kernel32").CreateFileW(p,…)
+safe_write 白名單模組：本片（空）→ XP5：services/export.py → K18：＋services/preset_library.py → PL14：＋services/photo_library.py
+preset 合併雜湊：15C015CC0C080FF9 ｜ 數量：1466
+```
