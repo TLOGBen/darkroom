@@ -460,7 +460,172 @@
     return {items, failed};
   }
 
+  // ---------------------------------------------------------------- S2 export dialog (CONTRACT-s2-export-detect E1, E8, E29)
+  // The server's normalize_settings is the one rule; these helpers only mirror it for what the dialog shows and
+  // disables. A value the user typed that is not a number goes to the server as typed (the server says why).
+  const EXPORT_SETTINGS_KEY = 'darkroom.exportSettings';
+  const EXPORT_FORMATS = ['jpeg', 'png', 'tiff', 'webp'];
+  const FORMAT_LABELS = {jpeg: 'JPEG', png: 'PNG', tiff: 'TIFF', webp: 'WebP'};
+  const RESIZE_MODES = ['long_edge', 'short_edge', 'width', 'height', 'megapixels', 'percent'];
+  const RESIZE_LABELS = {long_edge: '長邊', short_edge: '短邊', width: '寬', height: '高', megapixels: '百萬像素', percent: '百分比'};
+  const METADATA_LABELS = {all: '全部中繼資料', copyright: '只留版權', none: '不含中繼資料'};
+  const REMOVE_GPS_LABEL = '移除 GPS';
+  const SHARPEN_TARGETS = ['screen', 'matte', 'glossy'];
+  const SHARPEN_TARGET_LABELS = {screen: '螢幕', matte: '霧面紙', glossy: '光面紙'};
+  const SHARPEN_AMOUNTS = ['low', 'standard', 'high'];
+  const SHARPEN_AMOUNT_LABELS = {low: '低', standard: '標準', high: '高'};
+  const NO_RESIZE_LABEL = '不縮放';
+  const NO_SHARPEN_LABEL = '不銳利化';
+  const ORIGINAL_SIZE = '原尺寸';
+  const CUSTOM_PRESET = '（自訂）';
+  const EXPORT_DEFAULTS = {format: 'jpeg', bit_depth: 8, quality: 92, max_kb: null, resize: null, metadata: 'all',
+                           remove_gps: false, sharpen: null};
+  const defaultBitDepth = (format) => (format === 'tiff' ? 16 : 8);
+  const lossy = (format) => format === 'jpeg' || format === 'webp';
+  const exportPresetSaved = (name) => `已存成匯出預設：${name}`;
+  const exportPresetUpdated = (name) => `已更新匯出預設：${name}`;
+  const exportPresetDeleted = (name) => `已刪除匯出預設：${name}`;
+  const UNDO_LABEL = '復原';
+  const EXPORT_PRESET_NAME_PROMPT = '匯出預設的名稱（1～60 個字；同名會取代，可復原）';
+
+  // E8 mirror: the size the server writes (only ever smaller), from the upright size and the resize setting
+  function resizeTarget(w, h, resize) {
+    if (!resize) return [w, h];
+    const m = resize.mode, v = resize.value;
+    const s = {long_edge: v / Math.max(w, h), short_edge: v / Math.min(w, h), width: v / w, height: v / h,
+               megapixels: Math.sqrt(v * 1e6 / (w * h)), percent: v / 100}[m];
+    if (s === undefined || !(s < 1)) return [w, h];
+    const rnd = (x) => Math.max(1, Math.floor(x + 0.5));
+    if (m === 'megapixels') return [Math.max(1, Math.floor(w * s)), Math.max(1, Math.floor(h * s))];
+    if (m === 'percent') return [rnd(w * s), rnd(h * s)];
+    if (m === 'width') return [v, rnd(h * s)];
+    if (m === 'height') return [rnd(w * s), v];
+    if (m === 'long_edge') return w >= h ? [v, rnd(h * s)] : [rnd(w * s), v];
+    return w <= h ? [v, rnd(h * s)] : [rnd(w * s), v];          // short_edge
+  }
+
+  const numberOrText = (t) => {                     // the server judges anything that is not a plain number
+    const s = String(t == null ? '' : t).trim();
+    return /^-?(\d+\.?\d*|\.\d+)$/.test(s) ? Number(s) : s;
+  };
+
+  // the form's raw values -> the 8 settings keys the server takes (only the keys that apply to the format)
+  function settingsFromForm(f) {
+    const format = f.format;
+    const resize = f.resize_mode ? {mode: f.resize_mode, value: numberOrText(f.resize_value)} : null;
+    const sharpen = f.sharpen_target ? {target: f.sharpen_target, amount: f.sharpen_amount || 'standard'} : null;
+    return {format,
+            bit_depth: lossy(format) ? 8 : numberOrText(f.bit_depth || defaultBitDepth(format)),
+            quality: lossy(format) ? numberOrText(f.quality === '' || f.quality == null ? EXPORT_DEFAULTS.quality : f.quality) : null,
+            max_kb: format === 'jpeg' && f.max_kb_on ? numberOrText(f.max_kb) : null,
+            resize, metadata: f.metadata || 'all', remove_gps: (f.metadata || 'all') === 'all' && !!f.remove_gps, sharpen};
+  }
+
+  // what localStorage (or an export preset) holds -> complete settings; anything unreadable falls back to the default
+  function exportSettingsFrom(stored) {
+    let o = stored;
+    if (typeof stored === 'string') { try { o = JSON.parse(stored); } catch (e) { o = null; } }
+    if (!o || typeof o !== 'object') return Object.assign({}, EXPORT_DEFAULTS);
+    const format = EXPORT_FORMATS.includes(o.format) ? o.format : EXPORT_DEFAULTS.format;
+    const okRes = o.resize && RESIZE_MODES.includes(o.resize.mode) && typeof o.resize.value === 'number';
+    const okSh = o.sharpen && SHARPEN_TARGETS.includes(o.sharpen.target) && SHARPEN_AMOUNTS.includes(o.sharpen.amount);
+    return {format,
+            bit_depth: lossy(format) ? 8 : ([8, 16].includes(o.bit_depth) ? o.bit_depth : defaultBitDepth(format)),
+            quality: lossy(format) ? (Number.isInteger(o.quality) && o.quality >= 1 && o.quality <= 100 ? o.quality : EXPORT_DEFAULTS.quality) : null,
+            max_kb: format === 'jpeg' && Number.isInteger(o.max_kb) ? o.max_kb : null,
+            resize: okRes ? {mode: o.resize.mode, value: o.resize.value} : null,
+            metadata: Object.prototype.hasOwnProperty.call(METADATA_LABELS, o.metadata) ? o.metadata : 'all',
+            remove_gps: o.remove_gps === true,
+            sharpen: okSh ? {target: o.sharpen.target, amount: o.sharpen.amount} : null};
+  }
+
+  // E29: which controls are disabled, decided here only (caps: the features of GET /api/capabilities, or null)
+  function exportDialogState(settings, caps) {
+    const f = settings.format;
+    const webp = caps && caps.webp && caps.webp.available === false ? caps.webp.reason || '' : null;
+    const mode = settings.resize ? settings.resize.mode : '';
+    const range = mode === 'megapixels' ? {min: 0.01, max: 1000, step: 0.01}
+      : mode === 'percent' ? {min: 0.01, max: 100, step: 0.01} : {min: 1, max: 65535, step: 1};
+    return {quality: {disabled: !lossy(f)},
+            bitDepth: {disabled: lossy(f), options: lossy(f) ? [8] : [8, 16]},
+            maxKbOn: {disabled: f !== 'jpeg'},
+            maxKb: {disabled: f !== 'jpeg' || settings.max_kb == null},
+            webp: {disabled: webp !== null, title: webp || ''},
+            go: {disabled: f === 'webp' && webp !== null},
+            resizeValue: Object.assign({disabled: !mode}, range),
+            removeGps: {disabled: settings.metadata !== 'all'},
+            sharpenAmount: {disabled: !settings.sharpen}};
+  }
+
+  // E29: one line, e.g. 「JPEG 品質 92 ・長邊 2048 px ・全部中繼資料 ・螢幕銳利化（標準）」
+  function exportSummary(s) {
+    const parts = [];
+    const fl = FORMAT_LABELS[s.format] || String(s.format);
+    parts.push(lossy(s.format) ? `${fl} 品質 ${s.quality == null ? EXPORT_DEFAULTS.quality : s.quality}`
+      : `${fl} ${s.bit_depth == null ? defaultBitDepth(s.format) : s.bit_depth}-bit`);
+    if (s.format === 'jpeg' && s.max_kb != null) parts.push(`最大 ${s.max_kb} KB`);
+    if (!s.resize) parts.push(ORIGINAL_SIZE);
+    else if (s.resize.mode === 'megapixels') parts.push(`${s.resize.value} 百萬像素`);
+    else if (s.resize.mode === 'percent') parts.push(`${s.resize.value}%`);
+    else parts.push(`${RESIZE_LABELS[s.resize.mode] || s.resize.mode} ${s.resize.value} px`);
+    parts.push((METADATA_LABELS[s.metadata] || s.metadata) + (s.metadata === 'all' && s.remove_gps ? `（${REMOVE_GPS_LABEL}）` : ''));
+    if (s.sharpen) parts.push(`${SHARPEN_TARGET_LABELS[s.sharpen.target] || s.sharpen.target}銳利化（${SHARPEN_AMOUNT_LABELS[s.sharpen.amount] || s.sharpen.amount}）`);
+    return parts.join(' ・');
+  }
+
+  // two settings objects say the same thing (key order and missing-vs-null ignored)
+  function sameSettings(a, b) {
+    const canon = (v) => (v === undefined ? null : v !== null && typeof v === 'object'
+      ? Object.keys(v).sort().map((k) => [k, canon(v[k])]) : v);
+    const keys = Object.keys(EXPORT_DEFAULTS);
+    return JSON.stringify(keys.map((k) => canon(a && a[k]))) === JSON.stringify(keys.map((k) => canon(b && b[k])));
+  }
+
+  // POST /api/export: the items and the 8 settings; never a folder over HTTP (XP16)
+  const exportRequest = (items, settings) => Object.assign({items}, settings);
+
+  // ---------------------------------------------------------------- S2 capabilities (E22, E23, E30)
+  const CAP_ORDER = ['gpu', 'heic', 'webp', 'photo_library', 'preset_library_writes', 'semantic_index', 'onepassword'];
+  const CAP_LABELS = {gpu: '顯示卡（GPU）', heic: 'HEIC 照片', webp: 'WebP 匯出', photo_library: '照片庫（自動存編輯）',
+                      preset_library_writes: '整理 preset 庫', semantic_index: 'preset 語意索引', onepassword: '1Password 登入'};
+  const CAP_OK = '功能正常';
+  const CAP_AVAILABLE = '可用';
+  const CAP_REFRESH = '重新偵測';
+  const capStatus = (n) => `功能狀態：${n} 項關閉`;
+  const capOff = (features) => CAP_ORDER.filter((k) => features && features[k] && features[k].available === false);
+  const capButtonText = (features) => { const n = capOff(features).length; return n ? capStatus(n) : CAP_OK; };
+  const capLine = (key, f) => `${CAP_LABELS[key] || key}：${f && f.available ? CAP_AVAILABLE : '關閉：' + ((f && f.reason) || '')}`;
+  // the reason a feature is off, or null (unknown features count as on: the page never blocks on a missing answer)
+  const capReason = (features, key) => (features && features[key] && features[key].available === false ? features[key].reason || '' : null);
+
+  // ---------------------------------------------------------------- S2 preset download (E16, E30)
+  const DOWNLOAD_XMP = '下載 .xmp';
+  const DOWNLOAD_GROUP_XMP = '下載整個群組的 .xmp';
+  const PRESET_IDS_MAX = 500;                                 // E16: one request takes 1..500 ids; more go in batches
+  const downloadSummary = (ok, fail) => `已下載 ${ok} 個 .xmp，${fail} 個沒有下載`;
+  const downloadedLine = (fileName) => `已下載：${fileName}`;
+  function idBatches(ids) {
+    const out = [];
+    for (let i = 0; i < ids.length; i += PRESET_IDS_MAX) out.push(ids.slice(i, i + PRESET_IDS_MAX));
+    return out;
+  }
+  function groupPresetIds(presets, path) {   // the group and every sub-group under it (" - " levels)
+    return presets.filter((p) => { const g = (p.group || '').trim(); return g === path || g.startsWith(path + ' - '); }).map((p) => p.id);
+  }
+  function downloadReport(files) {            // {summary, lines}: one line per preset, in order
+    const ok = files.filter((f) => f.ok).length;
+    return {summary: downloadSummary(ok, files.length - ok), lines: files.map((f) => (f.ok ? downloadedLine(f.file_name) : f.error))};
+  }
+
   return {sliderView, tweakFor, sliderTooltip, clampNote, fmtNum, History, treeKey, matchPreset, presetTitle,
+          EXPORT_SETTINGS_KEY, EXPORT_FORMATS, FORMAT_LABELS, RESIZE_MODES, RESIZE_LABELS, METADATA_LABELS, REMOVE_GPS_LABEL,
+          SHARPEN_TARGETS, SHARPEN_TARGET_LABELS, SHARPEN_AMOUNTS, SHARPEN_AMOUNT_LABELS, NO_RESIZE_LABEL, NO_SHARPEN_LABEL,
+          ORIGINAL_SIZE, CUSTOM_PRESET, EXPORT_DEFAULTS, defaultBitDepth, exportPresetSaved, exportPresetUpdated,
+          exportPresetDeleted, UNDO_LABEL, EXPORT_PRESET_NAME_PROMPT, resizeTarget, settingsFromForm, exportSettingsFrom,
+          exportDialogState, exportSummary, exportRequest, sameSettings,
+          CAP_ORDER, CAP_LABELS, CAP_OK, CAP_AVAILABLE, CAP_REFRESH, capStatus, capOff, capButtonText, capLine, capReason,
+          DOWNLOAD_XMP, DOWNLOAD_GROUP_XMP, PRESET_IDS_MAX, downloadSummary, downloadedLine, idBatches, groupPresetIds,
+          downloadReport,
           HISTORY_LIMIT, initialEditor, reduce, strengthEnabled, strengthInEffect, canUndo, canRedo, carryHintVisible,
           parseValueInput, curveAtStrength, curvePath,
           EXPORT_BUSY, EXPORT_DEFAULT_QUALITY, baseName, exportDone, exportFailed, exportBody, exportMessage,

@@ -7,8 +7,13 @@
     open <photo>
     folder <photo>                      (open, then list the folder, in this one process)
     preview <photo> [--preset ID] [--strength S] [--override KEY=VALUE]... [--max-pixels N]
-    export <photo>... [--preset ID] [--strength S] [--override KEY=VALUE]... [--format jpeg|tiff] [--quality N]
-                      [--dest-dir D]
+    export <photo>... [--preset ID] [--strength S] [--override KEY=VALUE]... | --no-edit
+                      [--format jpeg|png|tiff|webp] [--bit-depth 8|16] [--quality N] [--max-kb N]
+                      [--resize MODE=VALUE] [--metadata all|copyright|none] [--remove-gps] [--sharpen TARGET=AMOUNT]
+                      [--export-preset NAME] [--dest-dir D]
+                      (no --preset / --strength / --override / --no-edit: each photo's saved edit, CONTRACT-s2 E15)
+    export-presets list | save --name N [settings flags...] | delete <name>     (CONTRACT-s2-export-detect E26)
+    presets files <id>... | presets export <id>... --dest-dir D | capabilities [--refresh]
     presets list ... [--favorites] | groups | rename <id> <name> | move <id> <group> | favorite <id> on|off
     presets import <path>... [--group G] | save --name N [--group G] [--preset ID] [--strength S] [--override K=V]...
     presets rebuild
@@ -21,7 +26,7 @@
 Every subcommand takes --json: stdout is then exactly one line {"ok":true,"result":...} or
 {"ok":false,"error":{"kind":...,"message":...}} and stderr stays empty. Without --json a failure is one line
 on stderr. Exit codes: 0 ok, 1 unexpected, 2 invalid / usage, 3 not_found, 4 conflict, 5 unavailable, 6 export,
-presets import or edit paste with at least one failed item (stdout still holds every result; CONTRACT-export XP11,
+presets import, edit paste, presets files or presets export with at least one failed item (stdout still holds every result; CONTRACT-export XP11,
 preset library KP5, photo library PLP4). What writes files goes through the facade: `export` (new files), the preset
 library commands (the library index, import/ and user/) and the photo library (edits, thumbnails and the thumbnail
 index in --data-dir / the configured data folder; photos are only read); `preview` and `thumbnail` without --json
@@ -30,6 +35,7 @@ write the JPEG bytes to stdout.
 import argparse
 import base64
 import json
+import os
 import re
 import sys
 
@@ -39,6 +45,10 @@ from .errors import DarkroomError
 EXIT = {"invalid": 2, "not_found": 3, "conflict": 4, "unavailable": 5}
 EXIT_PARTIAL = 6                        # export / import / paste: some items failed (CONTRACT-export XP11)
 EXPORTED = "已匯出：{output_path}"        # verbatim (XP3)
+PRESET_EXPORTED = "已匯出 preset：{output_path}"   # verbatim (S2 E26)
+CAP_OK = "{name}\t可用"                  # verbatim (S2 E26)
+CAP_OFF = "{name}\t關閉：{reason}"        # verbatim (S2 E26)
+PRESET_FILE_LINE = "{file_name}\t{size}"  # verbatim (S2 E26)
 IMPORTED = "已匯入：{id}"                 # verbatim (KP5)
 PASTED = "已貼上：{target}"               # verbatim (CONTRACT-photo-library PLP4)
 BYTES_COMMANDS = ("preview", "thumbnail")   # without --json these write JPEG bytes to stdout (L9, PL13)
@@ -70,6 +80,45 @@ def _lenient_int(text):
         return int(text)
     except ValueError:
         return text                # the service reports it (JPEG quality, semantic limit)
+
+
+def _lenient_number(text):
+    try:
+        return int(text)
+    except ValueError:
+        try:
+            return float(text)
+        except ValueError:
+            return text            # the service reports it (resize value)
+
+
+def _pair(first, second):
+    """MODE=VALUE / TARGET=AMOUNT -> {first: MODE, second: VALUE}; no '=' -> the raw text for the service to judge."""
+    def parse(text):
+        key, sep, value = text.partition("=")
+        if not sep:
+            return text
+        return {first: key, second: _lenient_number(value) if second == "value" else value}
+    return parse
+
+
+def _settings_flags(p):
+    """The export settings (CONTRACT-s2-export-detect E26): raw values go to the service, which judges them."""
+    p.add_argument("--format", default=None, help="jpeg (default), png, tiff or webp")
+    p.add_argument("--bit-depth", type=_lenient_int, default=None, help="8 or 16 (png / tiff)")
+    p.add_argument("--quality", type=_lenient_int, default=None, help="JPEG / WebP quality 1..100 (default 92)")
+    p.add_argument("--max-kb", type=_lenient_int, default=None, help="JPEG only: the whole file at most N KB")
+    p.add_argument("--resize", type=_pair("mode", "value"), default=None, metavar="MODE=VALUE",
+                   help="long_edge|short_edge|width|height|megapixels|percent=VALUE (never enlarged)")
+    p.add_argument("--metadata", default=None, help="all (default), copyright or none")
+    p.add_argument("--remove-gps", action="store_const", const=True, default=None, help="drop the GPS position")
+    p.add_argument("--sharpen", type=_pair("target", "amount"), default=None, metavar="TARGET=AMOUNT",
+                   help="screen|matte|glossy=low|standard|high")
+
+
+def _settings(a):
+    return {"format": a.format, "bit_depth": a.bit_depth, "quality": a.quality, "max_kb": a.max_kb,
+            "resize": a.resize, "metadata": a.metadata, "remove_gps": a.remove_gps, "sharpen": a.sharpen}
 
 
 def _lenient_float(text):
@@ -124,6 +173,11 @@ def _parser():
     p.add_argument("--override", type=_override, action="append", default=None, metavar="KEY=VALUE",
                    help="slider difference added after strength (repeatable)")
     leaf(psub, "rebuild", "rebuild the library index from the preset folders")
+    p = leaf(psub, "files", "the presets' .xmp as Lightroom reads them (reads only; --json for the bytes)")
+    p.add_argument("preset_id", nargs="*")
+    p = leaf(psub, "export", "write the presets' .xmp into an existing folder (never overwrites)")
+    p.add_argument("preset_id", nargs="*")
+    p.add_argument("--dest-dir", default=None, help="existing absolute folder outside the preset library")
     # CONTRACT-semantic-index SI11
     semantic = psub.add_parser("semantic", help="the semantic index (Claude-written style tags)")
     ssub = semantic.add_subparsers(dest="semantic_command", required=True, metavar="SUBCOMMAND")
@@ -152,15 +206,28 @@ def _parser():
     p.add_argument("--override", type=_override, action="append", default=None, metavar="KEY=VALUE",
                    help="slider difference added after strength (repeatable)")
     p.add_argument("--max-pixels", type=int, default=None, help="limit the preview to N pixels")
-    p = leaf(sub, "export", "export photos at full resolution as new files (never overwrites)")
+    p = leaf(sub, "export", "export photos at full resolution as new files (never overwrites); without --preset / "
+                            "--strength / --override each photo's saved edit is used")
     p.add_argument("photo", nargs="*")
-    p.add_argument("--preset", default=None, help="preset id")
-    p.add_argument("--strength", type=float, default=100, help="percent, 0..200 (default 100)")
+    params = p.add_mutually_exclusive_group()
+    params.add_argument("--preset", default=None, help="preset id")
+    params.add_argument("--no-edit", action="store_true", help="the photos as they are (not their saved edits)")
+    p.add_argument("--strength", type=float, default=None, help="percent, 0..200 (default 100)")
     p.add_argument("--override", type=_override, action="append", default=None, metavar="KEY=VALUE",
                    help="slider difference added after strength (repeatable)")
-    p.add_argument("--format", default="jpeg", help="jpeg (default) or tiff")
-    p.add_argument("--quality", type=_lenient_int, default=None, help="JPEG quality 1..100 (default 92)")
+    _settings_flags(p)
+    p.add_argument("--export-preset", default=None, metavar="NAME", help="saved export settings (flags win)")
     p.add_argument("--dest-dir", default=None, help="existing absolute folder (default: <photo folder>/darkroom 匯出)")
+    xp = sub.add_parser("export-presets", help="saved export settings (CONTRACT-s2-export-detect E13)")
+    xsub = xp.add_subparsers(dest="xp_command", required=True, metavar="SUBCOMMAND")
+    leaf(xsub, "list", "the saved export presets")
+    p = leaf(xsub, "save", "save export settings under a name (the same name is replaced)")
+    p.add_argument("--name", default=None)
+    _settings_flags(p)
+    p = leaf(xsub, "delete", "delete a saved export preset")
+    p.add_argument("name")
+    p = leaf(sub, "capabilities", "what works on this machine and why not")
+    p.add_argument("--refresh", action="store_true", help="measure again")
     # CONTRACT-photo-library PL6 / PLP6
     edit = sub.add_parser("edit", help="the photo library: the edit kept for each photo")
     esub = edit.add_subparsers(dest="edit_command", required=True, metavar="SUBCOMMAND")
@@ -215,6 +282,10 @@ def _run(a, facade):
             return facade.save_user_preset(a.name, a.group, a.preset, a.strength, overrides)
         if sc == "rebuild":
             return facade.rebuild_library()
+        if sc == "files":             # CONTRACT-s2-export-detect E16
+            return facade.preset_files(a.preset_id)
+        if sc == "export":            # E17
+            return facade.export_preset_files(a.preset_id, a.dest_dir)
         if sc == "semantic":          # CONTRACT-semantic-index SI11
             if a.semantic_command == "build":
                 return facade.semantic_build(a.limit, a.dry_run, a.wait_seconds)
@@ -228,9 +299,24 @@ def _run(a, facade):
         return facade.slider_table()
     if cmd == "export":           # every photo is a path item with the same parameters; nothing is opened first
         overrides = dict(a.override) if a.override else None
-        items = [{"path": p, "preset_id": a.preset, "strength": a.strength, "overrides": overrides}
-                 for p in a.photo]
-        return facade.export(items, a.format, a.quality, a.dest_dir)
+        if a.preset is None and a.strength is None and overrides is None and not a.no_edit:
+            items = [{"path": p} for p in a.photo]            # E15: each photo's saved edit
+        else:
+            strength = 100 if a.strength is None else a.strength
+            items = [{"path": p, "preset_id": a.preset, "strength": strength, "overrides": overrides}
+                     for p in a.photo]
+        s = _settings(a)
+        return facade.export(items, s["format"], s["quality"], a.dest_dir, bit_depth=s["bit_depth"],
+                             max_kb=s["max_kb"], resize=s["resize"], metadata=s["metadata"],
+                             remove_gps=s["remove_gps"], sharpen=s["sharpen"], export_preset=a.export_preset)
+    if cmd == "export-presets":   # E13
+        if a.xp_command == "list":
+            return facade.list_export_presets()
+        if a.xp_command == "save":
+            return facade.save_export_preset(a.name, {k: v for k, v in _settings(a).items() if v is not None})
+        return facade.delete_export_preset(a.name)
+    if cmd == "capabilities":     # E22
+        return facade.capabilities(a.refresh)
     if cmd == "edit":             # CONTRACT-photo-library PL6: photos are only read, edits live in data_dir
         sc = a.edit_command
         if sc == "get":
@@ -266,9 +352,21 @@ def _is_paste(a):
     return a.command == "edit" and a.edit_command == "paste"
 
 
+def _is_preset_files(a):
+    return a.command == "presets" and a.presets_command == "files"
+
+
+def _is_preset_export(a):
+    return a.command == "presets" and a.presets_command == "export"
+
+
 def _is_batch(a):
     """Operations whose result is {"results": [...]} with per-item ok (exit 6 when any failed)."""
-    return a.command == "export" or _is_import(a) or _is_paste(a)
+    return a.command == "export" or _is_import(a) or _is_paste(a) or _is_preset_export(a)
+
+
+def _items(a, result):
+    return result["files"] if _is_preset_files(a) else result["results"]
 
 
 def _line(text, stream):
@@ -284,6 +382,16 @@ def _human(a, result):
         return "\n".join(IMPORTED.format(id=r["id"]) if r["ok"] else r["error"] for r in result["results"])
     if _is_paste(a):
         return "\n".join(PASTED.format(target=r["target"]) if r["ok"] else r["error"] for r in result["results"])
+    if _is_preset_export(a):
+        return "\n".join(PRESET_EXPORTED.format(output_path=r["output"]) if r["ok"] else r["error"]
+                         for r in result["results"])
+    if _is_preset_files(a):
+        return "\n".join(PRESET_FILE_LINE.format(file_name=r["file_name"],
+                                                 size=len(base64.b64decode(r["data_base64"])))
+                         if r["ok"] else r["error"] for r in result["files"])
+    if a.command == "capabilities":
+        return "\n".join(CAP_OK.format(name=k) if v["available"] else CAP_OFF.format(name=k, reason=v["reason"])
+                         for k, v in result["features"].items())
     if a.command == "presets" and a.presets_command == "list":
         lines = [f"{r['id']}\t{r['group']}\t{r['name']}" + ("" if r["supported"] else "\t(unsupported)")
                  + ("\t" + "、".join(r["tags"]) if r.get("tags") else "")
@@ -305,6 +413,9 @@ def _reconfigure():
 def main(argv=None, facade=None):
     _reconfigure()
     a = _parser().parse_args(argv)          # usage errors: argparse exits with 2
+    # S2 E19: relative folders are made absolute against the working directory before anything uses them
+    a.preset_dir = os.path.abspath(a.preset_dir) if a.preset_dir else a.preset_dir
+    a.data_dir = os.path.abspath(a.data_dir) if a.data_dir else a.data_dir
     preview_bytes = a.command in BYTES_COMMANDS and not a.json
     if preview_bytes and sys.stdout.isatty():
         _line(TTY_REFUSAL, sys.stderr)
@@ -351,8 +462,8 @@ def main(argv=None, facade=None):
         _line(json.dumps({"ok": True, "result": result}, ensure_ascii=False, separators=(",", ":")), sys.stdout)
     else:
         _line(_human(a, result), sys.stdout)
-    if _is_batch(a) and not all(r["ok"] for r in result["results"]):
-        return EXIT_PARTIAL
+    if (_is_batch(a) or _is_preset_files(a)) and not all(r["ok"] for r in _items(a, result)):
+        return EXIT_PARTIAL                 # presets files too (S2 IP9)
     return 0
 
 

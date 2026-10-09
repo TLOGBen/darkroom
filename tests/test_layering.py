@@ -22,8 +22,17 @@ FORBIDDEN_MODULES = ("darkroom_app.services", "darkroom_app.preview", "hashlib")
 FORBIDDEN_STRINGS = ("edits/", "thumbs/", "index/")                       # data_dir layout is the service's (PLP8)
 SAFE_WRITE = "safe_write.py"
 SAFE_WRITE_USERS = ("services/export.py", "services/preset_library.py", "services/photo_library.py",
-                    "services/semantic_index.py")      # G10 whitelist: XP10, K18 / KP3, PL14 / PLP1, WG15 / SI1
+                    "services/semantic_index.py",      # G10 whitelist: XP10, K18 / KP3, PL14 / PLP1, WG15 / SI1
+                    "services/export_presets.py")      # + S2 D4 / WG17
 SEMANTIC_TOOLS = ["darkroom_semantic_build", "darkroom_semantic_status"]   # verbatim, in order (SI11)
+S2_TOOLS = ["darkroom_export_presets_list", "darkroom_export_preset_save", "darkroom_export_preset_delete",
+            "darkroom_preset_files", "darkroom_presets_export", "darkroom_capabilities"]   # verbatim (S2 E25)
+S2_WRITES = {"darkroom_export_preset_save": {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": True,
+                                             "openWorldHint": False},
+             "darkroom_export_preset_delete": {"readOnlyHint": False, "destructiveHint": True,
+                                               "idempotentHint": False, "openWorldHint": False},
+             "darkroom_presets_export": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False,
+                                         "openWorldHint": False}}   # verbatim (S2 操作表)
 SEMANTIC_BUILD_ANNOTATIONS = {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False,
                               "openWorldHint": True}   # verbatim (SI11)
 LIBRARY_TOOLS = ["darkroom_preset_groups", "darkroom_preset_rename", "darkroom_preset_move", "darkroom_preset_favorite",
@@ -132,7 +141,8 @@ class TestLayering(unittest.TestCase):
         files = py_files("services")
         self.assertEqual({os.path.basename(f) for f in files},
                          {"__init__.py", "presets.py", "photos.py", "preview.py", "export.py",
-                          "preset_library.py", "photo_library.py", "semantic_index.py"})   # XP1, K16, PL6, SI1
+                          "preset_library.py", "photo_library.py", "semantic_index.py",   # XP1, K16, PL6, SI1
+                          "export_presets.py", "capabilities.py"})                           # S2 E12, E22
         for path in files:
             for mod in imported_modules(path):
                 self.assertNotIn(mod.split(".")[0], ("aiohttp", "argparse"), path)
@@ -247,7 +257,8 @@ class TestLayering(unittest.TestCase):
         files = py_files()
         self.assertIn(os.path.join(APP, SAFE_WRITE), files)
         self.assertEqual(SAFE_WRITE_USERS, ("services/export.py", "services/preset_library.py",
-                                            "services/photo_library.py", "services/semantic_index.py"))   # + SI1
+                                            "services/photo_library.py", "services/semantic_index.py",
+                                            "services/export_presets.py"))   # + SI1, + S2 D4 / WG17
         for path in files:
             rel = os.path.relpath(path, APP).replace("\\", "/")
             with open(path, encoding="utf-8") as f:
@@ -287,7 +298,10 @@ class TestLayering(unittest.TestCase):
                                             "get_edit", "set_edit", "clear_edit", "paste_edit", "folder_thumbnails",
                                             "thumbnail", "save_edit_as_preset",   # CONTRACT-photo-library PL6, PLP6
                                             "restore_edit",                       # CONTRACT-s1-experience S4: 25
-                                            "semantic_build", "semantic_status"])   # CONTRACT-semantic-index SI1: 26, 27 (merge patch)
+                                            "semantic_build", "semantic_status",   # CONTRACT-semantic-index SI1: 26, 27 (merge patch)
+                                            "list_export_presets", "save_export_preset", "delete_export_preset",
+                                            "preset_files", "export_preset_files",
+                                            "capabilities"])                      # CONTRACT-s2-export-detect E25: 28..33
         self.assertTrue(issubclass(DarkroomFacade, Facade))
 
     def test_docs_tool_count(self):  # CONTRACT-s1-experience S19: the four docs state the real tool count, list restore
@@ -342,7 +356,8 @@ class TestLayering(unittest.TestCase):
                                                      "idempotentHint": False, "openWorldHint": False})
         self.assertEqual(list(listed)[8:17], LIBRARY_TOOLS)
         self.assertEqual(list(listed)[17:25], PHOTO_TOOLS)                 # PL6 / PLP6: operations 18..24, S4: 25
-        self.assertEqual(list(listed)[25:], SEMANTIC_TOOLS)                # SI1 / SI11: operations 26, 27 (merge patch)
+        self.assertEqual(list(listed)[25:27], SEMANTIC_TOOLS)              # SI1 / SI11: operations 26, 27 (merge patch)
+        self.assertEqual(list(listed)[27:], S2_TOOLS)                      # CONTRACT-s2-export-detect E25: 28..33
         for name, ann in listed.items():
             if name in LIBRARY_WRITES:
                 self.assertEqual(ann, {"readOnlyHint": False, "destructiveHint": False,
@@ -351,6 +366,8 @@ class TestLayering(unittest.TestCase):
                 self.assertEqual(ann, PHOTO_ANNOTATIONS[name], name)
             elif name == "darkroom_semantic_build":
                 self.assertEqual(ann, SEMANTIC_BUILD_ANNOTATIONS)          # SI11: the one open-world tool
+            elif name in S2_WRITES:
+                self.assertEqual(ann, S2_WRITES[name], name)               # CONTRACT-s2-export-detect E27
             elif name != "darkroom_export":
                 self.assertEqual(ann, {"readOnlyHint": True, "openWorldHint": False}, name)
         self.assertEqual(OPERATIONS["semantic_build"]["mcp_defaults"], {"wait_seconds": 0})     # SI9
@@ -360,7 +377,7 @@ class TestLayering(unittest.TestCase):
         self.assertEqual(OPERATIONS["set_edit"]["http"], ("PUT", "/api/edit"))
         self.assertEqual(OPERATIONS["clear_edit"]["http"], ("DELETE", "/api/edit"))
         schema = OPERATIONS["export"]["input_schema"]
-        self.assertEqual(schema["required"], ["items", "format"])
+        self.assertEqual(schema["required"], ["items"])                     # XP32 (was items, format)
 
     def test_fake_matches_facade(self):  # L13
         from darkroom_app.facade import Facade
@@ -487,10 +504,13 @@ class TestCliControllerWithFake(unittest.TestCase):  # L7 / L9 / L13
         rc, out, err = self.run_cli(["export", "a.jpg", "--json"], fake)
         self.assertEqual((rc, err), (0, ""))
         self.assertEqual(json.loads(out)["result"]["results"], RESULTS[:1])
+        # XP30 / S2 E26: no --preset / --strength / --override -> path-only items (the saved edit), format None
+        self.assertEqual(fake.calls[-1], ("export", ([{"path": "a.jpg"}], None, None, None)))
+        rc, out, err = self.run_cli(["export", "a.jpg", "--no-edit", "--json"], fake)
         self.assertEqual(fake.calls[-1], ("export", ([{"path": "a.jpg", "preset_id": None, "strength": 100,
-                                                       "overrides": None}], "jpeg", None, None)))
+                                                       "overrides": None}], None, None, None)))
         rc, out, err = self.run_cli(["export", "--quality", "abc", "--json"], fake)   # the service judges it
-        self.assertEqual(fake.calls[-1], ("export", ([], "jpeg", "abc", None)))
+        self.assertEqual(fake.calls[-1], ("export", ([], None, "abc", None)))
         fake.fail["export"] = DarkroomError("invalid", "沒有要匯出的照片")
         self.assertEqual(self.run_cli(["export"], fake), (2, "", "沒有要匯出的照片\n"))
 
@@ -536,7 +556,7 @@ class TestMcpControllerWithFake(unittest.TestCase):  # L7 / L10 / L13
         self.assertEqual(tool["name"], "darkroom_export")
         self.assertEqual(tool["annotations"], {"readOnlyHint": False, "destructiveHint": False,
                                                "idempotentHint": False, "openWorldHint": False})
-        self.assertEqual(tool["inputSchema"]["required"], ["items", "format"])
+        self.assertEqual(tool["inputSchema"]["required"], ["items"])        # XP32 (was items, format)
         fake = FakeDarkroom()
         items = [{"path": "a.jpg"}, {"path": "b.jpg"}]
         res = self.exchange(fake, ("darkroom_export", {"items": items, "format": "jpeg"}),

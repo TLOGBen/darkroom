@@ -20,6 +20,7 @@ const st = {
   grid: {folder: null, items: [], sel: new Set(), anchor: 0, filter: 'all', shown: null},   // the thumbnail grid (PLP9, S9)
   search: '', openFolders: {'\u0001fav': true}, openGroups: loadPref('openGroups', {basic: true}), hslTab: 'h', focusKey: null,
   holding: false, originalUrl: null, originalFor: null,
+  caps: null, exportPresets: [],                                 // S2: GET /api/capabilities features; the export presets
 };
 let ed = L.initialEditor();   // {presetId, strength, tweaks, past, future, gesture}
 
@@ -54,7 +55,65 @@ async function api(method, url, body, extra) {
 // ------------------------------------------------------------------ state (R5): dispatch -> L.reduce -> sync DOM
 function refreshUndo() { $('#undo').disabled = !L.canUndo(ed); $('#redo').disabled = !L.canRedo(ed); }
 function renderHint() { $('#carry-hint').hidden = !L.carryHintVisible(ed, !!st.image, !!st.edit); }   // S11
-function refreshRestorePrevious() { $('#restore-previous-btn').disabled = !(st.image && !st.edit && st.previous); }   // S10
+function refreshRestorePrevious() {   // S10
+  $('#restore-previous-btn').disabled = !(st.image && !st.edit && st.previous);
+  capGate($('#restore-previous-btn'), capReasonOf('photo_library'));   // S2 E23: the photo library is off
+}
+
+// ------------------------------------------------------------------ S2 capabilities (E22, E23, E30): off = disabled with
+// the reason as the tooltip, never hidden (H11)
+const capReasonOf = (key) => L.capReason(st.caps, key);
+function capGate(el, reason) {
+  if (!el) return;
+  if (reason !== null) {
+    if (!('title0' in el.dataset)) el.dataset.title0 = el.title;
+    el.disabled = true; el.title = reason;
+  } else if ('title0' in el.dataset) { el.title = el.dataset.title0; delete el.dataset.title0; }
+}
+
+let capsShown = false;                  // E23: the photo library / GPU sentence goes to the status line once
+async function loadCaps(refresh) {
+  try { st.caps = (await (await api('GET', '/api/capabilities' + (refresh ? '?refresh=1' : ''))).json()).features; }
+  catch (e) { toast(e.message, true); return; }
+  renderCaps();
+  refreshCopy(); refreshSavePreset(); refreshRestorePrevious(); refreshExport(); refreshLibraryGates(); renderTree();
+  if (!capsShown) {
+    capsShown = true;
+    const off = capReasonOf('photo_library') !== null ? 'photo_library' : capReasonOf('gpu') !== null ? 'gpu' : null;
+    if (off) setStatus(L.capLine(off, st.caps[off]), off === 'photo_library' ? 'err' : 'mute');
+  }
+}
+
+function renderCaps() {
+  const b = $('#cap-btn');
+  b.textContent = L.capButtonText(st.caps);
+  b.classList.toggle('off', L.capOff(st.caps).length > 0);
+  const list = $('#cap-list');
+  list.innerHTML = '';
+  for (const k of L.CAP_ORDER) {
+    const f = st.caps && st.caps[k];
+    if (!f) continue;
+    const li = document.createElement('li');
+    li.className = f.available ? 'ok' : 'off';
+    li.textContent = L.capLine(k, f);
+    list.appendChild(li);
+  }
+}
+
+function toggleCapDetail(on) {
+  const box = $('#cap-detail');
+  box.hidden = on === undefined ? !box.hidden : !on;
+  $('#cap-btn').setAttribute('aria-expanded', String(!box.hidden));
+  if (!box.hidden) $('#cap-refresh').focus();
+}
+
+function refreshLibraryGates() {         // E20 / E23: organising the preset library is off -> disabled, reason as tooltip
+  const r = capReasonOf('preset_library_writes');
+  for (const id of ['#import-btn', '#new-group-btn']) {
+    if (r === null && $(id).dataset.title0 !== undefined) $(id).disabled = false;
+    capGate($(id), r);
+  }
+}
 
 async function dispatch(action, opts) {
   const prev = ed;
@@ -292,6 +351,7 @@ function presetEl(p, depth, showPath) {
   if (showPath) el.querySelector('.path').textContent = p.group;
   el.title = L.presetTitle(p);
   el.querySelector('.fav').onclick = (e) => { e.stopPropagation(); toggleFavorite(p); };
+  capGate(el.querySelector('.fav'), capReasonOf('preset_library_writes'));   // S2 E20: disabled, never hidden
   el.querySelector('.row-menu').onclick = (e) => { e.stopPropagation(); presetMenu(p, e.currentTarget); };
   if (p.supported) el.onclick = () => { st.focusKey = 'p:' + p.id; selectPreset(p.id); };
   return el;
@@ -617,16 +677,18 @@ function showMenu(anchor, items) {
   closeMenu();
   const m = document.createElement('div');
   m.className = 'menu-pop'; m.setAttribute('role', 'menu');
-  for (const [label, fn] of items) {
+  for (const [label, fn, off] of items) {   // off: the reason the item is disabled (S2 E20), else null / undefined
     const b = document.createElement('button');
     b.setAttribute('role', 'menuitem'); b.textContent = label;
     b.onclick = (e) => { e.stopPropagation(); closeMenu(); fn(); };
+    if (off != null) { b.disabled = true; b.title = off; }
     m.appendChild(b);
   }
   const r = anchor.getBoundingClientRect();
   m.style.left = Math.min(r.left, window.innerWidth - 180) + 'px'; m.style.top = (r.bottom + 2) + 'px';
   document.body.appendChild(m);
-  m.querySelector('button').focus();
+  const first = m.querySelector('button:not(:disabled)') || m.querySelector('button');
+  if (first) first.focus();
   m.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeMenu(); anchor.focus(); } });
 }
 
@@ -636,18 +698,60 @@ function askNewGroup(base) {
 }
 
 function presetMenu(p, anchor) {
+  const off = capReasonOf('preset_library_writes');
   showMenu(anchor, [
-    ['改名…', () => { const n = prompt('preset 名稱', p.name); if (n !== null) libraryCall('rename', {preset_id: p.id, name: n}); }],
-    ['搬到…', () => { const g = prompt('搬到群組（用「 - 」分層）', p.group); if (g !== null) libraryCall('move', {preset_id: p.id, group: g}); }],
-    ['新群組…', () => askNewGroup(p.group)],
+    ['改名…', () => { const n = prompt('preset 名稱', p.name); if (n !== null) libraryCall('rename', {preset_id: p.id, name: n}); }, off],
+    ['搬到…', () => { const g = prompt('搬到群組（用「 - 」分層）', p.group); if (g !== null) libraryCall('move', {preset_id: p.id, group: g}); }, off],
+    ['新群組…', () => askNewGroup(p.group), off],
+    [L.DOWNLOAD_XMP, () => downloadPresets([p.id])],                       // S2 E30: the file, never a path
   ]);
 }
 
 function groupMenu(path, anchor) {
+  const off = capReasonOf('preset_library_writes');
   showMenu(anchor, [
-    ['群組改名…', () => { const n = prompt('群組的新名稱（完整路徑）', path); if (n !== null) libraryCall('groups/rename', {group: path, new_name: n}); }],
-    ['新群組…', () => askNewGroup(path)],
+    ['群組改名…', () => { const n = prompt('群組的新名稱（完整路徑）', path); if (n !== null) libraryCall('groups/rename', {group: path, new_name: n}); }, off],
+    ['新群組…', () => askNewGroup(path), off],
+    [L.DOWNLOAD_GROUP_XMP, () => downloadPresets(L.groupPresetIds(st.presets, path))],   // S2 E30: 500 per request
   ]);
+}
+
+// S2 E16 / E30: the page downloads the preset files itself (POST /api/preset-library/files, 1..500 ids per request,
+// more in batches); the server never writes them anywhere. One file after another; failures listed in #import-result.
+function saveBlob(fileName, base64) {
+  const bin = atob(base64), bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  const url = URL.createObjectURL(new Blob([bytes], {type: 'application/octet-stream'}));
+  const a = document.createElement('a');
+  a.href = url; a.download = fileName; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+
+async function downloadPresets(ids) {
+  if (!ids.length) return;
+  const files = [];
+  try {
+    for (const batch of L.idBatches(ids)) {
+      files.push(...(await (await api('POST', '/api/preset-library/files', {preset_ids: batch})).json()).files);
+    }
+  } catch (e) { toast(e.message, true); }
+  if (!files.length) return;
+  for (const f of files) {
+    if (!f.ok) continue;
+    saveBlob(f.file_name, f.data_base64);
+    await new Promise((res) => setTimeout(res, 120));   // one after another: the browser keeps every download
+  }
+  const rep = L.downloadReport(files);
+  const box = $('#import-result');
+  box.innerHTML = '';
+  const head = document.createElement('div'); head.className = 'ir-head'; head.textContent = rep.summary;
+  const close = document.createElement('button'); close.className = 'icon'; close.textContent = '×'; close.title = '關閉';
+  close.onclick = () => { box.hidden = true; };
+  head.appendChild(close);
+  box.appendChild(head);
+  files.forEach((f, i) => { const l = document.createElement('div'); l.className = f.ok ? 'ok' : 'err'; l.textContent = L.explain(rep.lines[i]); box.appendChild(l); });
+  box.hidden = false;
+  toast(rep.summary, files.some((f) => !f.ok));
 }
 
 function readBase64(file) {
@@ -685,7 +789,10 @@ async function importFiles(fileList) {
 }
 
 // "save as preset" reads the edit and never changes it: no dispatch, no undo step (K19)
-function refreshSavePreset() { $('#save-preset-btn').disabled = !L.canSavePreset(ed); }
+function refreshSavePreset() {
+  $('#save-preset-btn').disabled = !L.canSavePreset(ed);
+  capGate($('#save-preset-btn'), capReasonOf('preset_library_writes'));   // S2 E20
+}
 
 async function savePreset() {
   if (!L.canSavePreset(ed)) return;
@@ -763,6 +870,7 @@ const save = {timer: null, dirty: false, pending: null, promise: null, retries: 
 
 function scheduleSave() {
   if (!st.image || st.loading) return;
+  if (capReasonOf('photo_library') !== null) return;   // S2 E23: the photo library is off - nothing is saved
   const path = st.image.path;
   save.pending = {path, req: L.editRequest(ed, path, st.snapshots, st.fingerprint), retried: false};
   save.retries.delete(path);            // newer state of this photo supersedes its failed save
@@ -851,6 +959,7 @@ function restore(res) {                 // a saved edit comes back: through the 
 }
 
 async function loadEdit(path, token) {  // after opening: restore the saved edit, else keep today's state (R5)
+  if (capReasonOf('photo_library') !== null) { applyEditInfo({edit: null, preset_status: null}); return; }   // S2 E23
   let res;
   try { res = await (await api('GET', '/api/edit?path=' + encodeURIComponent(path))).json(); }
   catch (e) {
@@ -998,6 +1107,8 @@ function refreshCopy() {                // copy needs the open photo's edit; pas
   $('#export-selected-btn').disabled = !(st.grid.sel.size > 0);
   $('#grid-reset-original-btn').disabled = !(st.grid.sel.size > 0);     // S10
   $('#grid-restore-btn').disabled = !(st.grid.sel.size > 0);
+  const off = capReasonOf('photo_library');                      // S2 E23: the grid's edit buttons are off
+  for (const id of ['#copy-edit-btn', '#paste-edit-btn', '#grid-reset-original-btn', '#grid-restore-btn', '#export-selected-btn']) capGate($(id), off);
 }
 
 // S10: reset to original / bring back the previous edit, for the selected photos (one request each, in order)
@@ -1105,26 +1216,21 @@ async function pasteEdit() {
   if (st.image && targets.includes(st.image.path)) await loadEdit(st.image.path);
 }
 
-async function exportSelected() {       // each photo with its own saved edit; format / quality from the toolbar
+async function exportSelected(settings) {   // each photo with its own saved edit (E15); settings from the dialog
   const paths = selectedPaths();
   if (!paths.length || exp.busy) return;
   exp.busy = true;                      // S13 (a): a second click must not export everything twice
   const btn = $('#export-selected-btn');
   btn.disabled = true; btn.textContent = L.EXPORT_BUSY;
+  refreshDialog();
   try {
     await flushSave();
     await flushRetries();                 // S13g''': no failed save is left to land over what follows
-    const edits = {}, lines = [];
-    for (const p of paths) {
-      try { edits[p] = await (await api('GET', '/api/edit?path=' + encodeURIComponent(p))).json(); }
-      catch (e) { edits[p] = null; lines.push(`${L.baseName(p)}：${L.loadEditFailed(L.explain(e.message))}`); }
-    }
-    const {items, failed} = L.exportItems(paths, edits);
-    let ok = 0, fail = failed;
+    const lines = [];
+    const items = paths.map((p) => ({path: p}));   // S2 E15: only the path - the server uses each photo's saved edit
+    let ok = 0, fail = 0;
     if (items.length) {
-      const format = $('#export-format').value;
-      const body = {items, format};
-      if (format === 'jpeg') body.quality = L.exportBody({}, format, $('#export-quality').value).quality;
+      const body = L.exportRequest(items, settings || dialogSettings());
       try {
         const res = await (await api('POST', '/api/export', body)).json();
         ok = res.results.filter((r) => r.ok).length;
@@ -1149,9 +1255,18 @@ function refreshExport() {
   const b = $('#export-btn');
   b.disabled = !st.image || exp.busy;
   b.textContent = exp.busy ? L.EXPORT_BUSY : '匯出';
-  $('#export-quality').disabled = $('#export-format').value !== 'jpeg';
+  refreshDialog();                                   // S2 E29: the dialog decides what is disabled in it
   $('#ab-btn').disabled = !st.image;                 // S7
   $('#reset-original-btn').disabled = !st.image;     // S10
+}
+
+// S2 E15: the open photo is exported by its path (the server uses the saved edit, just flushed); with the photo
+// library off nothing is saved, so the shown parameters go with the photo instead
+async function currentExportItems() {
+  if (capReasonOf('photo_library') !== null) return [currentRequest()];
+  await flushSave();
+  await flushRetries();
+  return [{path: st.image.path}];
 }
 
 async function commitCarried() {        // S11: a carried-over state becomes this photo's edit before it is exported
@@ -1160,15 +1275,15 @@ async function commitCarried() {        // S11: a carried-over state becomes thi
   await flushSave();
 }
 
-async function exportPhoto() {
+async function exportPhoto(settings) {   // settings: the dialog's (E29); never a folder over HTTP
   if (!st.image || exp.busy) return;
   exp.busy = true;
   refreshExport();
   const name = L.baseName(st.image.path);
   await commitCarried();
   try {
-    const res = await (await api('POST', '/api/export',
-      L.exportBody(currentRequest(), $('#export-format').value, $('#export-quality').value))).json();
+    const items = await currentExportItems();
+    const res = await (await api('POST', '/api/export', L.exportRequest(items, settings || dialogSettings()))).json();
     const r = res.results[0];
     toast(L.exportMessage(r), !r.ok);
   } catch (e) {
@@ -1187,6 +1302,183 @@ function renderPosition() {
   $('#position').title = f.files[f.index].path;
   $('#prev').disabled = f.index <= 0;
   $('#next').disabled = f.index >= f.files.length - 1;
+}
+
+// ------------------------------------------------------------------ S2 export dialog (E29): opened by both export
+// buttons, filled with the last settings; Enter exports, Esc closes. Never changes the edit, never an undo step.
+const xd = {target: null, opener: null};
+const XD_IDS = ['#xd-preset', '#xd-preset-save', '#xd-preset-delete', '#xd-format', '#xd-bit-depth', '#xd-quality', '#xd-max-kb-on',
+                '#xd-max-kb', '#xd-resize-mode', '#xd-resize-value', '#xd-metadata', '#xd-remove-gps', '#xd-sharpen-target',
+                '#xd-sharpen-amount', '#xd-cancel', '#xd-go'];
+
+function formValues() {
+  return {format: $('#xd-format').value, bit_depth: $('#xd-bit-depth').value, quality: $('#xd-quality').value,
+          max_kb_on: $('#xd-max-kb-on').checked, max_kb: $('#xd-max-kb').value, resize_mode: $('#xd-resize-mode').value,
+          resize_value: $('#xd-resize-value').value, metadata: $('#xd-metadata').value, remove_gps: $('#xd-remove-gps').checked,
+          sharpen_target: $('#xd-sharpen-target').value, sharpen_amount: $('#xd-sharpen-amount').value};
+}
+const dialogSettings = () => L.settingsFromForm(formValues());
+
+function fillDialog(s) {
+  $('#xd-format').value = s.format;
+  $('#xd-bit-depth').value = String(s.bit_depth == null ? L.defaultBitDepth(s.format) : s.bit_depth);
+  if (s.quality != null) $('#xd-quality').value = String(s.quality);
+  $('#xd-max-kb-on').checked = s.max_kb != null;
+  if (s.max_kb != null) $('#xd-max-kb').value = String(s.max_kb);
+  $('#xd-resize-mode').value = s.resize ? s.resize.mode : '';
+  if (s.resize) $('#xd-resize-value').value = String(s.resize.value);
+  $('#xd-metadata').value = s.metadata;
+  $('#xd-remove-gps').checked = !!s.remove_gps;
+  $('#xd-sharpen-target').value = s.sharpen ? s.sharpen.target : '';
+  $('#xd-sharpen-amount').value = s.sharpen ? s.sharpen.amount : 'standard';
+  refreshDialog();
+}
+
+function refreshDialog() {               // every disabled state comes from L.exportDialogState (E29)
+  const s = dialogSettings();
+  const ds = L.exportDialogState(s, st.caps);
+  $('#xd-quality').disabled = ds.quality.disabled;
+  $('#xd-bit-depth').disabled = ds.bitDepth.disabled;
+  for (const o of $('#xd-bit-depth').options) o.disabled = !ds.bitDepth.options.includes(+o.value);
+  if (ds.bitDepth.disabled) $('#xd-bit-depth').value = '8';
+  $('#xd-max-kb-on').disabled = ds.maxKbOn.disabled;
+  $('#xd-max-kb').disabled = ds.maxKb.disabled;
+  const wo = $('#xd-format').querySelector('option[value="webp"]');
+  wo.disabled = ds.webp.disabled; wo.title = ds.webp.title;
+  const rv = $('#xd-resize-value');
+  rv.disabled = ds.resizeValue.disabled; rv.min = String(ds.resizeValue.min); rv.max = String(ds.resizeValue.max); rv.step = String(ds.resizeValue.step);
+  $('#xd-remove-gps').disabled = ds.removeGps.disabled;
+  $('#xd-sharpen-amount').disabled = ds.sharpenAmount.disabled;
+  $('#xd-summary').textContent = L.exportSummary(s);
+  const go = $('#xd-go');
+  go.disabled = exp.busy || ds.go.disabled;
+  go.textContent = exp.busy ? L.EXPORT_BUSY : '匯出';
+  go.title = ds.go.disabled ? ds.webp.title : '匯出（Enter）';
+  const sel = $('#xd-preset');
+  const chosen = st.exportPresets.find((x) => x.name === sel.value);
+  if (chosen && !L.sameSettings(chosen.settings, s)) sel.value = '';            // changed by hand: （自訂）
+  $('#xd-preset-delete').disabled = !sel.value;
+}
+
+function renderExportPresets(select) {
+  const sel = $('#xd-preset');
+  sel.innerHTML = '';
+  const custom = document.createElement('option'); custom.value = ''; custom.textContent = L.CUSTOM_PRESET; sel.appendChild(custom);
+  for (const x of st.exportPresets) { const o = document.createElement('option'); o.value = x.name; o.textContent = x.name; sel.appendChild(o); }
+  sel.value = st.exportPresets.some((x) => x.name === select) ? select : '';
+}
+
+async function loadExportPresets(select) {
+  try { st.exportPresets = (await (await api('GET', '/api/export-presets')).json()).presets; }
+  catch (e) { st.exportPresets = []; toast(e.message, true); }
+  renderExportPresets(select);
+  refreshDialog();
+}
+
+let toastAct = null;
+function toastUndo(msg, undoFn) {        // E29: an updated or deleted export preset can be brought back
+  toast(msg);
+  const t = $('#toast');
+  const b = document.createElement('button'); b.textContent = L.UNDO_LABEL; b.className = 'toast-act';
+  b.onclick = async () => { t.className = ''; await undoFn(); };
+  t.appendChild(b); t.classList.add('act');
+  clearTimeout(toastT); clearTimeout(toastAct);
+  toastAct = setTimeout(() => { t.className = ''; }, 6000);
+}
+
+async function putExportPreset(name, settings) {   // export presets (data_dir); the edit's PUT stays in sendSave alone
+  return (await api('PUT', '/api/export-presets', {name, settings})).json();
+}
+async function deleteExportPreset(name) {
+  return (await api('DELETE', '/api/export-presets?name=' + encodeURIComponent(name))).json();
+}
+
+async function saveExportPreset() {
+  const name = prompt(L.EXPORT_PRESET_NAME_PROMPT, $('#xd-preset').value || '');
+  if (name === null) return;
+  let res;
+  try { res = await putExportPreset(name, dialogSettings()); } catch (e) { toast(e.message, true); return; }
+  await loadExportPresets(res.name);
+  fillDialog(L.exportSettingsFrom(res.settings));
+  $('#xd-preset').value = res.name; refreshDialog();
+  if (res.previous) {
+    toastUndo(L.exportPresetUpdated(res.name), async () => {
+      try { await putExportPreset(res.name, res.previous); } catch (e) { toast(e.message, true); }
+      await loadExportPresets(res.name);
+    });
+  } else {
+    toastUndo(L.exportPresetSaved(res.name), async () => {
+      try { await deleteExportPreset(res.name); } catch (e) { toast(e.message, true); }
+      await loadExportPresets('');
+    });
+  }
+}
+
+async function removeExportPreset() {
+  const name = $('#xd-preset').value;
+  if (!name) return;
+  let res;
+  try { res = await deleteExportPreset(name); } catch (e) { toast(e.message, true); return; }
+  await loadExportPresets('');
+  toastUndo(L.exportPresetDeleted(res.name), async () => {
+    try { await putExportPreset(res.name, res.settings); } catch (e) { toast(e.message, true); }
+    await loadExportPresets(res.name);
+  });
+}
+
+function openExportDialog(target) {
+  if (target === 'photo' ? !st.image : !st.grid.sel.size) return;
+  xd.target = target; xd.opener = document.activeElement;
+  let stored = null;
+  try { stored = localStorage.getItem(L.EXPORT_SETTINGS_KEY); } catch (e) { stored = null; }
+  fillDialog(L.exportSettingsFrom(stored));
+  $('#xd-target').textContent = target === 'photo' ? L.baseName(st.image.path) : L.gridCount(st.grid.sel.size, st.grid.items.length);
+  $('#export-backdrop').hidden = false;
+  loadExportPresets('');
+  $('#xd-go').focus();
+}
+
+function closeExportDialog() {
+  if ($('#export-backdrop').hidden) return;
+  $('#export-backdrop').hidden = true;
+  if (xd.opener && xd.opener.focus) xd.opener.focus();
+}
+
+async function runExport() {
+  if (exp.busy || $('#xd-go').disabled) return;
+  const settings = dialogSettings();
+  try { localStorage.setItem(L.EXPORT_SETTINGS_KEY, JSON.stringify(settings)); } catch (e) { /* optional */ }
+  if (xd.target === 'selected') await exportSelected(settings); else await exportPhoto(settings);
+  closeExportDialog();
+}
+
+function initExportDialog() {
+  $('#export-dialog').addEventListener('submit', (e) => { e.preventDefault(); runExport(); });
+  $('#export-dialog').addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { e.preventDefault(); closeExportDialog(); return; }
+    if (e.key === 'Enter' && !(e.target.matches && e.target.matches('button, input[type=checkbox]'))) { e.preventDefault(); runExport(); return; }
+    if (e.key === 'Tab') {               // aria-modal: focus stays inside the dialog
+      const f = XD_IDS.map((id) => $(id)).filter((el) => !el.disabled);
+      const i = f.indexOf(document.activeElement);
+      if (e.shiftKey && i <= 0) { e.preventDefault(); f[f.length - 1].focus(); }
+      else if (!e.shiftKey && i === f.length - 1) { e.preventDefault(); f[0].focus(); }
+    }
+  });
+  $('#export-backdrop').addEventListener('click', (e) => { if (e.target === $('#export-backdrop')) closeExportDialog(); });
+  $('#xd-cancel').onclick = closeExportDialog;
+  $('#xd-format').addEventListener('change', () => { $('#xd-bit-depth').value = String(L.defaultBitDepth($('#xd-format').value)); refreshDialog(); });
+  for (const id of ['#xd-bit-depth', '#xd-quality', '#xd-max-kb-on', '#xd-max-kb', '#xd-resize-mode', '#xd-resize-value', '#xd-metadata',
+                    '#xd-remove-gps', '#xd-sharpen-target', '#xd-sharpen-amount']) {
+    $(id).addEventListener('input', refreshDialog);
+    $(id).addEventListener('change', refreshDialog);
+  }
+  $('#xd-preset').addEventListener('change', () => {
+    const x = st.exportPresets.find((p) => p.name === $('#xd-preset').value);
+    if (x) { fillDialog(L.exportSettingsFrom(x.settings)); $('#xd-preset').value = x.name; }
+    refreshDialog();
+  });
+  $('#xd-preset-save').onclick = saveExportPreset;
+  $('#xd-preset-delete').onclick = removeExportPreset;
 }
 
 function step(delta) {
@@ -1233,13 +1525,16 @@ async function init() {
   $('#grid-restore-btn').onclick = gridRestore;
   for (const b of document.querySelectorAll('#grid-filter button')) b.onclick = () => setGridFilter(b.dataset.filter);   // S9
   initCompare();                                             // S7
-  $('#export-btn').onclick = exportPhoto;
+  $('#export-btn').onclick = () => openExportDialog('photo');   // S2 E29 (D3): always the dialog, Enter exports
+  initExportDialog();
+  $('#cap-btn').onclick = (e) => { e.stopPropagation(); toggleCapDetail(); };   // S2 E30
+  $('#cap-refresh').onclick = () => loadCaps(true);
+  document.addEventListener('click', (e) => { if (!e.target.closest('#cap-detail') && !e.target.closest('#cap-btn')) toggleCapDetail(false); });
   $('#save-preset-btn').onclick = savePreset;
   $('#import-btn').onclick = () => $('#import-file').click();
   $('#import-file').addEventListener('change', (e) => { const fl = [...e.target.files]; e.target.value = ''; importFiles(fl); });
   $('#new-group-btn').onclick = () => askNewGroup('');
   document.addEventListener('click', (e) => { if (!e.target.closest('.menu-pop')) closeMenu(); });
-  $('#export-format').addEventListener('change', refreshExport);
   refreshExport();
   for (const id of ['#skip-banner', '#skip-note']) {       // S12
     $(id).addEventListener('click', () => toggleSkipDetail());
@@ -1252,7 +1547,7 @@ async function init() {
   $('#grid-path').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); loadGrid($('#grid-path').value); } });
   $('#copy-edit-btn').onclick = copyEdit;
   $('#paste-edit-btn').onclick = pasteEdit;
-  $('#export-selected-btn').onclick = exportSelected;
+  $('#export-selected-btn').onclick = () => openExportDialog('selected');   // S2 E29
   window.addEventListener('beforeunload', () => { if (save.dirty) unloadSave(); });
   refreshCopy();
   $('#search').addEventListener('input', (e) => { st.search = e.target.value.trim(); renderTree(); });
@@ -1261,6 +1556,8 @@ async function init() {
   hold.addEventListener('pointerdown', () => showOriginal(true));
   for (const ev of ['pointerup', 'pointerleave']) hold.addEventListener(ev, () => { if (st.holding) showOriginal(false); });
   document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !$('#cap-detail').hidden) { toggleCapDetail(false); $('#cap-btn').focus(); return; }
+    if (!$('#export-backdrop').hidden) return;          // S2 E29: the dialog has the keyboard
     if (typing(e.target)) return;
     const k = e.key.toLowerCase();
     if ((e.ctrlKey || e.metaKey) && k === 'z') { e.preventDefault(); if (e.shiftKey) redo(); else undo(); return; }
@@ -1291,6 +1588,7 @@ async function init() {
   renderSliders();
   refreshUndo();
   refreshSavePreset();
+  loadCaps(false);                      // S2 E22: after the page is ready; never waited for
   // S15: ?path= only fills the box (a link from outside the browser must not make the app read a path);
   // the last opened photo is restored as before
   const q = new URLSearchParams(location.search).get('path');
@@ -1302,5 +1600,6 @@ async function init() {
 window.darkroom = {st, pv, ab, get ed() { return ed; }, dispatch, requestPreview, selectPreset, openPhoto, step, undo, redo, setStrength,
                    exportPhoto, savePreset, importFiles, reloadLibrary,
                    flushSave, loadEdit, showGrid, loadGrid, copyEdit, pasteEdit, exportSelected,
-                   abToggle, abSetSplit, setGridFilter, resetOriginal, restorePrevious, gridResetOriginal, gridRestore};
+                   abToggle, abSetSplit, setGridFilter, resetOriginal, restorePrevious, gridResetOriginal, gridRestore,
+                   openExportDialog, closeExportDialog, runExport, loadCaps, downloadPresets, loadExportPresets};
 init().catch((e) => toast('載入失敗：' + e.message, true));

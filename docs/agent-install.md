@@ -76,12 +76,18 @@ Optional keys — only set them if the person asks:
 | Key | Meaning | Default |
 |---|---|---|
 | `preset_library_dir` | where the preset library index, imported and self-saved presets live | the parent of `preset_dir` |
-| `data_dir` | the photo library: per-photo edits and thumbnail cache | `%LOCALAPPDATA%\darkroom` |
+| `data_dir` | the photo library: per-photo edits, thumbnail cache and saved export presets | Windows `%LOCALAPPDATA%\darkroom`; macOS `~/Library/Application Support/darkroom`; Linux and others `$XDG_DATA_HOME/darkroom` (an absolute `XDG_DATA_HOME` only), else `~/.local/share/darkroom` |
 | `anthropic_api_key_ref` | a 1Password reference (`op://<vault>/<item>/credential`) to an Anthropic API key, read with `op read` only when `presets semantic build` runs. Never put the key itself in this file; `DARKROOM_ANTHROPIC_API_KEY` in the environment is the alternative | unset: the semantic index stays off |
 | `semantic_index_budget_usd` | the most one `presets semantic build` may cost (estimated before anything is sent) | `5` |
 | `calibration_sources_dir` | the four public calibration photos the semantic index renders presets on | `<localllms_root>/scratch/lr-calibration/sources` |
 
-`preset_library_dir` and `data_dir` must **not** be inside a photo folder or inside `preset_dir`.
+`preset_library_dir` and `data_dir` must **not** be inside a photo folder or inside `preset_dir`. Relative paths in
+`preset_dir`, `preset_library_dir` and `data_dir` are taken relative to the folder of `config.local.json`
+(`--preset-dir` / `--data-dir` on the command line: relative to the current directory). A `config.local.json` that is
+not valid JSON is reported in one line naming the line and column (`config.local.json 不是正確的 JSON（第 3 行第 5 欄）：…`).
+If the preset library root itself lies in a photo folder (a folder holding photos directly, other than a drive root,
+the home folder or the temp folder), organising, importing and saving presets are switched off with that reason;
+set `preset_library_dir` to another folder.
 
 **Check:**
 
@@ -126,9 +132,9 @@ claude mcp add darkroom -- "<absolute path to repo>\.venv\Scripts\python.exe" -s
 (Other MCP clients: a stdio server, command = the venv's `python.exe`, args =
 `-s -m darkroom_app.mcp_server`, working directory = the repository root.)
 
-**Check:** the client lists 27 tools named `darkroom_*` (the 25th is `darkroom_edit_restore`, the MCP twin of
-`edit restore`; the last two are `darkroom_semantic_build` and `darkroom_semantic_status`); calling `darkroom_presets_list` with
-`{"limit": 3}` returns presets.
+**Check:** the client lists 33 tools named `darkroom_*` (the 25th is `darkroom_edit_restore`, the MCP twin of
+`edit restore`; the 26th and 27th are `darkroom_semantic_build` and `darkroom_semantic_status`; the last is
+`darkroom_capabilities`); calling `darkroom_presets_list` with `{"limit": 3}` returns presets.
 
 ## 8. Tell the person what you did
 
@@ -142,6 +148,7 @@ were found, the test result, how to start the app, and whether MCP was registere
 | `darkroom：找不到 LocalLLMs 的位置…` or `preset folder not found` | `config.local.json` is missing or `preset_dir` is wrong. |
 | `torch.cuda.is_available()` is `False` | CPU-only torch was installed, or the driver is too old. Reinstall from the CUDA index in step 3. |
 | HEIC photos are refused | `pillow-heif` is not installed; it is optional (`pip install pillow-heif==1.8.0`). |
+| Something is greyed out in the app | Run `python -s -m darkroom_app.cli capabilities`: every switched-off feature (gpu, heic, webp, photo_library, preset_library_writes, semantic_index, onepassword) is listed with its reason. With `anthropic_api_key_ref` set it runs `op whoami` once (sign-in check only, never reads a secret). |
 | Every request answers 421 / 403 | You opened the app through another host name or port 80. Use `http://127.0.0.1:<port>/`. |
 | A preset shows "settings that cannot be applied" | Expected for some presets (camera profiles, Adobe Looks, absolute white balance); the rest of the preset still applies. |
 

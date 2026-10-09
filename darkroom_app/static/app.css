@@ -48,9 +48,11 @@ input[type=text], input[type=search], input[type=number], select { font: inherit
   border: 1px solid var(--line-2); border-radius: var(--r); padding: 0 8px; height: 26px; min-width: 0; }
 input::placeholder { color: var(--text-3); }
 input[type=search] { -webkit-appearance: none; appearance: none; }
-#export-quality { width: 54px; text-align: right; padding: 0 6px; }
-#export-format { min-width: 66px; }
-#export-quality:disabled, select:disabled { opacity: .4; }
+input[type=number] { text-align: right; padding: 0 6px; }
+input:disabled, select:disabled { opacity: .4; }
+option:disabled { color: var(--text-3); }
+button.primary { background: #e6e6e6; color: #141414; border-color: #e6e6e6; font-weight: 600; }
+button.primary:hover:not(:disabled) { background: #ffffff; border-color: #ffffff; }
 .mute { color: var(--text-2); }
 .sp { flex: 1; }
 ::-webkit-scrollbar { width: 10px; height: 10px; }
@@ -315,6 +317,38 @@ body.grid-open #editor { display: none; }
 .pv-wrap.ab .ab-tag { display: block; }
 .pv-wrap.ab.dragging .ab-tag { opacity: .35; }
 
+/* S2 capabilities (E30): one quiet button in the top bar; the detail opens under it */
+#cap-btn { font-size: 12px; color: var(--text-3); flex: none; }
+#cap-btn.off { color: var(--tweak); }
+.cap-detail { position: fixed; top: calc(var(--bar-h) + 4px); right: 10px; z-index: 25; width: min(420px, calc(100vw - 32px));
+  max-height: calc(100vh - var(--bar-h) - 24px); overflow: auto; background: var(--bg2); border: 1px solid var(--line-2); border-radius: 6px;
+  padding: 10px 12px; box-shadow: 0 8px 24px rgba(0,0,0,.5); font-size: 12px; white-space: normal; }
+.cap-detail[hidden] { display: none; }
+.cap-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; color: var(--text); margin-bottom: 6px; }
+.cap-list { list-style: none; margin: 0; padding: 0; }
+.cap-list li { padding: 3px 0; border-top: 1px solid var(--line); color: var(--text-2); }
+.cap-list li.off { color: var(--tweak); }
+
+/* S2 export dialog (E29): centred over everything; at 820 x 600 it scrolls inside, every control can be reached */
+.xd-backdrop { position: fixed; inset: 0; z-index: 30; background: rgba(0,0,0,.55); display: flex; align-items: center; justify-content: center; }
+.xd-backdrop[hidden] { display: none; }
+.xd { width: 560px; max-width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - 32px); display: flex; flex-direction: column;
+  background: var(--bg1); border: 1px solid var(--line-2); border-radius: 8px; box-shadow: 0 16px 48px rgba(0,0,0,.6); margin: 0; }
+.xd-head { display: flex; align-items: baseline; gap: 10px; padding: 12px 16px 8px; font-size: 15px; font-weight: 600; flex: none; }
+.xd-head .mute { font-size: 12px; font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.xd-body { overflow: auto; min-height: 0; padding: 4px 16px 8px; flex: 1; }
+.xd-row { display: grid; grid-template-columns: 96px minmax(0, 1fr); align-items: center; gap: 8px; min-height: 36px; }
+.xd-row > label { color: var(--text-2); font-size: 12px; }
+.xd-ctl { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
+.xd-ctl select { min-width: 96px; }
+.xd-ctl input[type=number] { width: 84px; }
+.xd-sub { color: var(--text-3); font-size: 12px; margin-left: 4px; }
+.xd-check { display: inline-flex; align-items: center; gap: 4px; color: var(--text-2); font-size: 12px; white-space: nowrap; }
+.xd-summary { margin-top: 8px; padding: 8px 10px; border-radius: 4px; background: var(--bg0); color: var(--text); font-size: 12px; white-space: normal; }
+.xd-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 10px 16px 14px; border-top: 1px solid var(--line); flex: none; }
+#toast.act { pointer-events: auto; }
+#toast .toast-act { margin-left: 10px; height: 22px; line-height: 20px; background: transparent; color: inherit; border-color: currentColor; }
+
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; } }
 
 /* medium windows: narrower side columns */
@@ -343,6 +377,5 @@ body.grid-open #editor { display: none; }
   .pv-tools { gap: 4px; padding: 0 6px; }
   .pv-tools button, .pv-tools select, .pv-tools input { font-size: 12px; padding-left: 6px; padding-right: 6px; }
   .pv-tools #photo-size { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-  #export-format { min-width: 58px; }
-  #export-quality { width: 44px; min-width: 44px; }
+  .xd-row { grid-template-columns: 76px minmax(0, 1fr); }
 }

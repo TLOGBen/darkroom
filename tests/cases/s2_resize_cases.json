@@ -1,0 +1,272 @@
+[
+ {
+  "name": "landscape long_edge",
+  "width": 6000,
+  "height": 4000,
+  "resize": {
+   "mode": "long_edge",
+   "value": 2048
+  },
+  "expect": [
+   2048,
+   1365
+  ]
+ },
+ {
+  "name": "portrait (orientation 6, upright size) long_edge",
+  "width": 4000,
+  "height": 6000,
+  "resize": {
+   "mode": "long_edge",
+   "value": 2048
+  },
+  "expect": [
+   1365,
+   2048
+  ]
+ },
+ {
+  "name": "square long_edge",
+  "width": 3000,
+  "height": 3000,
+  "resize": {
+   "mode": "long_edge",
+   "value": 1000
+  },
+  "expect": [
+   1000,
+   1000
+  ]
+ },
+ {
+  "name": "landscape short_edge",
+  "width": 6000,
+  "height": 4000,
+  "resize": {
+   "mode": "short_edge",
+   "value": 1080
+  },
+  "expect": [
+   1620,
+   1080
+  ]
+ },
+ {
+  "name": "portrait short_edge",
+  "width": 4000,
+  "height": 6000,
+  "resize": {
+   "mode": "short_edge",
+   "value": 1080
+  },
+  "expect": [
+   1080,
+   1620
+  ]
+ },
+ {
+  "name": "width",
+  "width": 6000,
+  "height": 4000,
+  "resize": {
+   "mode": "width",
+   "value": 1920
+  },
+  "expect": [
+   1920,
+   1280
+  ]
+ },
+ {
+  "name": "height",
+  "width": 6000,
+  "height": 4000,
+  "resize": {
+   "mode": "height",
+   "value": 1080
+  },
+  "expect": [
+   1620,
+   1080
+  ]
+ },
+ {
+  "name": "portrait height",
+  "width": 3024,
+  "height": 4032,
+  "resize": {
+   "mode": "height",
+   "value": 1000
+  },
+  "expect": [
+   750,
+   1000
+  ]
+ },
+ {
+  "name": "megapixels",
+  "width": 6000,
+  "height": 4000,
+  "resize": {
+   "mode": "megapixels",
+   "value": 2
+  },
+  "expect": [
+   1732,
+   1154
+  ]
+ },
+ {
+  "name": "megapixels fractional",
+  "width": 4032,
+  "height": 3024,
+  "resize": {
+   "mode": "megapixels",
+   "value": 1.5
+  },
+  "expect": [
+   1414,
+   1060
+  ]
+ },
+ {
+  "name": "percent",
+  "width": 6000,
+  "height": 4000,
+  "resize": {
+   "mode": "percent",
+   "value": 50
+  },
+  "expect": [
+   3000,
+   2000
+  ]
+ },
+ {
+  "name": "percent rounding",
+  "width": 4031,
+  "height": 3023,
+  "resize": {
+   "mode": "percent",
+   "value": 33.3
+  },
+  "expect": [
+   1342,
+   1007
+  ]
+ },
+ {
+  "name": "percent 100 is s = 1",
+  "width": 4000,
+  "height": 3000,
+  "resize": {
+   "mode": "percent",
+   "value": 100
+  },
+  "expect": [
+   4000,
+   3000
+  ]
+ },
+ {
+  "name": "long_edge equal is s = 1",
+  "width": 2048,
+  "height": 1365,
+  "resize": {
+   "mode": "long_edge",
+   "value": 2048
+  },
+  "expect": [
+   2048,
+   1365
+  ]
+ },
+ {
+  "name": "long_edge bigger never enlarges",
+  "width": 1600,
+  "height": 1200,
+  "resize": {
+   "mode": "long_edge",
+   "value": 4000
+  },
+  "expect": [
+   1600,
+   1200
+  ]
+ },
+ {
+  "name": "width bigger never enlarges",
+  "width": 800,
+  "height": 600,
+  "resize": {
+   "mode": "width",
+   "value": 1000
+  },
+  "expect": [
+   800,
+   600
+  ]
+ },
+ {
+  "name": "megapixels bigger never enlarges",
+  "width": 1000,
+  "height": 1000,
+  "resize": {
+   "mode": "megapixels",
+   "value": 5
+  },
+  "expect": [
+   1000,
+   1000
+  ]
+ },
+ {
+  "name": "1-pixel edge stays 1",
+  "width": 4000,
+  "height": 3,
+  "resize": {
+   "mode": "long_edge",
+   "value": 100
+  },
+  "expect": [
+   100,
+   1
+  ]
+ },
+ {
+  "name": "1-pixel edge from short side",
+  "width": 5000,
+  "height": 2,
+  "resize": {
+   "mode": "width",
+   "value": 1000
+  },
+  "expect": [
+   1000,
+   1
+  ]
+ },
+ {
+  "name": "1-pixel source",
+  "width": 1,
+  "height": 1,
+  "resize": {
+   "mode": "percent",
+   "value": 10
+  },
+  "expect": [
+   1,
+   1
+  ]
+ },
+ {
+  "name": "no resize",
+  "width": 6000,
+  "height": 4000,
+  "resize": null,
+  "expect": [
+   6000,
+   4000
+  ]
+ }
+]

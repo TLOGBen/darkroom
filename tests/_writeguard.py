@@ -278,8 +278,11 @@ def _popen_allowed(executable, args, who):
             return False
         if exe == "op.exe":         # patch WG15: only `op read <op://vault/item/[section/]field>`, nothing else
             raw = args if isinstance(args, str) else " ".join(argv)
-            return (rel == OP_MODULE and len(argv) == 3 and argv[1] == "read" and bool(OP_REF.match(argv[2]))
-                    and not CMD_SPECIAL & set(raw))
+            if rel != OP_MODULE or CMD_SPECIAL & set(raw):
+                return False
+            if len(argv) == 2:      # patch WG16: also exactly `op whoami` (2 arguments, case-sensitive)
+                return argv[1] == "whoami"
+            return len(argv) == 3 and argv[1] == "read" and bool(OP_REF.match(argv[2]))
         return True
     if cat != "test":
         return False

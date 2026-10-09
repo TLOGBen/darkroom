@@ -96,11 +96,16 @@ def hides(body):
 
 
 PROTECTED = ("#carry-hint", ".hint", "#reset-all", "#undo", "#redo", "#toggle-lib", "#toggle-sl",
-             "#prev", "#next", "#strength-100", "#export-btn", "#export-format", "#export-quality",   # + X13
+             "#prev", "#next", "#strength-100", "#export-btn", "#xd-format", "#xd-quality",   # + X13 (XP33: in the dialog)
              ".fav", ".row-menu", "#import-btn", "#save-preset-btn",                             # + K19
              "#grid-btn", "#copy-edit-btn", "#paste-edit-btn", "#export-selected-btn",           # + PL15 / PLP9
              "#ab-btn", "#reset-original-btn", "#restore-previous-btn", "#grid-filter",          # + S18
-             "#grid-reset-original-btn", "#grid-restore-btn", ".canvas-pick")
+             "#grid-reset-original-btn", "#grid-restore-btn", ".canvas-pick",
+             # + S2 E29 / E30: the export dialog and every control in it, the capability status, the menus' new items
+             "#export-dialog", "#export-backdrop", ".xd", "#xd-preset", "#xd-preset-save", "#xd-preset-delete", "#xd-bit-depth",
+             "#xd-max-kb-on", "#xd-max-kb", "#xd-resize-mode", "#xd-resize-value", "#xd-metadata", "#xd-remove-gps",
+             "#xd-sharpen-target", "#xd-sharpen-amount", "#xd-summary", "#xd-go", "#xd-cancel", "#cap-btn", "#cap-refresh",
+             "#cap-detail", ".menu-pop")
 
 
 def hidden_in_media(css):
@@ -210,11 +215,15 @@ class TestPageStructure(unittest.TestCase):
         self.assertGreater(checked, 0)                                  # the clipped text children are seen
         html = read("index.html")
         for ident in ("reset-all", "undo", "redo", "toggle-lib", "toggle-sl", "prev", "next", "strength-100",
-                      "export-btn", "export-format", "export-quality",                                 # + X13
+                      "export-btn", "xd-format", "xd-quality",                                         # + X13 (XP33)
                       "import-btn", "save-preset-btn",                                                 # + K19
                       "grid-btn", "copy-edit-btn", "paste-edit-btn", "export-selected-btn",            # + PLP9
                       "ab-btn", "reset-original-btn", "restore-previous-btn", "grid-filter",            # + S18
-                      "grid-reset-original-btn", "grid-restore-btn"):
+                      "grid-reset-original-btn", "grid-restore-btn",
+                      # + S2 E29 / E30
+                      "export-dialog", "xd-preset", "xd-preset-save", "xd-preset-delete", "xd-bit-depth", "xd-max-kb-on",
+                      "xd-max-kb", "xd-resize-mode", "xd-resize-value", "xd-metadata", "xd-remove-gps", "xd-sharpen-target",
+                      "xd-sharpen-amount", "xd-summary", "xd-go", "xd-cancel", "cap-btn", "cap-refresh"):
             tag = re.search(r'<[a-z]+ id="%s"[^>]*>' % ident, html).group(0)
             self.assertNotRegex(tag, r"\shidden(?:[\s=>])", ident)
         self.assertRegex(html, r'<span id="carry-hint"[^>]*title="沿用上一張的設定（還不是這張的編輯，會再沿用到下一張）"')
@@ -241,9 +250,13 @@ class TestPageStructure(unittest.TestCase):
         start = html.index('<div class="pv-tools">')
         toolbar = html[start:html.index("</div>", start)]
         self.assertRegex(toolbar, r'<button id="export-btn"[^>]*\sdisabled>匯出</button>')     # no photo yet: disabled
-        self.assertRegex(toolbar, r'<select id="export-format"[^>]*><option value="jpeg" selected>JPEG</option>'
-                                  r'<option value="tiff">TIFF</option></select>')
-        self.assertRegex(toolbar, r'<input id="export-quality" type="number" min="1" max="100" step="1" value="92"')
+        # XP33: the format menu and the quality input moved into the export dialog (#xd-format, #xd-quality)
+        self.assertNotIn("export-format", html)
+        self.assertNotIn("export-quality", html)
+        dialog = html[html.index('<form id="export-dialog"'):html.index("</form>", html.index('<form id="export-dialog"'))]
+        self.assertRegex(dialog, r'<select id="xd-format"[^>]*><option value="jpeg">JPEG</option><option value="png">PNG</option>'
+                                 r'<option value="tiff">TIFF</option><option value="webp">WebP</option></select>')
+        self.assertRegex(dialog, r'<input id="xd-quality" type="number" min="1" max="100" step="1" value="92"')
         js = read("app.js")
         body = js[js.index("async function exportPhoto"):js.index("function renderPosition")]
         self.assertIn("api('POST', '/api/export'", body)
@@ -254,7 +267,10 @@ class TestPageStructure(unittest.TestCase):
         self.assertIn("const name = L.baseName(st.image.path);", body)
         refresh = js[js.index("function refreshExport"):js.index("async function exportPhoto")]
         self.assertIn("b.textContent = exp.busy ? L.EXPORT_BUSY : '匯出';", refresh)
-        self.assertIn("$('#export-quality').disabled = $('#export-format').value !== 'jpeg'", refresh)
+        self.assertIn("refreshDialog();", refresh)                    # XP33 / E29: the dialog decides what is disabled
+        dlg = js[js.index("function refreshDialog"):js.index("function renderExportPresets")]
+        self.assertIn("const ds = L.exportDialogState(s, st.caps);", dlg)
+        self.assertIn("$('#xd-quality').disabled = ds.quality.disabled;", dlg)
         self.assertIn("b.disabled = !st.image || exp.busy", refresh)
         self.assertRegex(body, r"exp\.busy = true;\s*refreshExport\(\);")
         self.assertRegex(body, r"finally \{\s*exp\.busy = false;\s*refreshExport\(\);")
@@ -331,7 +347,11 @@ class TestPageStructure(unittest.TestCase):
         js = read("app.js")
         # autosave: every change goes through dispatch -> scheduleSave; the PUT lives in sendSave only
         self.assertIn("if (!(opts && opts.restore)) scheduleSave();", js)
-        self.assertEqual(js.count("api('PUT'"), 1)
+        # S2 E29: the export presets' PUT is the only other one (putExportPreset); the edit's PUT is in sendSave only
+        self.assertEqual(js.count("api('PUT'"), 2)
+        self.assertEqual(js.count("api('PUT', '/api/edit'"), 1)
+        put_xp = js[js.index("async function putExportPreset"):js.index("async function deleteExportPreset")]
+        self.assertEqual(put_xp.count("api('PUT', '/api/export-presets'"), 1)
         send = js[js.index("async function sendSave"):js.index("async function flushSave")]
         self.assertIn("api('PUT', '/api/edit', body, {keepalive: true})", send)      # seal F3: survives unload
         self.assertIn("toast(L.saveEditFailed(L.explain(e.message)), true, e.message);", send)
@@ -658,7 +678,8 @@ class TestPageStructure(unittest.TestCase):
         self.assertIn("toast(L.copied(st.clipboard.name));", grid_js)
         self.assertIn("gridBatchDone(L.pasteDone, targets, res.results);", grid_js)
         export_sel = grid_js[grid_js.index("async function exportSelected"):]
-        self.assertIn("L.exportItems(paths, edits)", export_sel)
+        self.assertIn("const items = paths.map((p) => ({path: p}));", export_sel)   # S2 E29 / E15 (replaces L.exportItems)
+        self.assertNotIn("/api/edit", export_sel)                       # no per-photo read of the edit any more
         self.assertIn("api('POST', '/api/export', body)", export_sel)
         self.assertIn("toast(L.exportSelectedDone(ok, fail)", export_sel)
         for banned in ("dest_dir", "dispatch(", "History"):
@@ -684,6 +705,117 @@ class TestPageStructure(unittest.TestCase):
         self.assertIn("const saveEditFailed = (reason) => `儲存編輯失敗：${reason}`;", logic)          # PLP17
         self.assertIn("const loadEditFailed = (reason) => `讀取編輯失敗：${reason}`;", logic)
         self.assertIn("const loadFolderFailed = (reason) => `讀取資料夾失敗：${reason}`;", logic)
+
+    def test_export_dialog_structure(self):  # CONTRACT-s2-export-detect E29 (D3), XP33
+        html, js, css = read("index.html"), read("app.js"), read("app.css")
+        self.assertRegex(html, r'<form id="export-dialog" class="xd" role="dialog" aria-modal="true" aria-labelledby="xd-title"')
+        self.assertIn('<span id="xd-title">匯出</span>', html)
+        dialog = html[html.index('<form id="export-dialog"'):html.index("</form>", html.index('<form id="export-dialog"'))]
+        order = ["xd-preset", "xd-preset-save", "xd-preset-delete", "xd-format", "xd-bit-depth", "xd-quality", "xd-max-kb-on",
+                 "xd-max-kb", "xd-resize-mode", "xd-resize-value", "xd-metadata", "xd-remove-gps", "xd-sharpen-target",
+                 "xd-sharpen-amount", "xd-summary", "xd-cancel", "xd-go"]
+        at = [dialog.index(f'id="{i}"') for i in order]
+        self.assertEqual(at, sorted(at))                              # the contract's order, top to bottom
+        self.assertRegex(dialog, r'<select id="xd-preset"[^>]*><option value="">（自訂）</option></select>')
+        self.assertRegex(dialog, r'<select id="xd-resize-mode"[^>]*><option value="">不縮放</option><option value="long_edge">長邊</option>'
+                                 r'<option value="short_edge">短邊</option><option value="width">寬</option><option value="height">高</option>'
+                                 r'<option value="megapixels">百萬像素</option><option value="percent">百分比</option></select>')
+        self.assertRegex(dialog, r'<select id="xd-metadata"[^>]*><option value="all">全部中繼資料</option>'
+                                 r'<option value="copyright">只留版權</option><option value="none">不含中繼資料</option></select>')
+        self.assertRegex(dialog, r'<select id="xd-sharpen-target"[^>]*><option value="">不銳利化</option><option value="screen">螢幕</option>'
+                                 r'<option value="matte">霧面紙</option><option value="glossy">光面紙</option></select>')
+        self.assertRegex(dialog, r'<button id="xd-go" type="submit"[^>]*>匯出</button>')
+        self.assertRegex(dialog, r'<button id="xd-cancel" type="button"[^>]*>取消</button>')
+        self.assertRegex(html, r'<div id="export-backdrop" class="xd-backdrop" hidden>\s*<form id="export-dialog"')
+        # both export buttons open the one dialog; Enter exports, Esc closes; nothing else exports
+        self.assertIn("$('#export-btn').onclick = () => openExportDialog('photo');", js)
+        self.assertIn("$('#export-selected-btn').onclick = () => openExportDialog('selected');", js)
+        self.assertNotIn("onclick = exportPhoto", js)
+        self.assertNotIn("onclick = exportSelected", js)
+        init = js[js.index("function initExportDialog"):js.index("function step(delta)")]
+        self.assertIn("if (e.key === 'Escape') { e.preventDefault(); closeExportDialog(); return; }", init)
+        self.assertIn("e.preventDefault(); runExport(); return; }", init)
+        self.assertIn("$('#export-dialog').addEventListener('submit', (e) => { e.preventDefault(); runExport(); });", init)
+        self.assertIn("if (!$('#export-backdrop').hidden) return;          // S2 E29: the dialog has the keyboard", js)
+        # disabled states only from the pure function; the last settings from localStorage, read and written in try/catch
+        dlg = js[js.index("// ------------------------------------------------------------------ S2 export dialog"):js.index("function step(delta)")]
+        self.assertEqual(dlg.count("L.exportDialogState("), 1)
+        self.assertNotIn("exportDialogState", js.replace(dlg, ""))
+        self.assertIn("try { stored = localStorage.getItem(L.EXPORT_SETTINGS_KEY); } catch (e) { stored = null; }", dlg)
+        self.assertIn("fillDialog(L.exportSettingsFrom(stored));", dlg)
+        self.assertIn("try { localStorage.setItem(L.EXPORT_SETTINGS_KEY, JSON.stringify(settings)); } catch (e) { /* optional */ }", dlg)
+        self.assertIn("const EXPORT_SETTINGS_KEY = 'darkroom.exportSettings';", read("logic.js"))
+        self.assertIn("$('#xd-summary').textContent = L.exportSummary(s);", dlg)
+        self.assertIn("go.textContent = exp.busy ? L.EXPORT_BUSY : '匯出';", dlg)
+        self.assertIn("go.disabled = exp.busy || ds.go.disabled;", dlg)
+        # export presets: replace with previous / delete, both with an undo button in the toast
+        self.assertIn("toastUndo(L.exportPresetUpdated(res.name), async () => {", dlg)
+        self.assertIn("try { await putExportPreset(res.name, res.previous); }", dlg)
+        self.assertIn("toastUndo(L.exportPresetDeleted(res.name), async () => {", dlg)
+        self.assertIn("try { await putExportPreset(res.name, res.settings); }", dlg)
+        self.assertIn("const name = prompt(L.EXPORT_PRESET_NAME_PROMPT,", dlg)
+        # the dialog never changes the edit and never names a folder (X13, XP16)
+        for banned in ("dispatch(", "L.reduce", "History", "dest_dir", "scheduleSave"):
+            self.assertNotIn(banned, dlg, banned)
+        # the open photo goes by its path after the save is flushed (E15); with the photo library off, its parameters
+        cei = js[js.index("async function currentExportItems"):js.index("async function exportPhoto")]
+        self.assertIn("if (capReasonOf('photo_library') !== null) return [currentRequest()];", cei)
+        self.assertRegex(cei, r"await flushSave\(\);\n\s*await flushRetries\(\);\n\s*return \[\{path: st\.image\.path\}\];")
+        body = js[js.index("async function exportPhoto"):js.index("function renderPosition")]
+        self.assertIn("api('POST', '/api/export', L.exportRequest(items, settings || dialogSettings()))", body)
+        # 820 x 600: the dialog fits and scrolls inside
+        self.assertRegex(css, r"\.xd \{[^}]*max-width: min\(560px, calc\(100vw - 32px\)\);[^}]*max-height: calc\(100vh - 32px\);")
+        self.assertRegex(css, r"\.xd-body \{[^}]*overflow: auto;")
+
+    def test_cap_status_structure(self):  # CONTRACT-s2-export-detect E22, E23, E30
+        html, js, logic = read("index.html"), read("app.js"), read("logic.js")
+        topbar = html[html.index('<header id="topbar">'):html.index("</header>")]
+        self.assertRegex(topbar, r'<button id="cap-btn" class="quiet"[^>]*aria-haspopup="dialog"[^>]*>功能正常</button>')
+        self.assertRegex(html, r'<div id="cap-detail" class="cap-detail" role="dialog" aria-labelledby="cap-title" hidden>')
+        self.assertRegex(html, r'<button id="cap-refresh"[^>]*>重新偵測</button>')
+        for const in ("const CAP_OK = '功能正常';", "const capStatus = (n) => `功能狀態：${n} 項關閉`;", "const CAP_REFRESH = '重新偵測';",
+                      "const CAP_ORDER = ['gpu', 'heic', 'webp', 'photo_library', 'preset_library_writes', 'semantic_index', 'onepassword'];"):
+            self.assertIn(const, logic)
+        caps = js[js.index("async function loadCaps"):js.index("function toggleCapDetail")]
+        self.assertIn("api('GET', '/api/capabilities' + (refresh ? '?refresh=1' : ''))", caps)   # through api(): X-Darkroom
+        self.assertIn("b.textContent = L.capButtonText(st.caps);", caps)
+        self.assertIn("li.textContent = L.capLine(k, f);", caps)
+        self.assertIn("$('#cap-refresh').onclick = () => loadCaps(true);", js)
+        self.assertIn("loadCaps(false);                      // S2 E22: after the page is ready; never waited for", js)
+        # off = disabled with the reason as tooltip, never hidden (H11)
+        gate = js[js.index("function capGate"):js.index("let capsShown")]
+        self.assertIn("el.disabled = true; el.title = reason;", gate)
+        self.assertNotIn("hidden", gate)
+        self.assertNotIn("display", gate)
+        # photo library off: nothing is saved or re-read, the grid's edit buttons are disabled, one status line
+        sched = js[js.index("function scheduleSave"):js.index("async function sendSave")]
+        self.assertIn("if (capReasonOf('photo_library') !== null) return;", sched)
+        copy = js[js.index("function refreshCopy"):js.index("// S10: reset to original")]
+        self.assertIn("for (const id of ['#copy-edit-btn', '#paste-edit-btn', '#grid-reset-original-btn', '#grid-restore-btn', '#export-selected-btn']) capGate($(id), off);", copy)
+        self.assertIn("if (capReasonOf('photo_library') !== null) { applyEditInfo({edit: null, preset_status: null}); return; }", js)
+        self.assertIn("if (!capsShown) {", caps)
+        # preset library writes off: organising, importing and saving as a preset are disabled with the reason
+        self.assertIn("capGate($('#save-preset-btn'), capReasonOf('preset_library_writes'));", js)
+        self.assertIn("for (const id of ['#import-btn', '#new-group-btn']) {", js)
+        self.assertIn("capGate(el.querySelector('.fav'), capReasonOf('preset_library_writes'));", js)
+        self.assertIn("if (off != null) { b.disabled = true; b.title = off; }", js)
+
+    def test_preset_download_structure(self):  # CONTRACT-s2-export-detect E16, E30 (D7: the page downloads, no zip)
+        js, logic = read("app.js"), read("logic.js")
+        self.assertIn("const DOWNLOAD_XMP = '下載 .xmp';", logic)
+        self.assertIn("const DOWNLOAD_GROUP_XMP = '下載整個群組的 .xmp';", logic)
+        self.assertIn("const PRESET_IDS_MAX = 500;", logic)
+        self.assertIn("[L.DOWNLOAD_XMP, () => downloadPresets([p.id])],", js)
+        self.assertIn("[L.DOWNLOAD_GROUP_XMP, () => downloadPresets(L.groupPresetIds(st.presets, path))],", js)
+        dl = js[js.index("function saveBlob"):js.index("function readBase64")]
+        self.assertIn("for (const batch of L.idBatches(ids)) {", dl)
+        self.assertIn("api('POST', '/api/preset-library/files', {preset_ids: batch})", dl)
+        self.assertIn("new Blob([bytes], {type: 'application/octet-stream'})", dl)
+        self.assertIn("a.href = url; a.download = fileName;", dl)
+        self.assertIn("const box = $('#import-result');", dl)               # failures listed one per preset
+        self.assertIn("l.textContent = L.explain(rep.lines[i]);", dl)
+        for banned in ("/api/preset-library/export", "dest_dir", "zip"):   # the server never writes, nothing is packed
+            self.assertNotIn(banned, js, banned)
 
     def test_section_headers_are_buttons(self):  # R6
         js = read("app.js")

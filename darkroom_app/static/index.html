@@ -30,6 +30,7 @@
   <button id="reset-all" title="還原全部微調：把所有微調歸零（回到 preset × 強度）"><span class="btn-icon" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M5.5 3.5H2.5v-3"/><path d="M2.5 3.5A5.8 5.8 0 1 1 2 8"/></svg></span><span class="btn-text">還原全部微調</span></button>
   <button id="reset-original-btn" title="還原成原圖：移除 preset 與全部微調（Ctrl+Z 可拿回；離開後可用「取回上一份」）" disabled><span class="btn-icon" aria-hidden="true"><svg viewBox="0 0 16 16"><rect x="2.5" y="2.5" width="11" height="11" rx="1.2"/><path d="M2.5 10.5 6 7l3 3 2-2 2.5 2.5"/></svg></span><span class="btn-text">還原成原圖</span></button>
   <span id="status" class="mute" title="">待命</span>
+  <button id="cap-btn" class="quiet" title="功能狀態：哪些功能可用、關閉的原因" aria-haspopup="dialog" aria-controls="cap-detail" aria-expanded="false">功能正常</button>
   <button id="toggle-sl" class="icon quiet" title="顯示／收起滑桿欄" aria-controls="col-sl"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11"/><circle cx="10.5" cy="4.5" r="1.6" fill="#191919"/><circle cx="5.5" cy="8" r="1.6" fill="#191919"/><circle cx="9" cy="11.5" r="1.6" fill="#191919"/></svg></button>
 </header>
 
@@ -54,10 +55,8 @@
       <button id="restore-previous-btn" title="取回上一份：把最近一次被還原（清除）的編輯拿回來" disabled>取回上一份</button>
       <span class="sp"></span>
       <span class="mute" id="photo-size"></span>
-      <select id="export-format" title="匯出格式：JPEG 8-bit 或 TIFF 16-bit"><option value="jpeg" selected>JPEG</option><option value="tiff">TIFF</option></select>
-      <input id="export-quality" type="number" min="1" max="100" step="1" value="92" title="JPEG 品質（1～100，預設 92）">
       <button id="save-preset-btn" title="把目前的 preset × 強度＋微調存成自存 preset（不改目前的編輯）" disabled>存成 preset</button>
-      <button id="export-btn" title="用全解析度匯出成新檔，存進照片旁的「darkroom 匯出」資料夾" disabled>匯出</button>
+      <button id="export-btn" title="匯出：打開匯出設定（格式、尺寸、中繼資料、銳利化），按 Enter 用全解析度匯出成新檔，存進照片旁的「darkroom 匯出」資料夾" aria-haspopup="dialog" disabled>匯出</button>
     </div>
     <div class="pv-wrap" id="preview">
       <img id="preview-img" alt="預覽" hidden>
@@ -110,11 +109,46 @@
     <button id="paste-edit-btn" title="把複製的編輯貼到選取的照片，取代它們原本的編輯" disabled>貼上編輯</button>
     <button id="grid-reset-original-btn" title="還原成原圖：移除選取照片的編輯（可用「取回上一份」拿回來）" disabled>還原成原圖</button>
     <button id="grid-restore-btn" title="取回上一份：把選取照片最近一次被清掉的編輯放回去" disabled>取回上一份</button>
-    <button id="export-selected-btn" title="用各自的編輯、全解析度匯出選取的照片（格式與品質取上方匯出設定）" disabled>匯出所選</button>
+    <button id="export-selected-btn" title="用各自存好的編輯、全解析度匯出選取的照片（先打開匯出設定）" aria-haspopup="dialog" disabled>匯出所選</button>
   </div>
   <div id="grid-result" class="import-result" role="status" hidden></div>
   <div class="scroll cells" id="grid-cells" role="listbox" aria-multiselectable="true" aria-label="照片縮圖格"></div>
 </main>
+
+<div id="cap-detail" class="cap-detail" role="dialog" aria-labelledby="cap-title" hidden>
+  <div class="cap-head"><span id="cap-title">功能狀態</span><button id="cap-refresh" title="重新偵測 GPU、HEIC、WebP、照片庫、preset 庫、語意索引、1Password">重新偵測</button></div>
+  <ul id="cap-list" class="cap-list"></ul>
+</div>
+
+<div id="export-backdrop" class="xd-backdrop" hidden>
+<form id="export-dialog" class="xd" role="dialog" aria-modal="true" aria-labelledby="xd-title" autocomplete="off">
+  <div class="xd-head"><span id="xd-title">匯出</span><span id="xd-target" class="mute"></span></div>
+  <div class="xd-body">
+    <div class="xd-row"><label for="xd-preset">匯出預設</label>
+      <span class="xd-ctl"><select id="xd-preset" title="套用一組存好的匯出設定"><option value="">（自訂）</option></select>
+      <button id="xd-preset-save" type="button" title="把目前的設定存成匯出預設（同名會取代，可復原）">存成預設…</button>
+      <button id="xd-preset-delete" type="button" title="刪除選取的匯出預設（可復原）" disabled>刪除</button></span></div>
+    <div class="xd-row"><label for="xd-format">格式</label>
+      <span class="xd-ctl"><select id="xd-format" title="匯出格式"><option value="jpeg">JPEG</option><option value="png">PNG</option><option value="tiff">TIFF</option><option value="webp">WebP</option></select>
+      <label for="xd-bit-depth" class="xd-sub">位元深度</label><select id="xd-bit-depth" title="位元深度：JPEG／WebP 只有 8-bit"><option value="8">8-bit</option><option value="16">16-bit</option></select></span></div>
+    <div class="xd-row"><label for="xd-quality">品質</label>
+      <span class="xd-ctl"><input id="xd-quality" type="number" min="1" max="100" step="1" value="92" title="JPEG／WebP 品質（1～100，預設 92）">
+      <label class="xd-check"><input id="xd-max-kb-on" type="checkbox" title="限制 JPEG 檔案大小">檔案上限</label>
+      <input id="xd-max-kb" type="number" min="10" max="1048576" step="1" value="800" title="JPEG 檔案大小上限（KB，1 KB = 1024 位元組）"><span class="mute">KB</span></span></div>
+    <div class="xd-row"><label for="xd-resize-mode">尺寸</label>
+      <span class="xd-ctl"><select id="xd-resize-mode" title="只縮小、不放大"><option value="">不縮放</option><option value="long_edge">長邊</option><option value="short_edge">短邊</option><option value="width">寬</option><option value="height">高</option><option value="megapixels">百萬像素</option><option value="percent">百分比</option></select>
+      <input id="xd-resize-value" type="number" min="1" max="65535" step="1" value="2048" title="尺寸的值（px、百萬像素或 %）"></span></div>
+    <div class="xd-row"><label for="xd-metadata">中繼資料</label>
+      <span class="xd-ctl"><select id="xd-metadata" title="要帶出去的 EXIF"><option value="all">全部中繼資料</option><option value="copyright">只留版權</option><option value="none">不含中繼資料</option></select>
+      <label class="xd-check"><input id="xd-remove-gps" type="checkbox" title="移除拍攝位置（GPS）">移除 GPS</label></span></div>
+    <div class="xd-row"><label for="xd-sharpen-target">輸出銳利化</label>
+      <span class="xd-ctl"><select id="xd-sharpen-target" title="依輸出用途銳利化"><option value="">不銳利化</option><option value="screen">螢幕</option><option value="matte">霧面紙</option><option value="glossy">光面紙</option></select>
+      <select id="xd-sharpen-amount" title="銳利化強度"><option value="low">低</option><option value="standard" selected>標準</option><option value="high">高</option></select></span></div>
+    <div id="xd-summary" class="xd-summary" role="status"></div>
+  </div>
+  <div class="xd-foot"><button id="xd-cancel" type="button" title="取消（Esc）">取消</button><button id="xd-go" type="submit" class="primary" title="匯出（Enter）">匯出</button></div>
+</form>
+</div>
 
 <div id="toast" role="status"></div>
 <script src="/static/logic.js"></script>

@@ -175,7 +175,10 @@ class TestConfig(unittest.TestCase):
         self.assertEqual(config.preset_dir(cfg, env={"LOCALLLMS_ROOT": "R"}), os.path.join("R", "artifact", "11_preset", "xmp"))
         with open(cfg, "w", encoding="utf-8") as f:
             json.dump({"localllms_root": "Q", "preset_dir": "P"}, f)
-        self.assertEqual(config.preset_dir(cfg, env={}), "P")
+        self.assertEqual(config.preset_dir(cfg, env={}), os.path.join(d, "P"))   # S2 E19: relative to the file
+        with open(cfg, "w", encoding="utf-8") as f:
+            json.dump({"localllms_root": "Q", "preset_dir": "D:/abs/P"}, f)
+        self.assertEqual(config.preset_dir(cfg, env={}), "D:/abs/P")
 
     def test_gitignore(self):
         with open(os.path.join(_util.REPO, ".gitignore"), encoding="utf-8") as f:

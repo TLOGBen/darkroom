@@ -1,6 +1,7 @@
 """`python -s -m darkroom_app [--port 8765] [--preset-dir DIR] [--data-dir DIR]`: serve the editor on 127.0.0.1."""
 import argparse
 import asyncio
+import os
 import sys
 
 from . import config
@@ -28,15 +29,17 @@ def main(argv=None):
     ap.add_argument("--data-dir", default=None, help="photo library folder (default: config data_dir or "
                                                      "%%LOCALAPPDATA%%/darkroom)")
     a = ap.parse_args(argv)
+    # S2 E19: relative folders are made absolute against the working directory before anything uses them
+    data_dir = os.path.abspath(a.data_dir) if a.data_dir else a.data_dir
     try:
-        preset_dir = a.preset_dir or config.preset_dir()
+        preset_dir = os.path.abspath(a.preset_dir) if a.preset_dir else config.preset_dir()
         # the configured library root only goes with the configured preset folder (CONTRACT-preset-library KP2)
         library_dir = None if a.preset_dir else config.preset_library_dir()
     except config.ConfigError as e:
         print(f"darkroom：{e}", file=sys.stderr)
         return 2
     try:
-        asyncio.run(_serve(preset_dir, a.port, library_dir, a.data_dir))
+        asyncio.run(_serve(preset_dir, a.port, library_dir, data_dir))
     except KeyboardInterrupt:
         pass
     except OSError as e:

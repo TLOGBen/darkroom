@@ -426,7 +426,7 @@ class PhotoLibraryService:
         self.library = library
         self.preset_dir = preset_dir            # the preset folder in use, for safe_write (PLP1)
         self.preset_library = preset_library    # PresetLibraryService, for save_edit_as_preset (PLP6)
-        self._data_dir = data_dir               # None: config.data_dir() on first use (PLP8)
+        self._data_dir = None if data_dir is None else os.path.abspath(data_dir)   # None: config on first use (PLP8)
         self._lock = threading.RLock()
         self._index = {}                        # folder key -> {"folder", "files": {name: {...}}, "dirty": bool}
         self._queue = _ThumbQueue(self._generate)
@@ -435,9 +435,44 @@ class PhotoLibraryService:
     # ------------------------------------------------------------------ data_dir and paths
     @property
     def data_dir(self):
+        """The data folder, absolute (S2 E19); a configuration that names none is unavailable with ConfigError's
+        sentence (S2 E23 / PLP19: never an HTTP 500 or a CLI configuration exit)."""
         if self._data_dir is None:
-            self._data_dir = config.data_dir()
+            try:
+                self._data_dir = os.path.abspath(config.data_dir())
+            except config.ConfigError as e:
+                raise DarkroomError("unavailable", str(e)) from None
         return self._data_dir
+
+    def _inside_preset_folder(self):
+        real = os.path.normcase(os.path.realpath(self.data_dir))
+        f = os.path.normcase(os.path.realpath(self.preset_dir))
+        try:
+            return os.path.commonpath([real, f]) == f
+        except ValueError:
+            return False
+
+    def usable_data_dir(self):
+        """data_dir for a write that is about no photo (the export presets, S2 E12): unavailable when it cannot be
+        resolved or lies inside the preset folder (PLP1 sentence)."""
+        if self._inside_preset_folder():
+            raise DarkroomError("unavailable", M.PL_DATA_DIR_INSIDE.format(data_dir=self.data_dir))
+        return self.data_dir
+
+    def availability(self):
+        """(available, reason) of the photo library (S2 E23): resolvable, parent folder there, not in the preset
+        folder; the reason is the very sentence the operations give."""
+        try:
+            d = self.data_dir
+        except DarkroomError as e:
+            return False, e.message
+        if self._inside_preset_folder():
+            return False, M.PL_DATA_DIR_INSIDE.format(data_dir=d)
+        if not os.path.isdir(d):
+            parent = os.path.dirname(os.path.abspath(d))
+            if not os.path.isdir(parent):
+                return False, M.PL_CANNOT_WRITE.format(data_dir=d, reason=M.PL_PARENT_MISSING.format(parent=parent))
+        return True, None
 
     def _sw(self, fn, *args):
         return fn(*args, preset_dir=self.preset_dir)
@@ -742,6 +777,16 @@ class PhotoLibraryService:
         base = None if edit["preset"] is None else Params.from_dict(edit["preset"]["params"])
         return semantics.effective_params(base, semantics.validate_strength(edit["strength"]),
                                           semantics.validate_overrides(edit["overrides"]))
+
+    def saved_params(self, path, fp):
+        """S2 E15: (final Params, "edit" | "original") of the photo's saved edit (the snapshot first, as
+        edit_params); no edit -> the photo as it is. DarkroomError (unavailable, conflict) as the edit commands give."""
+        edit = self._read_edit(fp, os.path.basename(path))
+        if edit is None:
+            return semantics.effective_params(None, 100, {}), "original"
+        base = None if edit["preset"] is None else Params.from_dict(edit["preset"]["params"])
+        return semantics.effective_params(base, semantics.validate_strength(edit["strength"]),
+                                          semantics.validate_overrides(edit["overrides"])), "edit"
 
     # ------------------------------------------------------------------ index (PL13, PLP8)
     @staticmethod

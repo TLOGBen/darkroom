@@ -10,7 +10,10 @@ preset with a tone curve, exports one other photo first (warm-up, not counted), 
 The median of each stage is printed. Skipped (reason printed) only while the GPU is really busy (the B7 / R1 rule
 of darkroom_app.gpucheck) or without CUDA; --force measures anyway and labels the result.
 
-  python -s tools/bench_export.py [--force] [--keep]
+--s2 (CONTRACT-s2-export-detect E11) measures the same 20 photos with resize long_edge 2048 + output sharpening
+screen / standard + max_kb 800 instead; pass: wall time / 20 <= 0.8 s per photo.
+
+  python -s tools/bench_export.py [--force] [--keep] [--s2]
 """
 import argparse
 import os
@@ -31,6 +34,8 @@ WIDTH, HEIGHT = 6000, 4000                   # verbatim (XP8)
 QUALITY = 92                                 # verbatim (XP8)
 PER_PHOTO_LIMIT_S = 0.8                      # verbatim (XP8)
 OVERLAP_LIMIT = 0.7                          # verbatim (XP8)
+S2_SETTINGS = {"resize": {"mode": "long_edge", "value": 2048}, "sharpen": {"target": "screen", "amount": "standard"},
+               "max_kb": 800}                # verbatim (S2 E11)
 PRESET = '''<x:xmpmeta xmlns:x="adobe:ns:meta/" x:xmptk="Adobe XMP Core 7.0">
  <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
   <rdf:Description rdf:about=""
@@ -109,8 +114,8 @@ def make_photos(folder, n=N_PHOTOS, width=WIDTH, height=HEIGHT):
     return paths[:n], paths[n]
 
 
-def measure(folder, n=N_PHOTOS, width=WIDTH, height=HEIGHT, log=print):
-    """Run the XP8 measurement with every file inside `folder`. Returns a dict of the numbers."""
+def measure(folder, n=N_PHOTOS, width=WIDTH, height=HEIGHT, log=print, s2=False):
+    """Run the XP8 measurement (s2: the E11 one) with every file inside `folder`. Returns a dict of the numbers."""
     from darkroom_app import encoding
     from darkroom_app import engine as engine_mod
     from darkroom_app.composition import build_facade
@@ -147,7 +152,8 @@ def measure(folder, n=N_PHOTOS, width=WIDTH, height=HEIGHT, log=print):
                 mock.patch.object(eng, "render_full", timed("render", eng.render_full)), \
                 mock.patch.object(export_mod.ExportService, "_write", timed("write", export_mod.ExportService._write)):
             t = time.perf_counter()
-            res = facade.export([{"path": p, **item} for p in photos], "jpeg", QUALITY, out_dir)["results"]
+            res = facade.export([{"path": p, **item} for p in photos], "jpeg", QUALITY, out_dir,
+                                **(S2_SETTINGS if s2 else {}))["results"]
             wall = time.perf_counter() - t
         failed = [r for r in res if not r["ok"]]
         if failed:
@@ -163,7 +169,10 @@ def measure(folder, n=N_PHOTOS, width=WIDTH, height=HEIGHT, log=print):
     log(f"[XP8] 每段中位數：讀檔 {m['read']:.3f} 秒、渲染 {m['render']:.3f} 秒、編碼寫檔 {m['write']:.3f} 秒")
     log(f"[XP8] 牆鐘 {wall:.2f} 秒（{out['per_photo']:.3f} 秒／張，門檻 <= {PER_PHOTO_LIMIT_S}）；"
         f"分段加總 {total:.2f} 秒，重疊比 {out['overlap']:.3f}（門檻 <= {OVERLAP_LIMIT}）")
-    out["ok"] = out["per_photo"] <= PER_PHOTO_LIMIT_S and out["overlap"] <= OVERLAP_LIMIT
+    out["ok"] = out["per_photo"] <= PER_PHOTO_LIMIT_S and (s2 or out["overlap"] <= OVERLAP_LIMIT)
+    if s2:
+        log(f"[E11] resize long_edge 2048 + 螢幕銳利化（標準）+ 800 KB：{out['per_photo']:.3f} 秒／張"
+            f"（門檻 <= {PER_PHOTO_LIMIT_S}）")
     return out
 
 
@@ -176,6 +185,7 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--force", action="store_true", help="measure even while the GPU is busy")
     ap.add_argument("--keep", action="store_true", help="keep the temp folder (prints its path)")
+    ap.add_argument("--s2", action="store_true", help="the S2 E11 scenario (resize + sharpen + size limit)")
     a = ap.parse_args(argv)
     skip, msg = gpu_check()
     print(msg, flush=True)
@@ -183,7 +193,7 @@ def main(argv=None):
         return 0
     folder = tempfile.mkdtemp(prefix="darkroom-bench-export-")
     try:
-        out = measure(folder, log=lambda s: print(s, flush=True))
+        out = measure(folder, log=lambda s: print(s, flush=True), s2=a.s2)
     finally:
         if a.keep:
             print(f"[XP8] 暫存資料夾：{folder}")

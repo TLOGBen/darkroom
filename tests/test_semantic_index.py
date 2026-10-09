@@ -431,7 +431,9 @@ class TestBuild(unittest.TestCase):  # SI3, SI6, SI7, SI9, SI10
 
     def test_key_failures_are_fixed_sentences(self):  # SI3
         h = Harness(self)
-        for reason in ("找不到 op（1Password CLI）", "op read 結束碼 1", "op read 逾時", "op read 回傳空值"):
+        for reason in ("找不到 op（1Password CLI）", "op read 結束碼 1", "1Password 尚未登入或還在等解鎖（op read 逾時）",
+                       "op read 回傳空值", "1Password 尚未登入（請解鎖 1Password App 或執行 op signin）",
+                       "1Password 尚未登入或還在等解鎖（op whoami 逾時）"):   # SIP10: one sentence changed, two added
             def reader(ref, reason=reason):
                 raise S._KeyUnavailable(reason)
             h.f._semantic.key_reader = reader
@@ -599,7 +601,7 @@ class TestBuild(unittest.TestCase):  # SI3, SI6, SI7, SI9, SI10
         with mock.patch.object(subprocess, "run", side_effect=subprocess.TimeoutExpired("op", 30)):
             with self.assertRaises(S._KeyUnavailable) as cm:
                 S.op_read(REF)
-            self.assertEqual(str(cm.exception), "op read 逾時")
+            self.assertEqual(str(cm.exception), "1Password 尚未登入或還在等解鎖（op read 逾時）")   # SIP10
         with mock.patch.object(subprocess, "run", return_value=SimpleNamespace(returncode=6, stdout=b"",
                                                                                 stderr=b"[ERROR] secret-ish")):
             with self.assertRaises(S._KeyUnavailable) as cm:

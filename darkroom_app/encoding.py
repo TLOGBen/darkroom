@@ -2,8 +2,13 @@
 
 * JPEG: `cv2.imencode` (8-bit, the given quality), then an APP1 `Exif` segment and an APP2 `ICC_PROFILE` segment
   (the sRGB profile) are spliced in after the JFIF APP0 segment.
-* TIFF: a 16-bit RGB baseline TIFF assembled here: IFD0 (pixels in strips, ICC 34675, the source's IFD0 metadata),
-  the Exif sub-IFD (34665, with its Interop IFD 40965) and the GPS sub-IFD (34853). Little-endian.
+* TIFF: an 8- or 16-bit RGB baseline TIFF assembled here: IFD0 (pixels in strips, ICC 34675, the source's IFD0
+  metadata), the Exif sub-IFD (34665, with its Interop IFD 40965) and the GPS sub-IFD (34853). Little-endian.
+* PNG (CONTRACT-s2-export-detect E4): `cv2.imencode` (8 / 16-bit, compression 3), then iCCP (name "sRGB", the
+  zlib-compressed profile) and eXIf (TIFF-structured EXIF) spliced in right after IHDR; only IHDR, iCCP, eXIf,
+  IDAT and IEND are kept.
+* WebP (E6): `cv2.imencode` (lossy VP8, quality 1..100), re-wrapped as the extended format RIFF -> VP8X (ICC flag,
+  EXIF flag when there is EXIF, canvas size) -> ICCP -> the VP8 data -> EXIF.
 
 EXIF from the source photo (`read_exif`): IFD0, Exif and GPS IFDs of a JPEG's first APP1 Exif segment, of a TIFF
 file's IFD0, or of a HEIC's Exif item; PNG never carries EXIF here. IFD1 (the thumbnail) is never read, so it is
@@ -12,6 +17,7 @@ are the output size, every tag occurs once per IFD, image-structure tags of the 
 """
 import os
 import struct
+import zlib
 
 TYPE_SIZE = {1: 1, 2: 1, 3: 2, 4: 4, 5: 8, 6: 1, 7: 1, 8: 2, 9: 4, 10: 8, 11: 4, 12: 8, 13: 4}
 _NUM = {3: "H", 4: "I", 5: "II", 8: "h", 9: "i", 10: "ii", 11: "f", 12: "d", 13: "I"}
@@ -253,16 +259,18 @@ TIFF_ROWS_PER_STRIP = 16
 
 
 def tiff_bytes(rgb16, exif, icc):
-    """16-bit RGB baseline TIFF (uncompressed, contiguous, no alpha) of an HxWx3 uint16 array."""
+    """RGB baseline TIFF (uncompressed, contiguous, no alpha) of an HxWx3 uint16 (16-bit) or uint8 (8-bit, S2 E5)
+    array; the same structure for both depths, only BitsPerSample and the sample size differ."""
     import numpy as np
+    bits = 8 if rgb16.dtype == np.uint8 else 16
     h, w = rgb16.shape[:2]
-    row = w * 3 * 2
+    row = w * 3 * (bits // 8)
     rps = min(TIFF_ROWS_PER_STRIP, h)
     n = (h + rps - 1) // rps
     counts = [row * min(rps, h - i * rps) for i in range(n)]
     ifd0, subs = _metadata(exif, w, h)
     ifd0.update({
-        256: _entry(4, (w,)), 257: _entry(4, (h,)), 258: _entry(3, (16, 16, 16)), 259: _entry(3, (1,)),
+        256: _entry(4, (w,)), 257: _entry(4, (h,)), 258: _entry(3, (bits, bits, bits)), 259: _entry(3, (1,)),
         262: _entry(3, (2,)), 273: _entry(4, (0,) * n), 277: _entry(3, (3,)), 278: _entry(4, (rps,)),
         279: _entry(4, tuple(counts)), 284: _entry(3, (1,)), 339: _entry(3, (1, 1, 1)), ICC_TAG: (7, len(icc), icc),
     })
@@ -274,8 +282,75 @@ def tiff_bytes(rgb16, exif, icc):
     assert end2 == end
     out = bytearray(b"II*\0" + struct.pack("<I", 8) + head)
     out += b"\0" * (pixels_at - len(out))
-    out += np.ascontiguousarray(rgb16, dtype="<u2").data
+    out += np.ascontiguousarray(rgb16, dtype="<u2" if bits == 16 else "u1").data
     return out
+
+
+PNG_COMPRESSION = 3                     # verbatim (S2 E4)
+PNG_KEEP = (b"IHDR", b"IDAT", b"IEND")
+
+
+def _png_chunk(kind, body):
+    return struct.pack(">I", len(body)) + kind + body + struct.pack(">I", zlib.crc32(kind + body) & 0xFFFFFFFF)
+
+
+def png_bytes(bgr, exif, icc):
+    """PNG of an HxWx3 BGR uint8 / uint16 array: IHDR -> iCCP (sRGB) -> eXIf (when EXIF is given) -> IDAT... -> IEND."""
+    import cv2
+    ok, enc = cv2.imencode(".png", bgr, [cv2.IMWRITE_PNG_COMPRESSION, PNG_COMPRESSION])
+    if not ok:
+        raise ValueError("PNG encoding failed")
+    data = enc.tobytes()
+    if data[:8] != b"\x89PNG\r\n\x1a\n":
+        raise ValueError("PNG encoding failed")
+    chunks, pos = [], 8
+    while pos + 8 <= len(data):
+        (n,) = struct.unpack_from(">I", data, pos)
+        kind = data[pos + 4:pos + 8]
+        chunks.append((kind, data[pos:pos + 12 + n]))
+        pos += 12 + n
+    if not chunks or chunks[0][0] != b"IHDR":
+        raise ValueError("PNG encoding failed")
+    extra = [_png_chunk(b"iCCP", b"sRGB\0\0" + zlib.compress(icc))]
+    if exif is not None:
+        h, w = bgr.shape[:2]
+        extra.append(_png_chunk(b"eXIf", exif_tiff_bytes(exif, w, h)))
+    kept = [raw for kind, raw in chunks[1:] if kind in PNG_KEEP]
+    return data[:8] + chunks[0][1] + b"".join(extra) + b"".join(kept)
+
+
+WEBP_FLAG_ICC, WEBP_FLAG_EXIF = 0x20, 0x08
+
+
+def _riff_chunk(kind, body):
+    return kind + struct.pack("<I", len(body)) + body + (b"\0" if len(body) % 2 else b"")
+
+
+def webp_bytes(bgr8, quality, exif, icc):
+    """WebP (lossy, `quality` 1..100) of an HxWx3 BGR uint8 array, re-wrapped with VP8X, the sRGB ICCP chunk and
+    (when given) an EXIF chunk; the encoder's image data is copied unchanged."""
+    import cv2
+    ok, enc = cv2.imencode(".webp", bgr8, [cv2.IMWRITE_WEBP_QUALITY, int(quality)])
+    if not ok:
+        raise ValueError("WebP encoding failed")
+    data = enc.tobytes()
+    if data[:4] != b"RIFF" or data[8:12] != b"WEBP":
+        raise ValueError("WebP encoding failed")
+    image, pos = [], 12
+    while pos + 8 <= len(data):
+        kind = data[pos:pos + 4]
+        (n,) = struct.unpack_from("<I", data, pos + 4)
+        if kind not in (b"VP8X", b"ICCP", b"EXIF", b"XMP "):
+            image.append(data[pos:pos + 8 + n + (n % 2)])
+        pos += 8 + n + (n % 2)
+    h, w = bgr8.shape[:2]
+    tiff = None if exif is None else exif_tiff_bytes(exif, w, h)
+    flags = WEBP_FLAG_ICC | (WEBP_FLAG_EXIF if tiff is not None else 0)
+    vp8x = _riff_chunk(b"VP8X", bytes([flags, 0, 0, 0]) + (w - 1).to_bytes(3, "little") + (h - 1).to_bytes(3, "little"))
+    body = b"WEBP" + vp8x + _riff_chunk(b"ICCP", icc) + b"".join(image)
+    if tiff is not None:
+        body += _riff_chunk(b"EXIF", tiff)
+    return b"RIFF" + struct.pack("<I", len(body)) + body
 
 
 # ---------------------------------------------------------------- the sRGB profile (X5)

@@ -8,6 +8,7 @@ library: edits/, thumbs/, index/) defaults to %LOCALAPPDATA%/darkroom (CONTRACT-
 """
 import json
 import os
+import sys
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CONFIG_FILE = os.path.join(REPO, "config.local.json")
@@ -17,6 +18,9 @@ PYTHON_REL = ("runtimes", "darkroom-python", "py3.13.14-torch2.14.0-cu130", "pyt
 DATA_DIR_ERROR = "找不到照片庫資料區：請在 config.local.json 設定 data_dir，或確認 LOCALAPPDATA 存在"   # verbatim (PL1)
 SEMANTIC_BUDGET_DEFAULT_USD = 5.0                    # verbatim (SI8): key semantic_index_budget_usd
 SOURCES_REL = ("scratch", "lr-calibration", "sources")   # default calibration_sources_dir under localllms_root
+DATA_DIR_ERROR_POSIX = "找不到照片庫資料區：請在 config.local.json 設定 data_dir，或確認 HOME 存在"   # verbatim (S2 E18)
+BAD_CONFIG = "{file_name} 不是正確的 JSON（第 {line} 行第 {col} 欄）：{msg}"       # verbatim (S2 E19)
+RELATIVE_KEYS = ("data_dir", "preset_dir", "preset_library_dir")              # S2 E19: relative to the config file
 
 
 class ConfigError(RuntimeError):
@@ -24,13 +28,32 @@ class ConfigError(RuntimeError):
 
 
 def _read(config_file=None):
+    """The configuration object; ConfigError (one line: file, line, column) when the file is not valid JSON (E19).
+
+    data_dir / preset_dir / preset_library_dir given as relative paths are made absolute against the folder of the
+    configuration file (CONTRACT-s2-export-detect E19), before anything uses them."""
     path = CONFIG_FILE if config_file is None else config_file
     cfg = {}
     if os.path.exists(path):
         with open(path, "rb") as f:
-            cfg = json.loads(f.read().decode("utf-8-sig"))
+            raw = f.read()
+        name = os.path.basename(path)
+        try:
+            cfg = json.loads(raw.decode("utf-8-sig"))
+        except UnicodeDecodeError as e:
+            line = raw[:e.start].count(b"\n") + 1
+            col = e.start - (raw.rfind(b"\n", 0, e.start) + 1) + 1
+            raise ConfigError(BAD_CONFIG.format(file_name=name, line=line, col=col, msg=e.reason)) from None
+        except ValueError as e:
+            raise ConfigError(BAD_CONFIG.format(file_name=name, line=getattr(e, "lineno", 1),
+                                                col=getattr(e, "colno", 1), msg=getattr(e, "msg", str(e)))) from None
         if not isinstance(cfg, dict):
-            raise ConfigError(f"{os.path.basename(path)} must hold a JSON object")
+            raise ConfigError(f"{name} must hold a JSON object")
+        base = os.path.dirname(os.path.abspath(path))
+        for key in RELATIVE_KEYS:
+            v = cfg.get(key)
+            if isinstance(v, str) and v.strip() and not os.path.isabs(v):
+                cfg[key] = os.path.normpath(os.path.join(base, v))
     return cfg
 
 
@@ -83,14 +106,38 @@ def calibration_sources_dir(config_file=None, env=None):
     return os.path.join(root, *SOURCES_REL) if root else None
 
 
-def data_dir(config_file=None, env=None):
-    """The photo library's data folder (CONTRACT-photo-library PL1, PLP8): the config key data_dir, else
-    %LOCALAPPDATA%/darkroom; ConfigError when neither is known."""
+def _home(home):
+    if home is None:
+        try:
+            home = os.path.expanduser("~")
+        except Exception:
+            return None
+    return home if isinstance(home, str) and home and home != "~" and os.path.isabs(home) else None
+
+
+def data_dir(config_file=None, env=None, platform=None, home=None):
+    """The photo library's data folder (CONTRACT-photo-library PL1 / PLP8, revised by S2 E18 = PLP18): the config key
+    data_dir, else the platform's convention - win32 %LOCALAPPDATA%/darkroom, darwin ~/Library/Application
+    Support/darkroom, others $XDG_DATA_HOME/darkroom (an absolute XDG_DATA_HOME only) or ~/.local/share/darkroom;
+    ConfigError when none is known (Windows: the PL1 sentence unchanged)."""
     env = os.environ if env is None else env
+    platform = sys.platform if platform is None else platform
     d = _read(config_file).get("data_dir")
     if isinstance(d, str) and d.strip():
         return d
-    local = env.get("LOCALAPPDATA")
-    if local:
-        return os.path.join(local, "darkroom")
-    raise ConfigError(DATA_DIR_ERROR)
+    if platform == "win32":
+        local = env.get("LOCALAPPDATA")
+        if local:
+            return os.path.join(local, "darkroom")
+        raise ConfigError(DATA_DIR_ERROR)
+    h = _home(home)
+    if platform == "darwin":
+        if h:
+            return os.path.join(h, "Library", "Application Support", "darkroom")
+        raise ConfigError(DATA_DIR_ERROR_POSIX)
+    xdg = env.get("XDG_DATA_HOME")
+    if isinstance(xdg, str) and xdg and os.path.isabs(xdg):
+        return os.path.join(xdg, "darkroom")
+    if h:
+        return os.path.join(h, ".local", "share", "darkroom")
+    raise ConfigError(DATA_DIR_ERROR_POSIX)

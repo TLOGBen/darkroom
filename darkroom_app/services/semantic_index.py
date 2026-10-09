@@ -8,8 +8,9 @@ preset's content hash (renaming or moving a file never costs a second call). Sea
 
 What stays out of this module's reach, by construction:
 * the API key lives only in a local variable of `build` and in the SDK client (`api_key=`); it is never stored,
-  logged, written or put in a sentence (SI3). It is read with `op read <op://...>` - the only subprocess this
-  module may start (CONTRACT-write-guard WG15) - or from DARKROOM_ANTHROPIC_API_KEY;
+  logged, written or put in a sentence (SI3). It is read with `op read <op://...>` after `op whoami` said the
+  1Password CLI is signed in - the only two subprocesses this module may start (CONTRACT-write-guard WG15, WG16) -
+  or from DARKROOM_ANTHROPIC_API_KEY;
 * only the four constant source files are ever read as images; no user photo, thumbnail or preset file is sent
   (SI4); rendering writes nothing;
 * nothing is sent before the estimated cost is under the configured budget (SI8), and every finished batch's
@@ -46,6 +47,7 @@ BATCH_MAX = 500                                     # verbatim (SI9): requests p
 POLL_S = 15                                         # verbatim (SI9)
 WAIT_DEFAULT_S = 3600                               # verbatim (SI9): when wait_seconds is None (the CLI)
 OP_TIMEOUT_S = 30                                   # verbatim (SI3)
+WHOAMI_TIMEOUT_S = 10                               # verbatim (S2 E24)
 LOCK_WAIT_S, LOCK_POLL_S = 5.0, 0.02                # as KP8
 LONG_EDGE = 512                                     # verbatim (SI4)
 JPEG_QUALITY = 85                                   # verbatim (SI4)
@@ -167,6 +169,27 @@ def op_read(ref):
     return secret
 
 
+def op_signed_in(run=None):
+    """S2 E24: `op whoami` (the WG16 shape) -> (available, reason). Its stdout / stderr never leave this function."""
+    run = subprocess.run if run is None else run
+    try:
+        r = run(["op", "whoami"], capture_output=True, timeout=WHOAMI_TIMEOUT_S)
+    except FileNotFoundError:
+        return False, M.SEM_KEY_NO_OP
+    except subprocess.TimeoutExpired:
+        return False, M.OP_WHOAMI_TIMEOUT
+    return (True, None) if r.returncode == 0 else (False, M.OP_NOT_SIGNED_IN)
+
+
+def op_key(ref, signed_in=None, read=None):
+    """The default key reader (S2 E24 / SIP10): `op whoami` first; not signed in -> _KeyUnavailable with that
+    reason and `op read` is never run."""
+    ok, reason = (op_signed_in if signed_in is None else signed_in)()
+    if not ok:
+        raise _KeyUnavailable(reason)
+    return (op_read if read is None else read)(ref)
+
+
 def _have_anthropic():
     import importlib.util
     return importlib.util.find_spec("anthropic") is not None
@@ -234,14 +257,17 @@ def render_composites(sources_dir, engine_ref, jobs):
 
 class SemanticIndexService:
     def __init__(self, library, preset_dir, engine_ref, *, key_ref=_CONFIG, env_key=_CONFIG, sources_dir=_CONFIG,
-                 budget_usd=_CONFIG, have_anthropic=_have_anthropic, client_factory=_client, key_reader=op_read,
-                 renderer=render_composites, sleep=time.sleep, monotonic=time.monotonic, clock=time.time):
+                 budget_usd=_CONFIG, have_anthropic=_have_anthropic, client_factory=_client, key_reader=op_key,
+                 renderer=render_composites, sleep=time.sleep, monotonic=time.monotonic, clock=time.time,
+                 signin_check=op_signed_in, writes_gate=None):
         self.library = library
         self.preset_dir = preset_dir
         self.engine_ref = engine_ref
         self.key_ref, self.env_key, self.sources_dir, self.budget_usd = key_ref, env_key, sources_dir, budget_usd
         self.have_anthropic, self.client_factory, self.key_reader = have_anthropic, client_factory, key_reader
         self.renderer, self.sleep, self.monotonic, self.clock = renderer, sleep, monotonic, clock
+        self.signin_check = signin_check        # S2 E24: the onepassword capability
+        self.writes_gate = writes_gate          # S2 E20: () -> (available, reason) of the library writes
         self._tlock = threading.Lock()
 
     # ------------------------------------------------------------------ settings (resolved when needed)
@@ -258,6 +284,13 @@ class SemanticIndexService:
 
     def _budget(self):
         return config.semantic_index_budget_usd() if self.budget_usd is _CONFIG else self.budget_usd
+
+    def key_ref_in_use(self):
+        """True when the key comes from 1Password (the reference wins over the environment, as _secret)."""
+        return self._key_ref() is not None
+
+    def signed_in(self):
+        return self.signin_check()
 
     def capability(self):
         """(available, reason): SI2 - package, then a key source, then the four source photos."""
@@ -417,6 +450,10 @@ class SemanticIndexService:
                   "indexed": indexed, "total": total, "pending": len(pending), "usage": None}
         if dry_run:
             return result
+        if self.writes_gate is not None:              # S2 E20 / KP22: nothing is sent when the index cannot be kept
+            ok, why = self.writes_gate()
+            if not ok:
+                raise DarkroomError("unavailable", why)
         if estimated > budget:
             raise DarkroomError("invalid", M.SEM_OVER_BUDGET.format(usd=estimated, budget=budget))
         secret = self._secret()

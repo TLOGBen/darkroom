@@ -31,6 +31,7 @@ from .. import messages as M
 from .. import preview as semantics
 from .. import safe_write
 from ..errors import DarkroomError
+from ..formats import PHOTO_EXT
 from ..presets import (GROUP_SEP, IMPORT_PREFIX, INDEX_NAME, USER_PREFIX, clean_text, index_bytes, meta_of,
                        normalize_group, split_group)
 
@@ -52,6 +53,12 @@ _TEXT = {"\r": "&#13;"}
 CURVE_ORDER = ("ToneCurvePV2012", "ToneCurvePV2012Red", "ToneCurvePV2012Green", "ToneCurvePV2012Blue")
 GRADIENT_KEYS = ("ZeroX", "ZeroY", "FullX", "FullY")
 CIRCULAR_KEYS = ("Top", "Left", "Bottom", "Right", "Angle", "Midpoint", "Roundness", "Feather")
+PRESET_IDS_MAX = 500                # verbatim (S2 E16)
+LR_ANCHOR = 'crs:PresetType="Normal"'
+LR_ATTRS = (("UUID", None), ("SupportsAmount2", "True"), ("SupportsAmount", "True"), ("SupportsColor", "True"),
+            ("SupportsMonochrome", "True"), ("SupportsHighDynamicRange", "True"),
+            ("SupportsNormalDynamicRange", "True"), ("SupportsSceneReferred", "True"),
+            ("SupportsOutputReferred", "True"), ("RequiresRGBTables", "False"), ("Version", "15.4"))   # verbatim (E16)
 
 
 # ---------------------------------------------------------------------- pure helpers
@@ -134,6 +141,55 @@ def xmp_bytes(params, name, group):
     return "".join(out).encode("utf-8")
 
 
+def lightroom_bytes(data):
+    """S2 E16 / D6: a user preset with the Lightroom attributes it lacks added right after crs:PresetType="Normal"
+    (crs:UUID = the first 32 upper-case hex of the file's SHA-256, so the same content always gets the same UUID);
+    every other byte is unchanged. Bytes without the anchor are returned as they are."""
+    text = data.decode("utf-8")
+    at = text.find(LR_ANCHOR)
+    if at < 0:
+        return data
+    uuid = hashlib.sha256(data).hexdigest()[:32].upper()
+    add = "".join(f' crs:{k}="{uuid if v is None else v}"' for k, v in LR_ATTRS if f' crs:{k}="' not in text)
+    at += len(LR_ANCHOR)
+    return (text[:at] + add + text[at:]).encode("utf-8")
+
+
+def _skip_levels(home=None, env=None):
+    """normcase(realpath) of the levels never judged a photo folder (S2 E20 / D9, IP3): the home folder itself and
+    the system temporary folders themselves (TMPDIR, TEMP, TMP); drive roots are skipped by the walk."""
+    env = os.environ if env is None else env
+    out = set()
+    for d in [home if home is not None else os.path.expanduser("~")] + [env.get(k) for k in ("TMPDIR", "TEMP", "TMP")]:
+        if isinstance(d, str) and d and os.path.isabs(d):
+            out.add(os.path.normcase(os.path.realpath(d)))
+    return out
+
+
+def photo_folder_of(root, home=None, env=None):
+    """S2 E20: the first folder, from realpath(root) upwards, whose first level holds a file with a photo extension
+    (formats.PHOTO_EXT); None when there is none. Drive roots, the home folder and the temporary folders themselves
+    are not judged. Only names are read (os.scandir); no file is opened, nothing is written."""
+    skip = _skip_levels(home, env)
+    cur = os.path.realpath(root)
+    while True:
+        parent = os.path.dirname(cur)
+        if parent != cur and os.path.normcase(cur) not in skip:
+            try:
+                with os.scandir(cur) as it:
+                    for e in it:
+                        try:
+                            if os.path.splitext(e.name)[1].lower() in PHOTO_EXT and e.is_file():
+                                return cur
+                        except OSError:
+                            continue
+            except OSError:
+                pass
+        if parent == cur:
+            return None
+        cur = parent
+
+
 def _one_line(e):
     return " ".join(str(e).split()) or type(e).__name__
 
@@ -178,6 +234,19 @@ class PresetLibraryService:
         self.library = library
         self.preset_dir = preset_dir           # the purchased preset folder in use, for safe_write (KP1)
         self._tlock = threading.Lock()         # one organising operation at a time in this process
+        self.writes_gate = None                # () -> (available, reason): the capability preset_library_writes (E20)
+
+    def writes_status(self):
+        """(available, reason) of the library writes (S2 E20): false when the library root lies in a photo folder."""
+        folder = photo_folder_of(self.root)
+        if folder is None:
+            return True, None
+        return False, M.LIB_IN_PHOTO_FOLDER.format(root=self.root, photo_folder=folder)
+
+    def _check_writable(self):
+        ok, reason = self.writes_gate() if self.writes_gate is not None else self.writes_status()
+        if not ok:
+            raise DarkroomError("unavailable", reason)
 
     # ------------------------------------------------------------------ writing (safe_write only)
     @property
@@ -252,7 +321,9 @@ class PresetLibraryService:
     def _mutate(self, change):
         """Lock -> index on disk merged with the folders -> change(index, files) -> atomic write -> adopt.
 
-        change returns (result, changed); nothing is written when changed is False."""
+        change returns (result, changed); nothing is written when changed is False. Refused before anything when the
+        library root lies in a photo folder (S2 E20, KP22)."""
+        self._check_writable()
         with self._tlock:
             fd = self._acquire()
             try:
@@ -425,6 +496,90 @@ class PresetLibraryService:
                                      "favorite": False}
             return {"id": pid, "name": n, "group": g, "file": info.rel}, True
         return self._mutate(change)
+
+    # ------------------------------------------------------------------ preset files (S2 E16, E17)
+    @staticmethod
+    def _ids(preset_ids):
+        if (not isinstance(preset_ids, list) or not 1 <= len(preset_ids) <= PRESET_IDS_MAX
+                or not all(isinstance(p, str) for p in preset_ids)):
+            raise DarkroomError("invalid", M.PRESET_IDS_INVALID)
+        return preset_ids
+
+    def _file_of(self, pid):
+        """(stem, bytes) of one preset as handed to Lightroom (D6), or (None, the failure sentence)."""
+        row = self.library.by_id.get(pid)
+        info = self.library.files().get(pid)
+        if row is None or info is None:
+            return None, M.UNKNOWN_PRESET.format(pid=pid)
+        try:
+            with open(info.path, "rb") as f:
+                data = f.read()
+        except OSError as e:
+            return None, M.LIB_IMPORT_UNREADABLE.format(file_name=os.path.basename(info.path), reason=_one_line(e))
+        if pid.startswith(USER_PREFIX):
+            data = lightroom_bytes(data)
+        return safe_stem(row["name"]), data
+
+    def preset_files(self, preset_ids):
+        """S2 E16: the presets' .xmp bytes (base64), in order; reads only."""
+        ids = self._ids(preset_ids)
+        out, taken = [], set()
+        for pid in ids:
+            stem, data = self._file_of(pid)
+            if stem is None:
+                out.append({"ok": False, "preset_id": pid, "error": data})
+                continue
+            name = next(f"{s}.xmp" for s in numbered(stem) if f"{s}.xmp".casefold() not in taken)
+            taken.add(name.casefold())
+            out.append({"ok": True, "preset_id": pid, "file_name": name,
+                        "data_base64": base64.b64encode(data).decode("ascii")})
+        return {"files": out}
+
+    def export_preset_files(self, preset_ids, dest_dir):
+        """S2 E17: the presets' .xmp files written into an existing folder outside the preset folder and the library;
+        never overwrites (numbered names), never creates a folder."""
+        ids = self._ids(preset_ids)
+        if not isinstance(dest_dir, str) or not os.path.isabs(dest_dir) or not os.path.isdir(dest_dir):
+            raise DarkroomError("invalid", M.EXPORT_NO_DEST.format(dest_dir=dest_dir))
+        real = os.path.normcase(os.path.realpath(dest_dir))
+        for folder in (self.preset_dir, self.root):
+            f = os.path.normcase(os.path.realpath(folder))
+            try:
+                inside = os.path.commonpath([real, f]) == f
+            except ValueError:
+                inside = False
+            if inside:
+                raise DarkroomError("invalid", M.PRESET_EXPORT_INTO_LIBRARY.format(dest_dir=dest_dir))
+        try:
+            taken = {n.casefold() for n in os.listdir(dest_dir)}
+        except OSError:
+            taken = set()
+        results = []
+        for pid in ids:
+            stem, data = self._file_of(pid)
+            if stem is None:
+                results.append({"ok": False, "preset_id": pid, "error": data})
+                continue
+            results.append(self._write_one(pid, stem, data, dest_dir, taken))
+        return {"results": results}
+
+    def _write_one(self, pid, stem, data, dest_dir, taken):
+        try:
+            for s in numbered(stem):
+                name = f"{s}.xmp"
+                if name.casefold() in taken:
+                    continue
+                path = os.path.join(dest_dir, name)
+                try:
+                    self._sw(safe_write.create_new, path, dest_dir, data)
+                except FileExistsError:
+                    taken.add(name.casefold())
+                    continue
+                taken.add(name.casefold())
+                return {"ok": True, "preset_id": pid, "output": path}
+        except OSError:
+            return {"ok": False, "preset_id": pid, "error": M.EXPORT_CANNOT_WRITE.format(folder=dest_dir)}
+        return {"ok": False, "preset_id": pid, "error": M.EXPORT_NAMES_USED_UP.format(stem=stem, n_max=N_MAX)}
 
     # ------------------------------------------------------------------ import (K11, KP4)
     def _sources(self, paths, files):

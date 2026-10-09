@@ -116,13 +116,17 @@ pwsh -File tools/make-shortcut.ps1   # 產生桌面捷徑
 ```powershell
 python -s -m darkroom_app.cli presets list --query film --limit 5 --json
 python -s -m darkroom_app.cli preview D:/Photos/a.jpg --preset <id> --strength 120 > out.jpg
-python -s -m darkroom_app.cli export D:/Photos/a.jpg D:/Photos/b.jpg --json
+python -s -m darkroom_app.cli export D:/Photos/a.jpg D:/Photos/b.jpg --json        # 不給參數＝用存好的編輯
+python -s -m darkroom_app.cli export D:/Photos/a.jpg --resize long_edge=2048 --max-kb 800 --sharpen screen=standard --json
+python -s -m darkroom_app.cli capabilities        # 哪些功能被關掉、為什麼
 python -s -m darkroom_app.cli edit get D:/Photos/a.jpg --json
 ```
 
 結束碼：`0` 成功、`1` 未預期錯誤、`2` 參數不對、`3` 找不到、`4` 衝突、`5` 暫時無法使用、`6` 批次裡有部分失敗。
 
-**MCP**——stdio server，27 個 `darkroom_*` 工具（列 preset、預覽會回傳圖片給模型看、套用與保存修改、取回上一份編輯 `darkroom_edit_restore`（CLI `edit restore`）、匯出、preset 語意索引 `darkroom_semantic_build`／`darkroom_semantic_status`…）。註冊到 Claude Code：
+匯出可選 JPEG／PNG／TIFF（8／16-bit）／WebP、JPEG 檔案大小上限、只縮不放的尺寸、中繼資料（全部／只留版權／不含，可移除 GPS）、螢幕／霧面紙／光面紙輸出銳利化，常用組合存成「匯出預設」（`export-presets`）；preset 可以匯出成 Lightroom 讀得到的 `.xmp`（`presets export`，永不覆蓋）。啟動時偵測 GPU、HEIC、WebP、照片庫資料區、preset 庫位置、語意索引與 1Password 登入，偵測不到的功能安靜關掉並說原因（`capabilities`）。
+
+**MCP**——stdio server，33 個 `darkroom_*` 工具（列 preset、預覽會回傳圖片給模型看、套用與保存修改、取回上一份編輯 `darkroom_edit_restore`（CLI `edit restore`）、匯出、匯出預設、preset 匯出成 `.xmp`、能力偵測 `darkroom_capabilities`、preset 語意索引 `darkroom_semantic_build`／`darkroom_semantic_status`…）。註冊到 Claude Code：
 
 ```powershell
 claude mcp add darkroom -- <你的 python> -s -m darkroom_app.mcp_server

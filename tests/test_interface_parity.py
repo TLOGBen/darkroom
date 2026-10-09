@@ -278,7 +278,7 @@ class TestInterfaceParity(unittest.IsolatedAsyncioTestCase):
         self.photos = os.path.join(self.tmp, "photos")
         os.makedirs(self.photos)
         eng = engine_mod.Engine()
-        self.f = build_facade(self.presets, engine=eng)
+        self.f = build_facade(self.presets, engine=eng, data_dir=os.path.join(self.tmp, "data"))   # S2 E15 / G7
         app = make_app(self.presets, engine=eng)
         app[FACADE] = self.f                      # one facade behind all three interfaces
         self.client = TestClient(TestServer(app), headers=_util.HTTP_HEADERS)   # PLP11
@@ -428,8 +428,8 @@ class TestInterfaceParity(unittest.IsolatedAsyncioTestCase):
         cases = [
             ("items empty", lambda d: d.export([], "jpeg", dest_dir=fresh()),
              Outcome(False, "invalid", "沒有要匯出的照片"), None),
-            ("format png", lambda d: d.export([{"path": jpeg}], "png", dest_dir=fresh()),
-             Outcome(False, "invalid", "不支援的匯出格式：png（可用 jpeg、tiff）"), None),
+            ("format bmp", lambda d: d.export([{"path": jpeg}], "bmp", dest_dir=fresh()),   # XP31: png is a format now
+             Outcome(False, "invalid", "不支援的匯出格式：bmp（可用 jpeg、png、tiff、webp）"), None),   # XP31
             ("quality 0", lambda d: d.export([{"path": jpeg}], "jpeg", 0, dest_dir=fresh()),
              Outcome(False, "invalid", "JPEG 品質要在 1～100 之間：0"), None),
             ("quality true", lambda d: d.export([{"path": jpeg}], "jpeg", dest_dir=fresh(), raw_quality=True),
@@ -1209,6 +1209,299 @@ class TestSubprocessSmoke(unittest.TestCase):  # L11: one real-process run per i
         self.assertEqual(res[2]["result"]["supportedVersions"], ["2026-07-28"])
         self.assertEqual(res[3]["result"]["resultType"], "complete")
         self.assertEqual(res[3]["result"]["structuredContent"]["message"], "unknown preset nope")
+
+
+S2_FEATURES = ("gpu", "heic", "webp", "photo_library", "preset_library_writes", "semantic_index", "onepassword")
+NO_WEBP = "這台電腦的 OpenCV 不能寫 WebP，WebP 匯出先關閉"                                 # verbatim (S2 E23)
+LIB_IN_PHOTOS = ("preset 庫的位置 {root} 在照片資料夾裡（{photo_folder} 有照片），為了不在照片資料夾裡寫檔，整理 preset、"
+                 "匯入、存成 preset 先關閉；請在 config.local.json 把 preset_library_dir 設到別的資料夾")   # verbatim (S2 E23)
+SETTING_FLAGS = (("format", "--format"), ("bit_depth", "--bit-depth"), ("quality", "--quality"), ("max_kb", "--max-kb"),
+                 ("metadata", "--metadata"), ("export_preset", "--export-preset"))
+
+
+def _no_op_detect(**more):
+    """Every facade here: the two items that could reach `op` are fakes (tests never run op)."""
+    return {"semantic_index": lambda: (False, "假的語意索引"), "onepassword": lambda: (False, "假的 1Password"), **more}
+
+
+class TestS2Parity(unittest.IsolatedAsyncioTestCase):  # CONTRACT-s2-export-detect E31
+    """Every scenario, once per interface, on that driver's own data_dir, photo copy, preset library and dest_dir
+    (HTTP: the default export folder); outcomes and results agree."""
+
+    @classmethod
+    def setUpClass(cls):
+        rng = np.random.default_rng(7)
+        cls.shot = cv2.imencode(".jpg", (rng.random((1000, 1500, 3)) * 255).astype(np.uint8))[1].tobytes()
+
+    async def asyncSetUp(self):
+        from darkroom_app import engine as engine_mod
+        from darkroom_app.server import FACADE, make_app
+        self.eng = engine_mod.Engine()          # the app's cleanup shuts it down
+        self.tmp = _util.tmpdir(self)
+        seed = os.path.join(self.tmp, "seed")
+        os.makedirs(seed)
+        make_presets(seed)
+        self.switch = _Switch()
+        app = make_app(seed, engine=self.eng)
+        app[FACADE] = self.switch
+        self.client = TestClient(TestServer(app), headers=_util.HTTP_HEADERS)
+        await self.client.start_server()
+        self.n = 0
+
+    async def asyncTearDown(self):
+        await self.client.close()
+
+    def fresh(self, detect=None):
+        """A new world: <root>/lib/xmp (library root <root>/lib), photos/shot.jpg, data/, dest/."""
+        from darkroom_app.composition import build_facade
+        self.n += 1
+        root = os.path.join(self.tmp, f"w{self.n}")
+        ctx = {"root": root, "lib": os.path.join(root, "lib"), "pd": os.path.join(root, "lib", "xmp"),
+               "photos": os.path.join(root, "photos"), "data": os.path.join(root, "data"),
+               "dest": os.path.join(root, "dest")}
+        for k in ("pd", "photos", "dest"):
+            os.makedirs(ctx[k])
+        make_presets(ctx["pd"])
+        ctx["photo"] = os.path.join(ctx["photos"], "shot.jpg")
+        with open(ctx["photo"], "wb") as fh:
+            fh.write(self.shot)
+        self.switch.target = build_facade(ctx["pd"], engine=self.eng, data_dir=ctx["data"],
+                                          detect=_no_op_detect(**(detect or {})))
+        return ctx
+
+    # ---------------------------------------------------------------- drivers
+    async def http(self, method, path, body=None, params=None):
+        r = await self.client.request(method, path, json=body, params=params)
+        data = await r.json()
+        if r.status == 200:
+            return OK, data
+        kind = {v: k for k, v in LIB_HTTP_STATUS.items()}[r.status]
+        self.assertEqual(list(data), ["error"])
+        return Outcome(False, kind, data["error"]), None
+
+    def cli(self, argv):
+        from darkroom_app import cli
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            rc = cli.main(argv + ["--json"], facade=self.switch)
+        self.assertEqual(err.getvalue(), "", argv)
+        self.assertEqual(out.getvalue().count("\n"), 1, argv)
+        env = json.loads(out.getvalue())
+        if env["ok"]:
+            res = env["result"]
+            rows = res.get("results", res.get("files")) if isinstance(res, dict) else None
+            partial = rows is not None and isinstance(rows, list) and not all(x["ok"] for x in rows)
+            self.assertEqual(rc, 6 if partial else 0, argv)
+            return OK, res
+        self.assertEqual(rc, LIB_CLI_EXIT[env["error"]["kind"]], argv)
+        return Outcome(False, env["error"]["kind"], env["error"]["message"]), None
+
+    def mcp(self, tool, arguments):
+        from darkroom_app.mcp_server import serve
+        line = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                           "params": {"name": tool, "arguments": arguments}}).encode("utf-8") + b"\n"
+        out = io.BytesIO()
+        serve(io.BytesIO(line), out, facade=self.switch)
+        res = json.loads(out.getvalue())["result"]
+        sc = res["structuredContent"]
+        if res.get("isError"):
+            self.assertEqual(res["content"], [{"type": "text", "text": sc["message"]}])
+            return Outcome(False, sc["kind"], sc["message"]), None
+        self.assertNotIn("isError", res)
+        if tool in ("darkroom_export", "darkroom_presets_export"):              # XP11
+            self.assertEqual(sc["failed"], sum(1 for x in sc["results"] if not x["ok"]))
+            sc = {"results": sc["results"]}
+        return OK, sc
+
+    # ---------------------------------------------------------------- export through each interface
+    def export_cli_argv(self, ctx, items, settings):
+        argv = ["export", *[it["path"] for it in items]]
+        if any("preset_id" in it for it in items):
+            argv.append("--no-edit")
+        for key, flag in SETTING_FLAGS:
+            if settings.get(key) is not None:
+                argv += [flag, str(settings[key])]
+        if settings.get("resize") is not None:
+            argv += ["--resize", f"{settings['resize']['mode']}={settings['resize']['value']}"]
+        if settings.get("sharpen") is not None:
+            argv += ["--sharpen", f"{settings['sharpen']['target']}={settings['sharpen']['amount']}"]
+        if settings.get("remove_gps"):
+            argv.append("--remove-gps")
+        return argv + ["--dest-dir", ctx["dest"]]
+
+    async def export_three(self, settings, items=None, before=None, detect=None):
+        """{driver: (outcome, [(ok, basename or error, used, sha256 of the file)])}."""
+        import hashlib
+        got = {}
+        for name in ("http", "cli", "mcp"):
+            ctx = self.fresh(detect)
+            if before:
+                before(ctx)
+            its = items(ctx) if items else [{"path": ctx["photo"]}]
+            if name == "http":
+                o, res = await self.http("POST", "/api/export", {"items": its, **settings})
+            elif name == "cli":
+                o, res = self.cli(self.export_cli_argv(ctx, its, settings))
+            else:
+                o, res = self.mcp("darkroom_export", {"items": its, **settings, "dest_dir": ctx["dest"]})
+            rows = None
+            if o.ok:
+                self.assertEqual(list(res), ["results"])
+                rows = []
+                for r in res["results"]:
+                    if r["ok"]:
+                        want_dir = os.path.join(ctx["photos"], "darkroom 匯出") if name == "http" else ctx["dest"]
+                        self.assertEqual(os.path.dirname(r["output"]), want_dir, name)
+                        with open(r["output"], "rb") as fh:
+                            digest = hashlib.sha256(fh.read()).hexdigest()
+                        rows.append((True, os.path.basename(r["output"]), r["used"], digest))
+                    else:
+                        rows.append((False, r["error"], None, None))
+            got[name] = (o, rows)
+        return got
+
+    def assert_same(self, got, name):
+        self.assertEqual(set(got), {"http", "cli", "mcp"}, name)
+        self.assertEqual(len({json.dumps(v, sort_keys=True, ensure_ascii=False, default=str) for v in got.values()}),
+                         1, (name, got))
+        return next(iter(got.values()))
+
+    async def test_s2_export_parity(self):  # E31: settings errors, WebP switched off, successes, saved edits
+        cases = [
+            ("format bmp", {"format": "bmp"}, Outcome(False, "invalid", "不支援的匯出格式：bmp（可用 jpeg、png、tiff、webp）")),
+            ("bit_depth 16 + jpeg", {"format": "jpeg", "bit_depth": 16},
+             Outcome(False, "invalid", "JPEG 只能輸出 8-bit：16")),
+            ("quality 0 + webp", {"format": "webp", "quality": 0}, Outcome(False, "invalid", "WebP 品質要在 1～100 之間：0")),
+            ("max_kb + png", {"format": "png", "max_kb": 800}, Outcome(False, "invalid", "檔案大小上限只適用於 JPEG")),
+            ("resize mode wrong", {"resize": {"mode": "diagonal", "value": 10}},
+             Outcome(False, "invalid", "不支援的尺寸方式：diagonal（可用 long_edge、short_edge、width、height、megapixels、percent）")),
+            ("percent 150", {"resize": {"mode": "percent", "value": 150}},
+             Outcome(False, "invalid", "percent 的值要是大於 0、不超過 100 的數（不會放大）：150")),
+            ("metadata wrong", {"metadata": "some"},
+             Outcome(False, "invalid", "不支援的中繼資料選項：some（可用 all、copyright、none）")),
+            ("sharpen amount wrong", {"sharpen": {"target": "screen", "amount": "max"}},
+             Outcome(False, "invalid", "不支援的銳利化強度：max（可用 low、standard、high）")),
+            ("export_preset missing", {"export_preset": "nope"}, Outcome(False, "not_found", "找不到匯出預設：nope")),
+        ]
+        for name, settings, want in cases:
+            got = await self.export_three(settings)
+            self.assertEqual(self.assert_same(got, name), (want, None), name)
+        got = await self.export_three({"format": "webp"}, detect={"webp": lambda: (False, NO_WEBP)})
+        self.assertEqual(self.assert_same(got, "webp off"), (Outcome(False, "unavailable", NO_WEBP), None))
+        got = await self.export_three({"format": "png", "bit_depth": 16})
+        o, rows = self.assert_same(got, "png 16")
+        self.assertEqual((o, [r[:3] for r in rows]), (OK, [(True, "shot.png", {"params_from": "original",
+                                                                                "quality": None, "width": 1500,
+                                                                                "height": 1000})]))
+        got = await self.export_three({"resize": {"mode": "long_edge", "value": 1000}})
+        o, rows = self.assert_same(got, "long_edge 1000")
+        self.assertEqual((o, [r[:3] for r in rows]), (OK, [(True, "shot.jpg", {"params_from": "original",
+                                                                                "quality": 92, "width": 1000,
+                                                                                "height": 667})]))
+        # a saved edit and nothing else: every interface exports it, byte for byte the same file
+        got = await self.export_three({}, before=lambda c: self.switch.target.set_edit(c["photo"], "p-expo", 80))
+        o, rows = self.assert_same(got, "saved edit")
+        self.assertEqual((o, rows[0][2]["params_from"]), (OK, "edit"))
+        got_orig = await self.export_three({})
+        o, orig = self.assert_same(got_orig, "no edit")
+        self.assertEqual(orig[0][2]["params_from"], "original")
+        self.assertNotEqual(orig[0][3], rows[0][3])                              # the edit really changed the pixels
+        got = await self.export_three({}, items=lambda c: [{"path": c["photo"], "preset_id": None}],
+                                      before=lambda c: self.switch.target.set_edit(c["photo"], "p-expo", 80))
+        o, req = self.assert_same(got, "preset_id null")
+        self.assertEqual((req[0][2]["params_from"], req[0][3]), ("request", orig[0][3]))   # null = the original
+
+    async def test_s2_export_presets_parity(self):  # E31: save -> list -> delete, the same results everywhere
+        got = {}
+        for name in ("http", "cli", "mcp"):
+            self.fresh()
+            if name == "http":
+                steps = [await self.http("PUT", "/api/export-presets", {"name": "網頁",
+                                                                        "settings": {"format": "jpeg", "max_kb": 800}}),
+                         await self.http("GET", "/api/export-presets"),
+                         await self.http("DELETE", "/api/export-presets", params={"name": "網頁"}),
+                         await self.http("DELETE", "/api/export-presets", params={"name": "網頁"})]
+            elif name == "cli":
+                steps = [self.cli(["export-presets", "save", "--name", "網頁", "--format", "jpeg", "--max-kb", "800"]),
+                         self.cli(["export-presets", "list"]), self.cli(["export-presets", "delete", "網頁"]),
+                         self.cli(["export-presets", "delete", "網頁"])]
+            else:
+                steps = [self.mcp("darkroom_export_preset_save", {"name": "網頁",
+                                                                  "settings": {"format": "jpeg", "max_kb": 800}}),
+                         self.mcp("darkroom_export_presets_list", {}),
+                         self.mcp("darkroom_export_preset_delete", {"name": "網頁"}),
+                         self.mcp("darkroom_export_preset_delete", {"name": "網頁"})]
+            got[name] = steps
+        steps = self.assert_same(got, "export presets")
+        self.assertEqual(steps[0][1]["previous"], None)
+        self.assertEqual(steps[1][1]["presets"][0]["name"], "網頁")
+        self.assertEqual(steps[2][1]["settings"], steps[0][1]["settings"])
+        self.assertEqual(steps[3], (Outcome(False, "not_found", "找不到匯出預設：網頁"), None))
+
+    async def test_s2_preset_files_parity(self):  # E31: one unknown, one known; files to a folder (CLI / MCP)
+        got = {}
+        for name in ("http", "cli", "mcp"):
+            self.fresh()
+            if name == "http":
+                got[name] = await self.http("POST", "/api/preset-library/files", {"preset_ids": ["nope", "p-expo"]})
+            elif name == "cli":
+                got[name] = self.cli(["presets", "files", "nope", "p-expo"])
+            else:
+                got[name] = self.mcp("darkroom_preset_files", {"preset_ids": ["nope", "p-expo"]})
+        o, res = self.assert_same(got, "preset files")
+        self.assertEqual([(f["ok"], f.get("file_name"), f.get("error")) for f in res["files"]],
+                         [(False, None, "unknown preset nope"), (True, "曝光一.xmp", None)])
+        got = {}
+        for name in ("cli", "mcp"):
+            ctx = self.fresh()
+            with open(os.path.join(ctx["dest"], "曝光一.xmp"), "wb") as fh:
+                fh.write(b"someone else's file")
+            if name == "cli":
+                o, res = self.cli(["presets", "export", "p-expo", "nope", "--dest-dir", ctx["dest"]])
+            else:
+                o, res = self.mcp("darkroom_presets_export", {"preset_ids": ["p-expo", "nope"], "dest_dir": ctx["dest"]})
+            with open(os.path.join(ctx["dest"], "曝光一.xmp"), "rb") as fh:
+                self.assertEqual(fh.read(), b"someone else's file")              # never overwritten
+            got[name] = (o, [(r["ok"], os.path.basename(r["output"]) if r["ok"] else r["error"])
+                             for r in res["results"]])
+        self.assertEqual(got["cli"], got["mcp"])
+        self.assertEqual(got["cli"], (OK, [(True, "曝光一 (2).xmp"), (False, "unknown preset nope")]))
+        ctx = self.fresh()
+        o, _ = await self.http("POST", "/api/preset-library/export", {"preset_ids": ["p-expo"], "dest_dir": ctx["dest"]})
+        self.assertEqual(o, Outcome(False, "invalid", "preset export to a folder is not accepted over HTTP (use the CLI "
+                                                      "or MCP; the page downloads the files)"))
+        self.assertEqual(os.listdir(ctx["dest"]), [])
+
+    async def test_s2_capabilities_parity(self):  # E31: the same injected detectors give the same answer
+        detect = {"gpu": lambda: (False, "沒有偵測到可用的 NVIDIA 顯示卡（CUDA），預覽與匯出改用 CPU，會慢很多"),
+                  "heic": lambda: (True, None), "webp": lambda: (False, NO_WEBP),
+                  "photo_library": lambda: (True, None), "preset_library_writes": lambda: (True, "ignored")}
+        got = {}
+        for name in ("http", "cli", "mcp"):
+            self.fresh(detect)
+            if name == "http":
+                got[name] = await self.http("GET", "/api/capabilities", params={"refresh": "1"})
+            elif name == "cli":
+                got[name] = self.cli(["capabilities", "--refresh"])
+            else:
+                got[name] = self.mcp("darkroom_capabilities", {"refresh": True})
+        o, res = self.assert_same(got, "capabilities")
+        self.assertEqual(list(res["features"]), list(S2_FEATURES))
+        self.assertEqual(res["features"]["preset_library_writes"], {"available": True, "reason": None})
+        self.assertEqual(res["features"]["webp"], {"available": False, "reason": NO_WEBP})
+
+    async def test_s2_library_in_photo_folder_parity(self):  # E20 / E31: one world, a photo in the library root
+        ctx = self.fresh()
+        with open(os.path.join(ctx["lib"], "IMG_0001.JPG"), "wb") as fh:
+            fh.write(self.shot)
+        before = snapshot(ctx["lib"])
+        want = Outcome(False, "unavailable", LIB_IN_PHOTOS.format(root=ctx["lib"], photo_folder=ctx["lib"]))
+        got = {"http": await self.http("POST", "/api/preset-library/rename", {"preset_id": "p-expo", "name": "x"}),
+               "cli": self.cli(["presets", "rename", "p-expo", "x"]),
+               "mcp": self.mcp("darkroom_preset_rename", {"preset_id": "p-expo", "name": "x"})}
+        self.assertEqual(got, dict.fromkeys(got, (want, None)))
+        self.assertEqual(snapshot(ctx["lib"]), before)                           # nothing written
+        self.assertFalse(os.path.exists(os.path.join(ctx["lib"], "library.json")))
 
 
 if __name__ == "__main__":

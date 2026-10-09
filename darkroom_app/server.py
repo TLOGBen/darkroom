@@ -15,7 +15,11 @@ cross-site / same-site is refused (an <img src> or <script src> from another pag
 page's own origin, a POST / PUT body must be declared application/json, and the four GETs that read a photo path
 must carry X-Darkroom: 1 (an img / script tag cannot add it; a cross-site fetch that adds it needs a CORS
 preflight, which this server never answers). Over HTTP, export takes no dest_dir (the editor never picks a folder;
-CLI / MCP only).
+CLI / MCP only). CONTRACT-s2-export-detect: the export presets (PUT / DELETE /api/export-presets) live in the
+configured data_dir; the presets' .xmp go to the browser as bytes (POST /api/preset-library/files) and are never
+written by the server over HTTP (POST /api/preset-library/export is refused); GET /api/capabilities answers with
+local paths in its reasons, so it needs X-Darkroom: 1 too (R12). Capability detection starts in the background when
+the App starts and never delays the ready line.
 """
 import asyncio
 import json
@@ -25,7 +29,7 @@ from urllib.parse import quote
 from aiohttp import web
 
 from . import engine as engine_mod
-from .composition import build_facade
+from .composition import build_facade, warm_capabilities
 from .errors import DarkroomError
 from .facade import Facade
 from .messages import OPEN_ERROR  # noqa: F401  (re-exported: verbatim constant, CONTRACT-heic)
@@ -48,9 +52,12 @@ DEST_DIR_REFUSED = "dest_dir is not accepted over HTTP (use the CLI or MCP)"    
 PATHS_REFUSED = "paths is not accepted over HTTP (upload the files)"                   # verbatim (KP4), 400
 DATA_DIR_REFUSED = "data_dir is not accepted over HTTP (it is configured)"             # verbatim (PLP2), 400
 SEMANTIC_BUILD_REFUSED = "semantic build is not accepted over HTTP (use the CLI or MCP)"   # verbatim (SI11), 400
+PRESET_EXPORT_REFUSED = ("preset export to a folder is not accepted over HTTP (use the CLI or MCP; the page "
+                         "downloads the files)")                                 # verbatim (S2 E17), 400
 FETCH_SITE_REFUSED = "request refused: cross-site request (Sec-Fetch-Site {value})"     # verbatim (PLP11), 403
 DARKROOM_HEADER_REFUSED = "request refused: X-Darkroom header required"                # verbatim (PLP11), 403
-PATH_READING_GETS = frozenset(("/api/folder", "/api/edit", "/api/folder/thumbnails", "/api/thumbnail"))   # PLP11
+PATH_READING_GETS = frozenset(("/api/folder", "/api/edit", "/api/folder/thumbnails", "/api/thumbnail",
+                               "/api/capabilities"))       # PLP11; + /api/capabilities (S2 E28, R12)
 
 
 def _lenient_int(text):
@@ -105,6 +112,10 @@ async def _json_body(request):
 
 async def _call(request, operation, *args):
     """facade.<operation>(*args) off the event loop; DarkroomError propagates for the handler to translate."""
+    if operation == "export":          # the S2 settings are keyword-only in the facade (E25)
+        keys = ("bit_depth", "max_kb", "resize", "metadata", "remove_gps", "sharpen", "export_preset")
+        fn = getattr(request.app[FACADE], operation)
+        return await asyncio.to_thread(lambda: fn(*args[:4], **dict(zip(keys, args[4:]))))
     return await asyncio.to_thread(getattr(request.app[FACADE], operation), *args)
 
 
@@ -165,7 +176,9 @@ async def api_export(request):
     body = await _json_body(request)
     if "dest_dir" in body:                 # an interface rule (XP16): the editor never picks a folder
         return web.json_response({"error": DEST_DIR_REFUSED}, status=400)
-    return await _json(request, "export", body.get("items"), body.get("format"), body.get("quality"), None)
+    return await _json(request, "export", body.get("items"), body.get("format"), body.get("quality"), None,
+                       body.get("bit_depth"), body.get("max_kb"), body.get("resize"), body.get("metadata"),
+                       body.get("remove_gps"), body.get("sharpen"), body.get("export_preset"))
 
 
 async def api_library_groups(request):
@@ -289,17 +302,48 @@ async def api_thumbnail(request):
     return web.Response(body=res.jpeg, content_type="image/jpeg", headers=headers)
 
 
+# ---- CONTRACT-s2-export-detect E28: operations 28..33
+async def api_export_presets(request):
+    return await _json(request, "list_export_presets")
+
+
+async def api_export_preset_save(request):
+    body = await _json_body(request)
+    if "data_dir" in body:                 # PLP2: the data folder is configured, never sent
+        return web.json_response({"error": DATA_DIR_REFUSED}, status=400)
+    return await _json(request, "save_export_preset", body.get("name"), body.get("settings"))
+
+
+async def api_export_preset_delete(request):
+    return await _json(request, "delete_export_preset", request.query.get("name"))
+
+
+async def api_preset_files(request):
+    body = await _json_body(request)
+    return await _json(request, "preset_files", body.get("preset_ids"))
+
+
+async def api_preset_export(request):
+    """An interface rule (S2 E17): over HTTP the server never writes .xmp into a folder; the page downloads them."""
+    return web.json_response({"error": PRESET_EXPORT_REFUSED}, status=400)
+
+
+async def api_capabilities(request):
+    return await _json(request, "capabilities", request.query.get("refresh") in ("1", "true"))
+
+
 async def _on_cleanup(app):
     app[ENGINE].shutdown()
 
 
-def make_app(preset_dir, engine=None, library_dir=None, data_dir=None):
+def make_app(preset_dir, engine=None, library_dir=None, data_dir=None, detect=None):
     """library_dir: the preset library root (default dirname(preset_dir); CONTRACT-preset-library KP2);
-    data_dir: the photo library's folder (default config.data_dir() on first use; CONTRACT-photo-library PL1)."""
+    data_dir: the photo library's folder (default config.data_dir() on first use; CONTRACT-photo-library PL1);
+    detect: capability detectors to use instead of the real ones (CONTRACT-s2-export-detect E22; tests)."""
     app = web.Application(client_max_size=1 << 20, middlewares=[_local_only])
     app[LIBRARY] = Library(preset_dir, library_dir)
     app[ENGINE] = engine or engine_mod.Engine()
-    app[FACADE] = build_facade(library=app[LIBRARY], engine=app[ENGINE], data_dir=data_dir)
+    app[FACADE] = build_facade(library=app[LIBRARY], engine=app[ENGINE], data_dir=data_dir, detect=detect)
     app.router.add_get("/", index)
     app.router.add_get("/api/health", health)
     app.router.add_get("/api/presets", api_presets)
@@ -329,14 +373,22 @@ def make_app(preset_dir, engine=None, library_dir=None, data_dir=None):
     app.router.add_post("/api/edit/restore", api_edit_restore)
     app.router.add_get("/api/folder/thumbnails", api_folder_thumbnails, allow_head=False)
     app.router.add_get("/api/thumbnail", api_thumbnail, allow_head=False)
+    app.router.add_get("/api/export-presets", api_export_presets)
+    app.router.add_put("/api/export-presets", api_export_preset_save)
+    app.router.add_delete("/api/export-presets", api_export_preset_delete)
+    app.router.add_post("/api/preset-library/files", api_preset_files)
+    app.router.add_post("/api/preset-library/export", api_preset_export)          # E17: always refused
+    app.router.add_get("/api/capabilities", api_capabilities, allow_head=False)  # R12: X-Darkroom, no HEAD
     app.router.add_static("/static/", STATIC)
     app.on_cleanup.append(_on_cleanup)
     return app
 
 
-async def start(preset_dir, port=DEFAULT_PORT, engine=None, warm_up=True, library_dir=None, data_dir=None):
+async def start(preset_dir, port=DEFAULT_PORT, engine=None, warm_up=True, library_dir=None, data_dir=None,
+                detect=None):
     """Start serving on 127.0.0.1:port (0 = any free port). Returns (runner, actual_port)."""
-    app = make_app(preset_dir, engine, library_dir, data_dir)
+    app = make_app(preset_dir, engine, library_dir, data_dir, detect)
+    warm_capabilities(app[FACADE])        # S2 E22: background, never delays the ready line
     if warm_up:
         await asyncio.get_running_loop().run_in_executor(app[ENGINE].executor, app[ENGINE].warm_up)
     runner = web.AppRunner(app, access_log=None)

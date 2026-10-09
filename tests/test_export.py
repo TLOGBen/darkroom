@@ -184,7 +184,8 @@ class ExportCase(unittest.TestCase):
         make_presets(self.presets)
         self.photos = os.path.join(self.tmp, "photos")
         os.makedirs(self.photos)
-        self.f = build_facade(self.presets, engine=self.eng)
+        # S2 E15: a path-only item reads the photo library, so it gets its own (G7: never the real data_dir)
+        self.f = build_facade(self.presets, engine=self.eng, data_dir=os.path.join(self.tmp, "data"))
 
     def p(self, *names):
         return os.path.join(self.photos, *names)
@@ -201,7 +202,7 @@ class TestRequest(ExportCase):  # X1 / XP2: request-level checks, nothing writte
         before = snapshot(self.photos, self.presets)
         cases = [(([], "jpeg"), "沒有要匯出的照片"),
                  ((None, "jpeg"), "沒有要匯出的照片"),
-                 (([{"path": photo}], "png"), "不支援的匯出格式：png（可用 jpeg、tiff）"),
+                 (([{"path": photo}], "bmp"), "不支援的匯出格式：bmp（可用 jpeg、png、tiff、webp）"),   # XP31
                  (([{"path": photo}], "jpeg", 0), "JPEG 品質要在 1～100 之間：0"),
                  (([{"path": photo}], "jpeg", 101), "JPEG 品質要在 1～100 之間：101"),
                  (([{"path": photo}], "jpeg", True), "JPEG 品質要在 1～100 之間：True"),
@@ -237,7 +238,9 @@ class TestRequest(ExportCase):  # X1 / XP2: request-level checks, nothing writte
         for r, (source, reason) in zip(res, want):
             self.assertEqual(r, {"ok": False, "source": source, "error": f"匯出失敗：{source}：{reason}"})
         self.assertEqual(res[-1], {"ok": True, "source": "good.jpg",
-                                   "output": os.path.join(self.photos, EXPORT_DIR, "good.jpg")})
+                                   "output": os.path.join(self.photos, EXPORT_DIR, "good.jpg"),
+                                   "used": {"params_from": "original", "quality": 92, "width": 30,
+                                            "height": 20}})       # XP30 / S2 D1: + used
         self.assertEqual(sorted(os.listdir(self.p(EXPORT_DIR))), ["good.jpg"])
 
 
@@ -313,7 +316,9 @@ class TestFiles(ExportCase):
         photo = write_jpeg(self.p("same.jpg"), pattern(20, 30))
         before = sha(photo)
         res = self.export([photo], dest_dir=self.photos)
-        self.assertEqual(res, [{"ok": True, "source": "same.jpg", "output": self.p("same (2).jpg")}])
+        self.assertEqual(res, [{"ok": True, "source": "same.jpg", "output": self.p("same (2).jpg"),
+                                "used": {"params_from": "original", "quality": 92, "width": 30,
+                                         "height": 20}}])        # XP30 / S2 D1: + used
         self.assertEqual(sha(photo), before)
 
     def test_export_folder_rules(self):  # X8
@@ -716,7 +721,7 @@ class TestHttpExport(AioHTTPTestCase):  # X1 shape over HTTP, XP5 writes only in
         make_presets(self.presets)
         self.photos = os.path.join(self.tmp, "photos")
         os.makedirs(self.photos)
-        return make_app(self.presets)
+        return make_app(self.presets, data_dir=os.path.join(self.tmp, "data"))   # S2 E15 (G7)
 
     async def test_api_export_shape(self):  # over HTTP only the default folder (XP16)
         photo = write_jpeg(os.path.join(self.photos, "a.jpg"), pattern(20, 30))
@@ -728,7 +733,9 @@ class TestHttpExport(AioHTTPTestCase):  # X1 shape over HTTP, XP5 writes only in
                                                          "format": "jpeg"})
         self.assertEqual(r.status, 200)
         body = await r.json()
-        self.assertEqual(body, {"results": [{"ok": True, "source": "a.jpg", "output": os.path.join(dest, "a.jpg")},
+        used = {"params_from": "request", "quality": 92, "width": 30, "height": 20}       # XP30 / S2 D1
+        self.assertEqual(body, {"results": [{"ok": True, "source": "a.jpg", "output": os.path.join(dest, "a.jpg"),
+                                             "used": used},
                                             {"ok": False, "source": "a.jpg",
                                              "error": "匯出失敗：a.jpg：unknown or unsupported preset nope"}]})
         after = snapshot(self.photos, self.presets)

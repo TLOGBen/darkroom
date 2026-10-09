@@ -23,7 +23,11 @@ ROUTES = [("GET", "/"), ("GET", "/api/health"), ("GET", "/api/presets"), ("GET",
           # CONTRACT-photo-library PLP2: the seven photo library routes, PUT and DELETE included
           ("GET", "/api/edit?path=a.jpg"), ("PUT", "/api/edit"), ("DELETE", "/api/edit?path=a.jpg"),
           ("POST", "/api/edit/paste"), ("POST", "/api/edit/save-preset"),
-          ("GET", "/api/folder/thumbnails?folder=f"), ("GET", "/api/thumbnail?path=a.jpg")]
+          ("GET", "/api/folder/thumbnails?folder=f"), ("GET", "/api/thumbnail?path=a.jpg"),
+          # CONTRACT-s2-export-detect E28: the six new routes pass the same checks
+          ("GET", "/api/export-presets"), ("PUT", "/api/export-presets"), ("DELETE", "/api/export-presets?name=x"),
+          ("POST", "/api/preset-library/files"), ("POST", "/api/preset-library/export"),
+          ("GET", "/api/capabilities")]
 DATA_DIR_REFUSED = "data_dir is not accepted over HTTP (it is configured)"            # verbatim (PLP2)
 FETCH_SITE_REFUSED = "request refused: cross-site request (Sec-Fetch-Site {value})"   # verbatim (PLP11)
 DARKROOM_HEADER_REFUSED = "request refused: X-Darkroom header required"              # verbatim (PLP11)
@@ -176,6 +180,42 @@ class TestRefused(SecurityCase):
         status, _ = await self.send("POST", "/api/export", {"Origin": "http://evil.example",
                                                             "Content-Type": "text/plain"})
         self.assertEqual(status, 403)
+
+
+class TestS2Routes(SecurityCase):  # CONTRACT-s2-export-detect E28 / R12
+    async def test_capabilities_needs_the_darkroom_header(self):  # R12: it answers with local paths
+        for path in ("/api/capabilities", "/api/capabilities?refresh=1"):
+            status, text = await self.send("GET", path)
+            self.assertEqual((status, json.loads(text)), (403, {"error": DARKROOM_HEADER_REFUSED}), path)
+            status, _ = await self.send("GET", path, {"X-Darkroom": "0"})
+            self.assertEqual(status, 403, path)
+            r = await self.client.request("HEAD", path)
+            self.assertEqual(r.status, 403, path)                               # HEAD checked too (PLP12)
+            r = await self.client.request("HEAD", path, headers={"X-Darkroom": "1"})
+            self.assertEqual(r.status, 405, path)                               # allow_head=False
+        for path in ("/API/capabilities", "/api/capabilities/", "/api//capabilities"):
+            r = await self.client.get(path)
+            self.assertIn(r.status, (403, 404), path)
+        self.assertEqual(self.fake.calls, [])
+        status, _ = await self.send("GET", "/api/capabilities", {"X-Darkroom": "1"})
+        self.assertEqual(status, 200)
+        self.assertEqual(self.fake.calls, [("capabilities", (False,))])
+
+    async def test_s2_bodies_need_json_content_type(self):
+        for ctype in ("text/plain", "text/plain;charset=UTF-8", "application/x-www-form-urlencoded", None):
+            for method, path in (("PUT", "/api/export-presets"), ("POST", "/api/preset-library/files"),
+                                 ("POST", "/api/preset-library/export")):
+                h = {"Content-Type": ctype} if ctype else {}
+                r = await self.client.request(method, path, data=b'{"name": "n", "settings": {}, "preset_ids": ["p"]}',
+                                              headers=h, skip_auto_headers=["Content-Type"])
+                self.assertEqual((r.status, await r.json()), (415, {"error": CONTENT_TYPE_REFUSED}), (ctype, path))
+        self.assertEqual(self.fake.calls, [])
+
+    async def test_other_s2_routes_need_no_header(self):  # only the capabilities GET reads local paths
+        for method, path in (("GET", "/api/export-presets"), ("DELETE", "/api/export-presets?name=x")):
+            status, _ = await self.send(method, path)
+            self.assertEqual(status, 200, path)
+        self.assertEqual([c[0] for c in self.fake.calls], ["list_export_presets", "delete_export_preset"])
 
 
 class TestAllowed(SecurityCase):

@@ -22,7 +22,8 @@ class Facade(Protocol):
 
     def preview(self, image_id, preset_id=None, strength=100, overrides=None, max_pixels=None): ...
 
-    def export(self, items, format, quality=None, dest_dir=None): ...
+    def export(self, items, format=None, quality=None, dest_dir=None, *, bit_depth=None, max_kb=None, resize=None,
+               metadata=None, remove_gps=None, sharpen=None, export_preset=None): ...
 
     def preset_groups(self): ...
 
@@ -62,9 +63,22 @@ class Facade(Protocol):
 
     def semantic_status(self): ...
 
+    def list_export_presets(self): ...
+
+    def save_export_preset(self, name, settings): ...
+
+    def delete_export_preset(self, name): ...
+
+    def preset_files(self, preset_ids): ...
+
+    def export_preset_files(self, preset_ids, dest_dir): ...
+
+    def capabilities(self, refresh=False): ...
+
 
 class DarkroomFacade:
-    def __init__(self, presets, photos, previews, exports, library, photo_library, semantic):
+    def __init__(self, presets, photos, previews, exports, library, photo_library, semantic, export_presets,
+                 capabilities):
         self._presets = presets
         self._photos = photos
         self._previews = previews
@@ -72,6 +86,8 @@ class DarkroomFacade:
         self._library = library
         self._photo_library = photo_library
         self._semantic = semantic
+        self._export_presets = export_presets
+        self._capabilities = capabilities
 
     def list_presets(self, query=None, offset=0, limit=None, favorites=False):
         return self._presets.list_presets(query, offset, limit, favorites)
@@ -94,8 +110,11 @@ class DarkroomFacade:
     def preview(self, image_id, preset_id=None, strength=100, overrides=None, max_pixels=None):
         return self._previews.preview(image_id, preset_id, strength, overrides, max_pixels)
 
-    def export(self, items, format, quality=None, dest_dir=None):
-        return self._exports.export(items, format, quality, dest_dir)
+    def export(self, items, format=None, quality=None, dest_dir=None, *, bit_depth=None, max_kb=None, resize=None,
+               metadata=None, remove_gps=None, sharpen=None, export_preset=None):
+        return self._exports.export(items, format, quality, dest_dir, bit_depth=bit_depth, max_kb=max_kb,
+                                    resize=resize, metadata=metadata, remove_gps=remove_gps, sharpen=sharpen,
+                                    export_preset=export_preset)
 
     def preset_groups(self):
         return self._library.preset_groups()
@@ -156,3 +175,22 @@ class DarkroomFacade:
 
     def semantic_status(self):
         return self._semantic.semantic_status()
+
+    # CONTRACT-s2-export-detect E25: operations 28..33
+    def list_export_presets(self):
+        return self._export_presets.list_export_presets()
+
+    def save_export_preset(self, name, settings):
+        return self._export_presets.save_export_preset(name, settings)
+
+    def delete_export_preset(self, name):
+        return self._export_presets.delete_export_preset(name)
+
+    def preset_files(self, preset_ids):
+        return self._library.preset_files(preset_ids)
+
+    def export_preset_files(self, preset_ids, dest_dir):
+        return self._library.export_preset_files(preset_ids, dest_dir)
+
+    def capabilities(self, refresh=False):
+        return self._capabilities.capabilities(refresh)

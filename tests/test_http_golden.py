@@ -232,7 +232,7 @@ class TestGoldenCrossSite(GoldenCase):  # CONTRACT-export XP16 / app shell R10: 
 
 
 class TestGoldenRoutes(GoldenCase):
-    async def test_exactly_twenty_nine_routes(self):  # nine of L8 + export (XP1) + nine library (K16) + seven photo library (PL6, PLP2) + restore (S1 S4) + two semantic (SI11)
+    async def test_exactly_thirty_five_routes(self):  # nine of L8 + export (XP1) + nine library (K16) + seven photo library (PL6, PLP2) + restore (S1 S4) + two semantic (SI11) + six S2 (E28)
         routes = sorted((r.method, r.resource.canonical) for r in self.app.router.routes()
                         if r.method != "HEAD" and not r.resource.canonical.startswith("/static"))
         self.assertEqual(routes, sorted([
@@ -247,7 +247,10 @@ class TestGoldenRoutes(GoldenCase):
             ("GET", "/api/edit"), ("PUT", "/api/edit"), ("DELETE", "/api/edit"), ("POST", "/api/edit/paste"),
             ("POST", "/api/edit/save-preset"), ("GET", "/api/folder/thumbnails"), ("GET", "/api/thumbnail"),
             ("POST", "/api/edit/restore"),   # CONTRACT-s1-experience S4
-            ("POST", "/api/preset-library/semantic/build"), ("GET", "/api/preset-library/semantic")]))
+            ("POST", "/api/preset-library/semantic/build"), ("GET", "/api/preset-library/semantic"),
+            ("GET", "/api/export-presets"), ("PUT", "/api/export-presets"), ("DELETE", "/api/export-presets"),
+            ("POST", "/api/preset-library/files"), ("POST", "/api/preset-library/export"),
+            ("GET", "/api/capabilities")]))                                  # CONTRACT-s2-export-detect E25 / E28
 
     async def test_semantic_build_refused_over_http(self):  # CONTRACT-semantic-index SI11: the page never spends money
         from darkroom_app.server import FACADE
@@ -261,6 +264,109 @@ class TestGoldenRoutes(GoldenCase):
         self.assertEqual(r.status, 200)
         self.assertEqual(list(await r.json()), ["available", "reason", "model", "index_state", "indexed", "total",
                                                 "pending", "in_flight", "budget_usd", "last_usage"])
+
+
+class TestGoldenS2(GoldenCase):  # CONTRACT-s2-export-detect E28: the new routes, every kind, status and sentence verbatim
+    async def get_application(self):
+        import _util
+        from darkroom_app.server import make_app
+        from test_app_server import make_presets
+        self.tmp = _util.tmpdir(self)
+        os.makedirs(os.path.join(self.tmp, "presets"))
+        self.presets = make_presets(os.path.join(self.tmp, "presets"))
+        self.photos = os.path.join(self.tmp, "photos")
+        os.makedirs(self.photos)
+        self.data = os.path.join(self.tmp, "data")
+        detect = {n: (lambda: (True, None)) for n in ("gpu", "heic", "webp", "photo_library", "preset_library_writes")}
+        detect.update({"semantic_index": lambda: (False, "假的語意索引"), "onepassword": lambda: (False, "假的 1Password")})
+        return make_app(self.presets, data_dir=self.data, detect=detect)
+
+    async def test_export_presets_routes(self):
+        r = await self.client.get("/api/export-presets")
+        self.assertEqual((r.status, await r.json()), (200, {"presets": []}))
+        await self.err("PUT", "/api/export-presets", 400, "匯出預設名稱要 1～60 個字", json={"name": " ", "settings": {}})
+        await self.err("PUT", "/api/export-presets", 400, "匯出預設名稱要 1～60 個字", json={"settings": {}})
+        await self.err("PUT", "/api/export-presets", 400, "不支援的匯出格式：bmp（可用 jpeg、png、tiff、webp）",
+                       json={"name": "a", "settings": {"format": "bmp"}})
+        await self.err("PUT", "/api/export-presets", 400, "匯出預設不包含匯出資料夾（dest_dir）",
+                       json={"name": "a", "settings": {"dest_dir": self.tmp}})
+        await self.err("PUT", "/api/export-presets", 400, "檔案大小上限只適用於 JPEG",
+                       json={"name": "a", "settings": {"format": "png", "max_kb": 100}})
+        r = await self.client.put("/api/export-presets", json={"name": "網頁", "settings": {"max_kb": 800}})
+        self.assertEqual(r.status, 200)
+        body = await r.json()
+        self.assertEqual(list(body), ["name", "settings", "previous"])
+        self.assertEqual((body["name"], body["previous"]), ("網頁", None))
+        self.assertEqual(list(body["settings"]), ["format", "bit_depth", "quality", "max_kb", "resize", "metadata",
+                                                  "remove_gps", "sharpen"])
+        r = await self.client.put("/api/export-presets", json={"name": "網頁", "settings": {}})
+        self.assertEqual((await r.json())["previous"], body["settings"])
+        await self.err("DELETE", "/api/export-presets?name=nope", 404, "找不到匯出預設：nope")
+        await self.err("DELETE", "/api/export-presets", 404, "找不到匯出預設：None")
+        r = await self.client.delete("/api/export-presets", params={"name": "網頁"})
+        self.assertEqual((r.status, list(await r.json())), (200, ["name", "settings"]))
+        # conflict: another program holds the lock
+        import msvcrt
+        from unittest import mock
+        from darkroom_app.services import export_presets
+        fd = os.open(os.path.join(self.data, "export-presets.json.lock"), os.O_RDWR | os.O_BINARY)
+        try:
+            msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+            with mock.patch.object(export_presets, "LOCK_WAIT_S", 0.2):
+                await self.err("PUT", "/api/export-presets", 409, "匯出預設正被其他程式修改，請稍後再試",
+                               json={"name": "x", "settings": {}})
+            os.lseek(fd, 0, os.SEEK_SET)
+            msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+        finally:
+            os.close(fd)
+
+    async def test_export_presets_unavailable(self):  # the data folder lies inside the preset folder (PLP1 sentence)
+        from darkroom_app.composition import build_facade
+        from darkroom_app.server import FACADE
+        inside = os.path.join(self.presets, "data")
+        facade = self.app[FACADE]
+        facade._export_presets._data_dir_of = build_facade(self.presets, data_dir=inside)._photo_library.usable_data_dir
+        await self.err("PUT", "/api/export-presets", 503, f"照片庫資料區不能在照片或 preset 資料夾底下：{inside}",
+                       json={"name": "x", "settings": {}})
+        await self.err("GET", "/api/export-presets", 503, f"照片庫資料區不能在照片或 preset 資料夾底下：{inside}")
+        self.assertFalse(os.path.exists(inside))
+
+    async def test_preset_files_routes(self):
+        for body in ({}, {"preset_ids": []}, {"preset_ids": "p-expo"}, {"preset_ids": [1]},
+                     {"preset_ids": ["p-expo"] * 501}):
+            await self.err("POST", "/api/preset-library/files", 400, "preset_ids 要是 1～500 個 preset id", json=body)
+        r = await self.client.post("/api/preset-library/files", json={"preset_ids": ["p-expo", "nope"]})
+        self.assertEqual(r.status, 200)
+        files = (await r.json())["files"]
+        self.assertEqual(list(files[0]), ["ok", "preset_id", "file_name", "data_base64"])
+        self.assertEqual(files[1], {"ok": False, "preset_id": "nope", "error": "unknown preset nope"})
+        await self.err("POST", "/api/preset-library/export", 400,
+                       "preset export to a folder is not accepted over HTTP (use the CLI or MCP; the page downloads the "
+                       "files)", json={"preset_ids": ["p-expo"], "dest_dir": self.tmp})
+
+    async def test_capabilities_route(self):
+        r = await self.client.get("/api/capabilities")
+        self.assertEqual(r.status, 200)
+        body = await r.json()
+        self.assertEqual(list(body), ["features"])
+        self.assertEqual(list(body["features"]), ["gpu", "heic", "webp", "photo_library", "preset_library_writes",
+                                                  "semantic_index", "onepassword"])
+        self.assertEqual(body["features"]["onepassword"], {"available": False, "reason": "假的 1Password"})
+        r = await self.client.get("/api/capabilities?refresh=1")
+        self.assertEqual((r.status, await r.json()), (200, body))
+
+    async def test_s2_export_errors(self):  # E2 over HTTP: 400 with the service's sentence; E14 not_found
+        photo = write_photo(os.path.join(self.photos, "a.jpg"), 32, 24)
+        item = [{"path": photo}]
+        for extra, sentence in (({"format": "jpeg", "bit_depth": 16}, "JPEG 只能輸出 8-bit：16"),
+                                ({"format": "webp", "quality": 0}, "WebP 品質要在 1～100 之間：0"),
+                                ({"resize": {"mode": "percent", "value": 150}},
+                                 "percent 的值要是大於 0、不超過 100 的數（不會放大）：150"),
+                                ({"metadata": "some"}, "不支援的中繼資料選項：some（可用 all、copyright、none）"),
+                                ({"remove_gps": 1}, "remove_gps 必須是 true 或 false")):
+            await self.err("POST", "/api/export", 400, sentence, json={"items": item, **extra})
+        await self.err("POST", "/api/export", 404, "找不到匯出預設：nope", json={"items": item, "export_preset": "nope"})
+        self.assertEqual(os.listdir(self.photos), ["a.jpg"])
 
 
 if __name__ == "__main__":

@@ -9,7 +9,7 @@ description: 安裝、第一次設定、改設定與疑難排解 darkroom（本�
 
 - 使用者要在這台電腦第一次裝 darkroom。
 - 要改設定：preset 資料夾、`preset_library_dir`、`data_dir`、換 Python 環境。
-- darkroom 起不來、CLI 回設定錯誤、HEIC 讀不了、GPU 用不到。
+- darkroom 起不來、CLI 回設定錯誤、HEIC 讀不了、GPU 用不到、App 裡有按鈕變灰（功能被偵測關掉）。
 - 要把 darkroom 註冊成 MCP server。
 
 ## 步驟的唯一來源
@@ -22,7 +22,7 @@ description: 安裝、第一次設定、改設定與疑難排解 darkroom（本�
 2. 要下載 PyTorch CUDA 版（約 2～3 GB），可以嗎？
 3. 要不要註冊 MCP（讓代理之後能直接操作 darkroom）？
 4. 要不要跑完整測試（幾分鐘）？
-5. 想不想另外指定 `data_dir`（照片庫的編輯與縮圖快取；預設 `%LOCALAPPDATA%\darkroom`）？
+5. 想不想另外指定 `data_dir`（照片庫的編輯、縮圖快取與匯出預設；預設 Windows `%LOCALAPPDATA%\darkroom`、macOS `~/Library/Application Support/darkroom`、Linux `$XDG_DATA_HOME/darkroom` 或 `~/.local/share/darkroom`）？
 
 使用者用 README 的「貼給你的 Agent」那段話來找你時，這五個問題他大多已經回答了一部分；沒回答的再問。
 
@@ -40,10 +40,12 @@ description: 安裝、第一次設定、改設定與疑難排解 darkroom（本�
 |---|---|---|
 | `preset_dir` | 買來的 `.xmp` 所在資料夾（只讀） | 無；一般使用者必填 |
 | `preset_library_dir` | 索引 `library.json`、`import/`、`user/` 放哪 | `preset_dir` 的上一層 |
-| `data_dir` | 照片庫：`edits/`、`thumbs/`、`index/` | `%LOCALAPPDATA%\darkroom` |
+| `data_dir` | 照片庫：`edits/`、`thumbs/`、`index/`、`export-presets.json` | Windows `%LOCALAPPDATA%\darkroom`；macOS `~/Library/Application Support/darkroom`；其他 `$XDG_DATA_HOME/darkroom`（要是絕對路徑），否則 `~/.local/share/darkroom` |
 | `localllms_root` | 作者自己的環境根目錄 | 一般使用者不用 |
 
 單次覆蓋：啟動 App、CLI、MCP server 都吃 `--preset-dir DIR`、`--data-dir DIR`；給了 `--preset-dir` 時庫根目錄就是它的上一層（不會用設定檔的 `preset_library_dir`）。
+
+相對路徑：設定檔裡的 `preset_dir`／`preset_library_dir`／`data_dir` 以設定檔所在資料夾為基準；`--preset-dir`／`--data-dir` 以目前工作目錄為基準。設定檔不是正確的 JSON 時會一行說哪一行哪一欄錯（`darkroom：config.local.json 不是正確的 JSON（第 N 行第 M 欄）：…`，結束碼 2），照著修。
 
 ## 裝好的驗證（讀取類，不寫檔）
 
@@ -61,6 +63,7 @@ description: 安裝、第一次設定、改設定與疑難排解 darkroom（本�
 
 - `torch.cuda.is_available()` 是 `False`：裝到 CPU 版 torch，或驅動太舊；照安裝文件第 3 步重裝 CUDA 版。
 - HEIC 被拒：`pillow-heif` 沒裝（選用，`pip install pillow-heif==1.8.0`）。
+- 有功能被關掉、按鈕變灰：`.\.venv\Scripts\python.exe -s -m darkroom_app.cli capabilities` 逐項列出 `gpu`、`heic`、`webp`、`photo_library`、`preset_library_writes`、`semantic_index`、`onepassword` 可不可用與原因（`--json` 是結構化結果、`--refresh` 重測）。照原因處理，例如 preset 庫在照片資料夾裡 → 把 `preset_library_dir` 設到別處；照片庫資料區找不到 → 設 `data_dir`。設定了 `anthropic_api_key_ref` 時它會跑一次 `op whoami`（只查登入，不讀秘密）；沒用 1Password 時 `onepassword` 顯示關閉是正常的。
 - 瀏覽器打開全是 421／403：用了 `localhost` 以外的主機名或 80 埠；一律 `http://127.0.0.1:<埠>/`。
 - preset 顯示「有設定無法套用」：預期行為（相機描述檔、Adobe Look、絕對白平衡），其餘仍會套；`presets show <id>` 的 `note` 有中文說明。
 

@@ -205,6 +205,18 @@ class TestWriteGuardProbes(unittest.TestCase):  # G2, G3, G11
             self.assertFalse(allowed(None, bad, sem), bad)
         self.assertFalse(allowed(None, ["op", "read", "op://v/i/f"], gpu))
         self.assertFalse(allowed(None, ["op", "read", "op://v/i/f"], ("test", "tests/test_x.py")))
+        # patch WG16: exactly `op whoami` too (2 arguments), from the same module only
+        self.assertTrue(allowed(None, ["op", "whoami"], sem))
+        self.assertTrue(allowed(None, ["op.exe", "whoami"], sem))
+        self.assertTrue(allowed(None, ["OP.EXE", "whoami"], sem))            # the executable name ignores case
+        for bad in (["op", "whoami", "--format", "json"], ["op", "whoami", "--format=json"], ["op", "WHOAMI"],
+                    ["op", "Whoami"], ["op", "signin"], ["op", "account", "list"], ["op"], ["op", "whoami "],
+                    ["op", "whoami&echo"], ["op", "user", "get", "--me"]):
+            self.assertFalse(allowed(None, bad, sem), bad)
+        self.assertFalse(allowed(None, ["op", "whoami"], gpu))
+        self.assertFalse(allowed(None, ["op", "whoami"], ("test", "tests/test_x.py")))
+        self.assertFalse(allowed(None, ["op", "whoami"], ("product", "darkroom_app/services/capabilities.py")))
+        self.assertFalse(allowed(None, "op whoami --format json", sem))
         self.assertFalse(allowed(None, ["nvidia-smi", "-L"], sem))
         self.assertEqual(_writeguard.judge("ctypes.dlopen", ("kernel32",)) is not None, True)   # test frame
         for ev in ("os.system", "os.startfile", "os.exec", "os.spawn", "os.posix_spawn"):

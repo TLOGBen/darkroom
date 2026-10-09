@@ -174,12 +174,15 @@ class TestCliExitCodes(CliCase):
         self.assertEqual(sorted(res), ["edited", "fingerprint", "height", "jpeg_base64", "width"])
         self.assertEqual((res["edited"], res["width"], res["height"]), (False, 256, 160))
 
-    def test_cli_data_dir_config_error_is_exit_2(self):  # PLP8: data_dir resolved on first use (seal F5)
+    def test_cli_data_dir_config_error_is_unavailable(self):  # PLP8 (seal F5), revised by S2 E23 / PLP19
         from darkroom_app import config
         with mock.patch.object(config, "data_dir", side_effect=config.ConfigError(config.DATA_DIR_ERROR)):
-            for extra in ([], ["--json"]):
-                rc, out, err = call(["--preset-dir", self.presets, "edit", "get", self.photo, *extra])
-                self.assertEqual((rc, out, err), (2, "", CONFIG_ERROR.format(e=config.DATA_DIR_ERROR) + "\n"), extra)
+            rc, out, err = call(["--preset-dir", self.presets, "edit", "get", self.photo])
+            self.assertEqual((rc, out, err), (5, "", config.DATA_DIR_ERROR + "\n"))
+            rc, out, err = call(["--preset-dir", self.presets, "edit", "get", self.photo, "--json"])
+            self.assertEqual((rc, err), (5, ""))
+            self.assertEqual(json.loads(out), {"ok": False, "error": {"kind": "unavailable",
+                                                                      "message": config.DATA_DIR_ERROR}})
             rc, out, err = call(["--preset-dir", self.presets, "presets", "flags", "--json"])   # not needed: fine
             self.assertEqual((rc, err), (0, ""))
 

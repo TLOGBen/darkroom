@@ -50,6 +50,9 @@ def main(argv=None):
     ap.add_argument("--data-dir", default=None, help="photo library folder (default: config data_dir or "
                                                      "%%LOCALAPPDATA%%/darkroom)")
     a = ap.parse_args(argv)
+    # S2 E19: relative folders are made absolute against the working directory before anything uses them
+    preset_dir = os.path.abspath(a.preset_dir) if a.preset_dir else a.preset_dir
+    data_dir = os.path.abspath(a.data_dir) if a.data_dir else a.data_dir
     protocol_fd = os.dup(1)
     os.dup2(2, 1)
     sys.stdout = sys.stderr
@@ -60,7 +63,7 @@ def main(argv=None):
     out = os.fdopen(protocol_fd, "wb")
     _log("ready (stdio)")
     try:
-        return serve(sys.stdin.buffer, out, preset_dir=a.preset_dir, data_dir=a.data_dir)
+        return serve(sys.stdin.buffer, out, preset_dir=preset_dir, data_dir=data_dir)
     finally:
         _log("stdin closed, exiting")
         out.flush()

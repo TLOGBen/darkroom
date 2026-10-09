@@ -24,9 +24,21 @@ TOOLS = ["darkroom_presets_list", "darkroom_preset_show", "darkroom_preset_flags
          "darkroom_edit_get", "darkroom_edit_set", "darkroom_edit_clear", "darkroom_edit_paste",
          "darkroom_folder_thumbnails", "darkroom_thumbnail", "darkroom_edit_save_preset",   # PL6 / PLP6: 18..24
          "darkroom_edit_restore",                                                           # S4: 25
-         "darkroom_semantic_build", "darkroom_semantic_status"]   # CONTRACT-semantic-index SI1 / SI11: 26, 27 (merge patch)
+         "darkroom_semantic_build", "darkroom_semantic_status",   # CONTRACT-semantic-index SI1 / SI11: 26, 27 (merge patch)
+         "darkroom_export_presets_list", "darkroom_export_preset_save", "darkroom_export_preset_delete",
+         "darkroom_preset_files", "darkroom_presets_export", "darkroom_capabilities"]   # S2 E25: 28..33
 SEMANTIC_BUILD_ANNOTATIONS = {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False,
                               "openWorldHint": True}   # verbatim (SI11)
+S2_ANNOTATIONS = {   # verbatim (CONTRACT-s2-export-detect 操作表)
+    "darkroom_export_presets_list": {"readOnlyHint": True, "openWorldHint": False},
+    "darkroom_export_preset_save": {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": True,
+                                    "openWorldHint": False},
+    "darkroom_export_preset_delete": {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": False,
+                                      "openWorldHint": False},
+    "darkroom_preset_files": {"readOnlyHint": True, "openWorldHint": False},
+    "darkroom_presets_export": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False,
+                                "openWorldHint": False},
+    "darkroom_capabilities": {"readOnlyHint": True, "openWorldHint": False}}
 LIBRARY_IDEMPOTENT = {"darkroom_preset_rename": True, "darkroom_preset_move": True, "darkroom_preset_favorite": True,
                       "darkroom_presets_rebuild": True, "darkroom_group_create": False, "darkroom_group_rename": False,
                       "darkroom_presets_import": False, "darkroom_preset_save": False,
@@ -97,6 +109,8 @@ class TestMcpProtocol(McpCase):
                 want = EDIT_ANNOTATIONS
             elif t["name"] == "darkroom_semantic_build":
                 want = SEMANTIC_BUILD_ANNOTATIONS
+            elif t["name"] in S2_ANNOTATIONS:                    # CONTRACT-s2-export-detect E27 constants
+                want = S2_ANNOTATIONS[t["name"]]
             else:
                 want = EXPORT_ANNOTATIONS if t["name"] == "darkroom_export" else {"readOnlyHint": True,
                                                                                   "openWorldHint": False}

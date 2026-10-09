@@ -56,7 +56,7 @@ class Tools:
                                  "data": base64.b64encode(result.jpeg).decode("ascii")}],
                     "structuredContent": {"fingerprint": result.fingerprint, "edited": result.edited,
                                           "width": result.width, "height": result.height}}
-        if op in ("export", "import_presets", "paste_edit"):   # XP11 / KP5 / PLP4: partial failure is counted
+        if op in ("export", "import_presets", "paste_edit", "export_preset_files"):   # XP11 / KP5 / PLP4 / S2 E27
             result = {**result, "failed": sum(1 for r in result["results"] if not r["ok"])}
         return {"content": [{"type": "text", "text": json.dumps(result, ensure_ascii=False)}],
                 "structuredContent": result}

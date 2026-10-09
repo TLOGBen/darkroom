@@ -12,17 +12,17 @@
 |---|---|---|
 | Web App | 使用者 | `python -s -m darkroom_app`，瀏覽器開 `http://127.0.0.1:8765/` |
 | CLI | 你（代理） | `python -s -m darkroom_app.cli <指令> --json` |
-| MCP | 你（代理，已註冊時） | stdio server `python -s -m darkroom_app.mcp_server`，27 個 `darkroom_*` 工具 |
+| MCP | 你（代理，已註冊時） | stdio server `python -s -m darkroom_app.mcp_server`，33 個 `darkroom_*` 工具 |
 
 本文裡的 `python` 一律指 **這個 repo 用的 Python**：一般使用者是 `.\.venv\Scripts\python.exe`（見 `docs/agent-install.md`）；作者環境是 `config.local.json` 的 `localllms_root` 底下的專用 Python。一律加 `-s`，在 repo 根目錄執行。用詞定義見 `CONTEXT.md`。
 
 ## 安全規則（違反＝做錯，沒有例外）
 
 1. **照片原檔只讀。** darkroom 永遠不改寫、不覆蓋、不刪除照片；你也不准用其他方式（複製、搬移、改名、「整理」資料夾）動使用者的照片。匯出只產生新檔，同名自動加序號。
-2. **買來的 preset 原檔只讀。** 改名、搬群組、最愛都只寫 preset 庫的索引 `library.json`；匯入是複製一份進 `import/`，自存 preset 寫進 `user/`。不要自己動 `preset_dir` 裡任何檔案。
+2. **買來的 preset 原檔只讀。** 改名、搬群組、最愛都只寫 preset 庫的索引 `library.json`；匯入是複製一份進 `import/`，自存 preset 寫進 `user/`。不要自己動 `preset_dir` 裡任何檔案。把 preset 匯出成 .xmp（`presets export`）只寫到使用者指定、preset 資料夾與 preset 庫以外的資料夾，永不覆蓋。
 3. **只綁 `127.0.0.1`。** 不要改成 `0.0.0.0`、不要加反向代理、不要開防火牆、不要用 80 埠。
 4. **不替使用者搬動或整理照片。** 使用者說「幫我整理照片」，你能做的只有：用 darkroom 的照片庫（編輯、最愛、群組）與匯出到他指定的資料夾；檔案層級的搬動要他自己來。
-5. **先問再做**：第一次設定時的 preset 資料夾位置；下載大型套件（PyTorch 約 2～3 GB）；匯出目的地（沒說就用預設的 `<照片資料夾>/darkroom 匯出`）；會覆蓋既有編輯的操作（`edit set`／`edit paste`／`edit clear`）影響到不只一張時；任何會重命名／搬移群組、影響很多 preset 的整理。
+5. **先問再做**：第一次設定時的 preset 資料夾位置；下載大型套件（PyTorch 約 2～3 GB）；匯出目的地（沒說就用預設的 `<照片資料夾>/darkroom 匯出`；`presets export` 沒有預設，一定要問）；刪除或同名取代匯出預設之前；會覆蓋既有編輯的操作（`edit set`／`edit paste`／`edit clear`）影響到不只一張時；任何會重命名／搬移群組、影響很多 preset 的整理。
 6. **誠實回報。** 指令失敗就把那一行原樣給使用者看，不要猜原因；批次有部分失敗（結束碼 6）要逐筆列出哪些失敗、為什麼。
 
 ## 第一次設定
@@ -85,7 +85,13 @@ pwsh -File tools/start.ps1 -Port 8765 -NoBrowser
 | `open <photo>` | 開照片（JPEG／PNG／TIFF／HEIC），回 `image_id`、尺寸、預覽尺寸 | 否 |
 | `folder <photo>` | 同資料夾裡支援的照片（依檔名排序）與這張的位置 | 否 |
 | `preview <photo> [--preset ID] [--strength S] [--override K=V]... [--max-pixels N]` | 渲染縮小的 JPEG 預覽。**不加 `--json` 時 stdout 是 JPEG 位元組**（要 `> out.jpg`）；加 `--json` 回 `jpeg_base64` | 否（導向檔案時是你在寫） |
-| `export <photo>... [--preset ID] [--strength S] [--override K=V]... [--format jpeg|tiff] [--quality N] [--dest-dir D]` | 全解析度匯出成**新檔**（JPEG 品質預設 92；TIFF 16-bit），嵌 sRGB、保留 EXIF；預設寫到 `<照片資料夾>/darkroom 匯出`，同名加序號；每張同一組參數 | 新檔 |
+| `export <photo>... [--preset ID] [--strength S] [--override K=V]... \| --no-edit] [--format jpeg\|png\|tiff\|webp] [--bit-depth 8\|16] [--quality N] [--max-kb N] [--resize MODE=VALUE] [--metadata all\|copyright\|none] [--remove-gps] [--sharpen TARGET=AMOUNT] [--export-preset NAME] [--dest-dir D]` | 全解析度匯出成**新檔**，嵌 sRGB、轉正；預設寫到 `<照片資料夾>/darkroom 匯出`，同名加序號。**沒給 `--preset`／`--strength`／`--override`／`--no-edit` 時，每張用照片庫裡存好的編輯，沒有編輯就輸出原圖**；給了就每張同一組參數；`--no-edit`＝原圖（不用存好的編輯）。格式：JPEG（8-bit，品質預設 92）、PNG（8／16-bit，預設 8）、TIFF（8／16-bit，預設 16）、WebP（8-bit，品質預設 92）。`--max-kb` 只對 JPEG（整個檔 ≤ N KB，1 KB＝1024 位元組，自動找最高能塞進去的品質）。`--resize` 只縮不放：`long_edge`／`short_edge`／`width`／`height`＝像素（1～65535）、`megapixels`（≤ 1000）、`percent`（≤ 100）。`--metadata`：`all`（預設，原照片 EXIF）、`copyright`（只留版權）、`none`；`--remove-gps` 配 `all` 拿掉位置。`--sharpen`：`screen`／`matte`／`glossy`＝`low`／`standard`／`high`。`--export-preset` 用存好的匯出設定，旗標明確給的優先。每筆成功多 `used: {params_from: edit\|original\|request, quality, width, height}` | 新檔 |
+| `export-presets list` | 存好的「匯出預設」（具名的匯出設定，不含資料夾） | 否 |
+| `export-presets save --name N [--format …] [--bit-depth …] [--quality …] [--max-kb …] [--resize …] [--metadata …] [--remove-gps] [--sharpen …]` | 把匯出設定存成匯出預設（名稱 1～60 字）；**同名（不分大小寫）會取代**，回 `previous`（被取代的設定，再存一次就復原） | `data_dir/export-presets.json` |
+| `export-presets delete <name>` | 刪一個匯出預設，回被刪的內容（再 `save` 一次就復原）；沒有 → not_found | `data_dir/export-presets.json` |
+| `presets files <id>...` | 1～500 個 preset 的 `.xmp`（Lightroom 讀得到的版本：買來的與匯入的原檔一個位元組都不改；自存的補上 Lightroom 需要的屬性）；不加 `--json` 每筆一行「檔名<Tab>位元組數」，加 `--json` 回 `data_base64`；有一筆失敗結束碼 6 | 否 |
+| `presets export <id>... --dest-dir D` | 把 preset 的 `.xmp` 寫到 `D`（要先存在、絕對路徑、**不可以在 preset 資料夾或 preset 庫裡**）；**永不覆蓋**，同名加 ` (2)`；成功行「已匯出 preset：…」；部分失敗結束碼 6 | `D` 裡的新檔 |
+| `capabilities [--refresh]` | 這台電腦與設定能做什麼：`gpu`、`heic`、`webp`、`photo_library`、`preset_library_writes`、`semantic_index`、`onepassword`，每項 `{available, reason}`；不加 `--json` 每項一行「項目<Tab>可用」或「項目<Tab>關閉：原因」。結果在程序內快取，`--refresh` 重測。設定了 `anthropic_api_key_ref` 時會跑一次 `op whoami`（只查有沒有登入，不讀秘密） | 否 |
 | `edit get <photo>` | 照片庫裡這張的編輯（以內容指紋對應）：`edit` 為 `null` 或 `{preset(含快照), strength, overrides}`，`preset_status`：`current`／`changed`／`missing`；`previous`：有沒有一份被清掉、可用 `edit restore` 取回的編輯 | 否 |
 | `edit set <photo> [--preset ID] [--strength S] [--override K=V]...` | **取代**這張的編輯（當下把 preset 參數拍快照）；什麼都不給＝移除 | `data_dir/edits/` |
 | `edit clear <photo>` | 移除這張的編輯 | `data_dir/edits/` |
@@ -96,11 +102,11 @@ pwsh -File tools/start.ps1 -Port 8765 -NoBrowser
 | `thumbnail <photo>` | 一張的縮圖（長邊 256）；不加 `--json` 是 JPEG 位元組 | `data_dir/thumbs/` |
 
 「索引」＝ preset 庫根目錄的 `library.json`（根目錄＝`preset_library_dir`，沒設就是 `preset_dir` 的上一層）。所有寫檔都不碰照片原檔、不碰 `preset_dir` 裡的 `.xmp`。
-注意：`export` **不會**自動用照片庫裡保存的編輯；要匯出「已保存的編輯」，先 `edit get` 拿到 preset id／strength／overrides 再明確傳給 `export`（見食譜 3）。
+被偵測關掉的功能（`capabilities` 裡 `available: false`）用的時候會回同一句原因：例如 preset 庫落在照片資料夾裡時，整理 preset／匯入／存成 preset 一律 unavailable（結束碼 5），照原因裡說的把 `preset_library_dir` 設到別處；沒有 CUDA 時預覽與匯出照常但改用 CPU（很慢）。
 
 ## MCP 工具總表
 
-註冊方式見 `docs/agent-install.md` 第 7 步。工具順序、名稱、參數都來自 `darkroom_app/operations.py`（共 27 個）；參數名跟 CLI 對應（`preset_id`、`strength`、`overrides`、`max_pixels`、`dest_dir`…）。回傳 `structuredContent` 是結構化結果，錯誤時 `isError: true` 且文字就是那句錯誤訊息。
+註冊方式見 `docs/agent-install.md` 第 7 步。工具順序、名稱、參數都來自 `darkroom_app/operations.py`（共 33 個）；參數名跟 CLI 對應（`preset_id`、`strength`、`overrides`、`max_pixels`、`dest_dir`…）。回傳 `structuredContent` 是結構化結果，錯誤時 `isError: true` 且文字就是那句錯誤訊息。
 
 | 工具 | 用途 | 寫檔？ |
 |---|---|---|
@@ -111,7 +117,7 @@ pwsh -File tools/start.ps1 -Port 8765 -NoBrowser
 | `darkroom_open_photo` | 開照片（`path`）→ `image_id` | 否 |
 | `darkroom_photo_folder` | 同資料夾的照片（`image_id`） | 否 |
 | `darkroom_preview` | 預覽（`image_id`、`preset_id`、`strength`、`overrides`、`max_pixels` 預設 786432）；**回傳 `image/jpeg` 內容，你可以直接看圖再決定** | 否 |
-| `darkroom_export` | 匯出（`items: [{path 或 image_id, preset_id, strength, overrides}]`、`format`、`quality`、`dest_dir`）；每張可以不同參數；`failed` 是失敗數 | 新檔 |
+| `darkroom_export` | 匯出（`items: [{path 或 image_id, preset_id, strength, overrides}]`、`format`、`quality`、`dest_dir`、`bit_depth`、`max_kb`、`resize: {mode, value}`、`metadata`、`remove_gps`、`sharpen: {target, amount}`、`export_preset`）；只有 `items` 必填；**item 三個參數鍵都沒給＝用存好的編輯（沒有＝原圖）**，`preset_id: null`＝不套 preset；每張可以不同參數；成功筆多 `used: {params_from, quality, width, height}`；`failed` 是失敗數 | 新檔 |
 | `darkroom_preset_groups` | 群組樹 | 否 |
 | `darkroom_preset_rename` | 改顯示名稱（`preset_id`、`name`） | 索引 |
 | `darkroom_preset_move` | 搬群組（`preset_id`、`group`） | 索引 |
@@ -131,14 +137,20 @@ pwsh -File tools/start.ps1 -Port 8765 -NoBrowser
 | `darkroom_edit_restore` | 取回一張最近一次被清掉的編輯（`path`）；`darkroom_edit_get` 的 `previous` 為 true 時才有東西可取回 | `data_dir/edits/` |
 | `darkroom_semantic_build` | 建立語意索引（`limit`、`dry_run`、`wait_seconds` 預設 0＝送出就回）；**會花錢、會連 Anthropic**（`openWorldHint: true`），先確認再呼叫；先用 `dry_run: true` 看預估費用 | `semantic.json` |
 | `darkroom_semantic_status` | 語意索引狀態（能不能建、原因、進度、預算、上次用量） | 否 |
+| `darkroom_export_presets_list` | 存好的匯出預設 `{presets: [{name, settings}]}` | 否 |
+| `darkroom_export_preset_save` | 存匯出預設（`name`、`settings`：8 個匯出設定鍵，不含 `dest_dir`）；同名取代，回 `previous` | `data_dir/export-presets.json` |
+| `darkroom_export_preset_delete` | 刪匯出預設（`name`），回被刪的 `{name, settings}` | `data_dir/export-presets.json` |
+| `darkroom_preset_files` | 1～500 個 preset 的 `.xmp`（`preset_ids`）：`{files: [{ok, preset_id, file_name, data_base64} 或 {ok:false, preset_id, error}]}` | 否 |
+| `darkroom_presets_export` | 把 preset 的 `.xmp` 寫到 `dest_dir`（`preset_ids`、`dest_dir`；在 preset 庫以外、永不覆蓋）；`failed` 是失敗數 | `dest_dir` 裡的新檔 |
+| `darkroom_capabilities` | 能力偵測（`refresh`）：7 項 `{available, reason}` | 否 |
 
-每個工具都帶 MCP annotations：唯讀的 `readOnlyHint: true`；`darkroom_edit_set`／`clear`／`paste`／`restore` 標 `destructiveHint: true`（會取代舊編輯）。傳了 schema 以外的參數會直接被拒（`Unknown argument for …`）。
+每個工具都帶 MCP annotations：唯讀的 `readOnlyHint: true`；`darkroom_edit_set`／`clear`／`paste`／`restore` 標 `destructiveHint: true`（會取代舊編輯），`darkroom_export_preset_save`／`delete` 也是（會取代／刪掉匯出預設）。傳了 schema 以外的參數會直接被拒（`Unknown argument for …`）。
 
 ## 常見任務食譜
 
 每個食譜的指令都實跑過。`<photo>`、`<folder>`、`<dest>` 請換成絕對路徑；`<id>` 換成 preset id。
 
-### 1. 「把這個資料夾的照片都套某個 preset、強度 80%，匯出」
+### 1. 「把這個資料夾的照片匯出」／「都套某個 preset、強度 80%，匯出」
 
 ```powershell
 # a. 找 preset（名稱或群組含關鍵字）
@@ -151,10 +163,12 @@ python -s -m darkroom_app.cli folder <folder>/a.jpg --json
 python -s -m darkroom_app.cli preview <folder>/a.jpg --preset <id> --strength 80 > preview.jpg
 # e. 匯出（目的地要先存在；沒給 --dest-dir 就寫到 <folder>/darkroom 匯出）
 python -s -m darkroom_app.cli export <folder>/a.jpg <folder>/b.jpg <folder>/c.jpg --preset <id> --strength 80 --quality 92 --dest-dir <dest> --json
+# 使用者已經在 App 裡修好了：什麼參數都不給，每張用存好的編輯（沒修過的那張就是原圖）
+python -s -m darkroom_app.cli export <folder>/a.jpg <folder>/b.jpg --dest-dir <dest> --json
 ```
 
-`export` 的結果是 `results` 陣列，每張一筆 `{ok, source, output}` 或 `{ok:false, source, error}`，順序跟你給的一樣。結束碼 6 ＝ 有些成功有些失敗，成功的檔已經寫好；把失敗那幾筆的 `error` 原句告訴使用者。
-要存微調：加 `--override Exposure2012=0.3 --override Contrast2012=10`（鍵名從 `sliders` 查，值是**差值**，加在 preset×強度之後）。要 TIFF：`--format tiff`（`--quality` 只對 JPEG 有效）。
+`export` 的結果是 `results` 陣列，每張一筆 `{ok, source, output, used}` 或 `{ok:false, source, error}`，順序跟你給的一樣；`used.params_from` 告訴你這張用的是存好的編輯（`edit`）、原圖（`original`）還是你給的參數（`request`），`used.quality` 是實際品質。結束碼 6 ＝ 有些成功有些失敗，成功的檔已經寫好；把失敗那幾筆的 `error` 原句告訴使用者。
+要存微調：加 `--override Exposure2012=0.3 --override Contrast2012=10`（鍵名從 `sliders` 查，值是**差值**，加在 preset×強度之後）。要原圖不要存好的編輯：`--no-edit`。要 TIFF：`--format tiff`（16-bit；`--bit-depth 8` 改 8-bit）；要 PNG：`--format png`（8-bit；`--bit-depth 16` 改 16-bit）；要 WebP：`--format webp`。`--quality` 只對 JPEG／WebP 有效。
 
 ### 2. 「找跟『底片』有關的 preset」
 
@@ -178,7 +192,7 @@ python -s -m darkroom_app.cli edit paste --from <photo-a> <photo-b> <photo-c> --
 ```
 
 結束碼 6 ＝ 部分目標失敗（例如檔案不存在），`results` 逐筆列。
-要把已保存的編輯匯出成檔案：從 `edit get` 的 `edit.preset.id`、`edit.strength`、`edit.overrides` 取出來，交給 `export --preset … --strength … --override …`。若 `preset_status` 是 `changed`（preset 檔後來改過）或 `missing`，先告訴使用者：匯出用的是現在的 preset，不是當時的快照。
+要把已保存的編輯匯出成檔案：`export <photo>... --dest-dir <dest> --json`，**不要給 `--preset`／`--strength`／`--override`**，每張就用它自己存好的編輯（用的是存編輯當時的 preset 快照，preset 檔後來改過也一樣）；沒有編輯的那張輸出原圖，`used.params_from` 會是 `original`，回報時要講。照片庫讀不到（資料區有問題、編輯檔壞了）時那一筆失敗、原因原樣給，不會默默改匯出原圖。
 
 ### 4. 「幫這張照片套 preset 並保存」（之後在 App 裡打開會看到）
 
@@ -217,7 +231,29 @@ python -s -m darkroom_app.cli presets rebuild --json                     # 索�
 
 這些只改索引（`library.json`）與庫的 `import/`／`user/`，買來的 `.xmp` 一個位元都不變。一次影響很多 preset 的改名／搬移先列清單給使用者確認。
 
-### 7. 「看一下這張套起來長怎樣」（MCP）
+### 7. 「匯出給網頁用」（長邊 2048、限 800 KB、螢幕銳利化）
+
+```powershell
+python -s -m darkroom_app.cli export <folder>/a.jpg <folder>/b.jpg --resize long_edge=2048 --max-kb 800 --sharpen screen=standard --dest-dir <dest> --json
+# 常用就存成匯出預設，之後一個名字套用（旗標明確給的優先）
+python -s -m darkroom_app.cli export-presets save --name 網頁 --resize long_edge=2048 --max-kb 800 --sharpen screen=standard --json
+python -s -m darkroom_app.cli export <folder>/c.jpg --export-preset 網頁 --dest-dir <dest> --json
+python -s -m darkroom_app.cli export-presets list --json
+python -s -m darkroom_app.cli export-presets delete 網頁 --json      # 回被刪的內容；要復原就用它再 save 一次
+```
+
+只縮不放：照片本來就比 2048 小就維持原尺寸。`used.quality` 是為了塞進 800 KB 實際用的品質；品質 1 都塞不下那一筆會失敗並說最小有多大。分享到網路要拿掉位置：加 `--remove-gps`（或 `--metadata copyright`／`none`）。
+
+### 8. 「把 preset 匯出成 .xmp 給 Lightroom」
+
+```powershell
+python -s -m darkroom_app.cli presets files <id> --json                       # 只讀：回 file_name 與 data_base64
+python -s -m darkroom_app.cli presets export <id> <id2> --dest-dir <dest> --json
+```
+
+買來的與匯入的 preset 原檔一個位元組都不改（Lightroom 看到的是商家原名；檔名用 darkroom 的顯示名稱）；自存 preset 補上 Lightroom 需要的屬性（`crs:UUID` 等）。`<dest>` 要先存在，而且**不可以在 preset 資料夾或 preset 庫裡**（會被拒）；已存在的檔永不覆蓋，同名加 ` (2)`。網頁版是在 preset 選單按「下載 .xmp」，由瀏覽器逐檔下載。
+
+### 9. 「看一下這張套起來長怎樣」（MCP）
 
 `darkroom_open_photo` → `darkroom_preview`（回 JPEG，你直接看）→ 覺得不對就改 `strength`／`overrides` 再預覽 → 使用者滿意再 `darkroom_edit_set` 或 `darkroom_export`。預覽不寫任何檔。
 
@@ -231,11 +267,11 @@ python -s -m darkroom_app.cli presets rebuild --json                     # 索�
 | 3 | 找不到（`not_found`：preset id、照片、群組） | 檢查 id／路徑 |
 | 4 | 衝突（`conflict`：群組已存在、索引鎖等太久） | 換名稱，或稍後再試 |
 | 5 | 暫時無法使用（`unavailable`：寫索引／寫檔被擋） | 稍後再試一次；還是失敗就回報 |
-| 6 | 批次部分失敗（`export`、`presets import`、`edit paste`） | stdout 仍有完整 `results`；逐筆讀 `ok:false` 的 `error` |
+| 6 | 批次部分失敗（`export`、`presets import`、`edit paste`、`presets files`、`presets export`） | stdout 仍有完整 `results`；逐筆讀 `ok:false` 的 `error` |
 
 - `--json` 時失敗是 `{"ok":false,"error":{"kind":"invalid|not_found|conflict|unavailable","message":"…"}}`，stderr 保持空。
 - 不加 `--json` 時失敗是 stderr 一行；`preview`／`thumbnail` 的 stdout 是 JPEG 位元組，在終端機直接跑會被拒（結束碼 2，提示導向檔案或加 `--json`）。
-- 常見訊息：`unknown preset <id>`、`photo not found: <path>`、`unknown slider key '<key>'`、`找不到匯出資料夾：<dir>`（`--dest-dir` 要先存在）、`JPEG 品質要在 1～100 之間：<n>`、`群組已存在：<group>`、`已在 preset 庫裡（<name>），未重複匯入`、`darkroom：preset folder not found: <dir>`（`--preset-dir` 或 `config.local.json` 的 `preset_dir` 錯）。
+- 常見訊息：`不支援的匯出格式：<format>（可用 jpeg、png、tiff、webp）`、`檔案大小上限只適用於 JPEG`、`不能把 preset 匯出到 preset 資料夾或 preset 庫裡：<dir>`、`找不到匯出預設：<name>`、`unknown preset <id>`、`photo not found: <path>`、`unknown slider key '<key>'`、`找不到匯出資料夾：<dir>`（`--dest-dir` 要先存在）、`JPEG 品質要在 1～100 之間：<n>`、`群組已存在：<group>`、`已在 preset 庫裡（<name>），未重複匯入`、`darkroom：preset folder not found: <dir>`（`--preset-dir` 或 `config.local.json` 的 `preset_dir` 錯）。
 - MCP：工具錯誤是 `isError: true`＋同一句訊息；參數名打錯是 JSON-RPC `-32602 Unknown argument for <tool>: <key>`。
 
 ## 有哪些 skill 可以用
@@ -246,6 +282,6 @@ python -s -m darkroom_app.cli presets rebuild --json                     # 索�
 |---|---|
 | `darkroom-setup` | 安裝、第一次設定、改設定、疑難排解（以 `docs/agent-install.md` 為準） |
 | `darkroom-start` | 啟動、停止、健康檢查、換埠、指定 `--preset-dir`／`--data-dir` |
-| `darkroom-edit` | 用 CLI／MCP 幫使用者修圖：找 preset、預覽、套用並保存、複製貼上、匯出、批次 |
-| `darkroom-presets` | preset 庫：搜尋、群組、最愛、改名、搬移、匯入、存成 preset、重建索引 |
+| `darkroom-edit` | 用 CLI／MCP 幫使用者修圖：找 preset、預覽、套用並保存、複製貼上、匯出（格式、尺寸、中繼資料、銳利化、匯出預設）、批次 |
+| `darkroom-presets` | preset 庫：搜尋、群組、最愛、改名、搬移、匯入、存成 preset、匯出成 .xmp、重建索引 |
 | `usage-guard` | 作者自己的 Claude Code mod（顯示用量），跟 darkroom 功能無關，不要改 |

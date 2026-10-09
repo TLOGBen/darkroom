@@ -32,6 +32,30 @@ def _schema(properties, required=()):
 
 
 _STR = {"type": "string"}
+_SETTINGS = {   # CONTRACT-s2-export-detect E1 / E27: the export settings (descriptions only; the service judges)
+    "format": {"type": "string", "enum": ["jpeg", "png", "tiff", "webp"], "default": "jpeg"},
+    "bit_depth": {"type": "integer", "enum": [8, 16],
+                  "description": "jpeg / webp 8 only; png default 8; tiff default 16"},
+    "quality": {"type": "integer", "minimum": 1, "maximum": 100, "default": 92,
+                "description": "JPEG / WebP quality (ignored for png and tiff)"},
+    "max_kb": {"type": "integer", "minimum": 10, "maximum": 1048576,
+               "description": "JPEG only: the whole file at most this many KB (1 KB = 1024 bytes); the highest "
+                              "quality that fits is used"},
+    "resize": {"type": ["object", "null"], "additionalProperties": False, "required": ["mode", "value"],
+               "properties": {"mode": {"type": "string", "enum": ["long_edge", "short_edge", "width", "height",
+                                                                  "megapixels", "percent"]},
+                              "value": {"type": "number"}},
+               "description": "shrink only, never enlarge: an edge in pixels (1..65535), megapixels (0..1000] or "
+                              "percent (0..100]"},
+    "metadata": {"type": "string", "enum": ["all", "copyright", "none"], "default": "all"},
+    "remove_gps": {"type": "boolean", "default": False, "description": "with metadata all: drop the GPS position"},
+    "sharpen": {"type": ["object", "null"], "additionalProperties": False, "required": ["target", "amount"],
+                "properties": {"target": {"type": "string", "enum": ["screen", "matte", "glossy"]},
+                               "amount": {"type": "string", "enum": ["low", "standard", "high"]}},
+                "description": "output sharpening for the medium"},
+}
+_PRESET_IDS = {"type": "array", "minItems": 1, "maxItems": 500, "items": _STR,
+               "description": "ids from darkroom_presets_list"}
 
 OPERATIONS = {
     "list_presets": {
@@ -116,13 +140,17 @@ OPERATIONS = {
         "http": ("POST", "/api/export"),
         "cli": "export",
         "mcp": "darkroom_export",
-        "description": "Export photos at full resolution as new files (JPEG 8-bit, quality 1..100, default 92; or "
-                       "TIFF 16-bit), with the sRGB profile, the photo's EXIF and upright pixels. Each item is a "
-                       "photo (path, or image_id from darkroom_open_photo) with an optional preset, strength 0..200 "
-                       "and overrides, as in darkroom_preview. Files go to '<photo folder>/darkroom 匯出' or dest_dir "
-                       "(an existing absolute folder); an existing file is never overwritten (a numbered name is "
-                       "used instead) and the photo is never changed. results has one entry per item, in order: "
-                       "{ok, source, output} or {ok: false, source, error}; failed counts the failures.",
+        "description": "Export photos at full resolution as new files: JPEG (8-bit, quality 1..100, default 92, "
+                       "optional max_kb), PNG (8/16-bit), TIFF (8/16-bit) or WebP (8-bit), with the sRGB profile, "
+                       "upright pixels, optional resize (never enlarged), metadata all / copyright / none (+ "
+                       "remove_gps) and output sharpening; export_preset names saved settings (explicit arguments "
+                       "win). Each item is a photo (path, or image_id from darkroom_open_photo). An item with none "
+                       "of preset_id / strength / overrides uses the photo's saved edit (darkroom_edit_get; no edit "
+                       "= the photo as it is); preset_id null means no preset. Files go to '<photo folder>/darkroom "
+                       "匯出' or dest_dir (an existing absolute folder); an existing file is never overwritten (a "
+                       "numbered name is used instead) and the photo is never changed. results has one entry per "
+                       "item, in order: {ok, source, output, used: {params_from: edit | original | request, quality, "
+                       "width, height}} or {ok: false, source, error}; failed counts the failures.",
         "input_schema": _schema({
             "items": {"type": "array", "minItems": 1, "items": {
                 "type": "object", "additionalProperties": False, "properties": {
@@ -132,11 +160,12 @@ OPERATIONS = {
                     "strength": {"type": "number", "minimum": 0, "maximum": 200, "default": 100},
                     "overrides": {"type": "object", "additionalProperties": {"type": "number"},
                                   "description": "{slider key from darkroom_sliders: difference}"}}}},
-            "format": {"type": "string", "enum": ["jpeg", "tiff"]},
-            "quality": {"type": "integer", "minimum": 1, "maximum": 100, "default": 92,
-                        "description": "JPEG quality"},
+            "format": _SETTINGS["format"],
+            "quality": _SETTINGS["quality"],
             "dest_dir": dict(_STR, description="existing absolute folder; default '<photo folder>/darkroom 匯出'"),
-        }, ["items", "format"]),
+            **{k: _SETTINGS[k] for k in ("bit_depth", "max_kb", "resize", "metadata", "remove_gps", "sharpen")},
+            "export_preset": dict(_STR, description="name from darkroom_export_presets_list"),
+        }, ["items"]),
         "mcp_defaults": {},
         "mcp_annotations": EXPORT_ANNOTATIONS,
     },
@@ -381,6 +410,75 @@ OPERATIONS = {
                        "many supported presets are indexed / pending, batches still processing, the budget and the "
                        "last recorded usage. Reads only; needs no key.",
         "input_schema": _schema({}),
+        "mcp_defaults": {},
+    },
+    # ---- CONTRACT-s2-export-detect E25: operations 28..33, in this order
+    "list_export_presets": {
+        "http": ("GET", "/api/export-presets"),
+        "cli": "export-presets list",
+        "mcp": "darkroom_export_presets_list",
+        "description": "The saved export presets (named export settings, kept in the app's data folder), sorted by "
+                       "name: {presets: [{name, settings}]}.",
+        "input_schema": _schema({}),
+        "mcp_defaults": {},
+    },
+    "save_export_preset": {
+        "http": ("PUT", "/api/export-presets"),
+        "cli": "export-presets save",
+        "mcp": "darkroom_export_preset_save",
+        "description": "Save export settings (format, bit_depth, quality, max_kb, resize, metadata, remove_gps, "
+                       "sharpen; never a folder) under a name (1..60 characters). The same name (case-insensitive) "
+                       "is replaced; previous holds the replaced settings (save them again to undo). Returns "
+                       "{name, settings, previous}.",
+        "input_schema": _schema({"name": _STR, "settings": {"type": "object", "additionalProperties": False,
+                                                            "properties": dict(_SETTINGS)}}, ["name", "settings"]),
+        "mcp_defaults": {},
+        "mcp_annotations": {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": True,
+                            "openWorldHint": False},
+    },
+    "delete_export_preset": {
+        "http": ("DELETE", "/api/export-presets"),
+        "cli": "export-presets delete",
+        "mcp": "darkroom_export_preset_delete",
+        "description": "Delete a saved export preset; returns {name, settings} of what was deleted (save it again "
+                       "to undo). not_found when there is none by that name.",
+        "input_schema": _schema({"name": _STR}, ["name"]),
+        "mcp_defaults": {},
+        "mcp_annotations": {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": False,
+                            "openWorldHint": False},
+    },
+    "preset_files": {
+        "http": ("POST", "/api/preset-library/files"),
+        "cli": "presets files",
+        "mcp": "darkroom_preset_files",
+        "description": "The .xmp files of 1..500 presets as Lightroom reads them (purchased and imported presets "
+                       "byte for byte; user presets with the attributes Lightroom needs), in order: {files: [{ok, "
+                       "preset_id, file_name, data_base64} | {ok: false, preset_id, error}]}. Reads only.",
+        "input_schema": _schema({"preset_ids": _PRESET_IDS}, ["preset_ids"]),
+        "mcp_defaults": {},
+    },
+    "export_preset_files": {
+        "http": ("POST", "/api/preset-library/export"),     # refused over HTTP (E17): CLI / MCP only
+        "cli": "presets export",
+        "mcp": "darkroom_presets_export",
+        "description": "Write the .xmp files of 1..500 presets (as darkroom_preset_files) into dest_dir, an existing "
+                       "absolute folder outside the preset folder and the preset library; an existing file is never "
+                       "overwritten (a numbered name is used instead). results has one entry per preset, in order: "
+                       "{ok, preset_id, output} or {ok: false, preset_id, error}; failed counts the failures.",
+        "input_schema": _schema({"preset_ids": _PRESET_IDS,
+                                 "dest_dir": dict(_STR, description="existing absolute folder")},
+                                ["preset_ids", "dest_dir"]),
+        "mcp_defaults": {},
+        "mcp_annotations": EXPORT_ANNOTATIONS,
+    },
+    "capabilities": {
+        "http": ("GET", "/api/capabilities"),
+        "cli": "capabilities",
+        "mcp": "darkroom_capabilities",
+        "description": "What works on this machine and configuration, and why not: {features: {gpu, heic, webp, "
+                       "photo_library, preset_library_writes, semantic_index, onepassword: {available, reason}}}. "
+                       "Kept for the process; refresh measures again. Writes nothing.",
+        "input_schema": _schema({"refresh": {"type": "boolean", "default": False}}),
         "mcp_defaults": {},
     },
 }

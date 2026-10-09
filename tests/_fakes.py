@@ -48,10 +48,16 @@ class FakeDarkroom:
         return self._do("preview", (image_id, preset_id, strength, overrides, max_pixels),
                         PreviewResult(JPEG, 1.23456, 4, 2))
 
-    def export(self, items, format, quality=None, dest_dir=None):
+    def export(self, items, format=None, quality=None, dest_dir=None, *, bit_depth=None, max_kb=None, resize=None,
+               metadata=None, remove_gps=None, sharpen=None, export_preset=None):
         results = [{"ok": True, "source": "a.jpg", "output": "D:\\out\\a.jpg"},
                    {"ok": False, "source": "b.jpg", "error": "匯出失敗：b.jpg：壞了"}][: len(items or [])]
-        return self._do("export", (items, format, quality, dest_dir), {"results": results})
+        # CONTRACT-s2-export-detect E25: the S2 settings are recorded only when one is given (old calls unchanged)
+        s2 = {k: v for k, v in (("bit_depth", bit_depth), ("max_kb", max_kb), ("resize", resize),
+                                ("metadata", metadata), ("remove_gps", remove_gps), ("sharpen", sharpen),
+                                ("export_preset", export_preset)) if v is not None}
+        args = (items, format, quality, dest_dir) + ((s2,) if s2 else ())
+        return self._do("export", args, {"results": results})
 
     # CONTRACT-preset-library K16
     def preset_groups(self):
@@ -121,3 +127,27 @@ class FakeDarkroom:
 
     def semantic_status(self):
         return self._do("semantic_status", (), {"available": False, "reason": "假原因", "indexed": 0, "total": 1})
+
+    # CONTRACT-s2-export-detect E25: operations 28..33
+    def list_export_presets(self):
+        return self._do("list_export_presets", (), {"presets": [{"name": "網頁", "settings": {"format": "jpeg"}}]})
+
+    def save_export_preset(self, name, settings):
+        return self._do("save_export_preset", (name, settings), {"name": name, "settings": settings, "previous": None})
+
+    def delete_export_preset(self, name):
+        return self._do("delete_export_preset", (name,), {"name": name, "settings": {"format": "jpeg"}})
+
+    def preset_files(self, preset_ids):
+        files = [{"ok": True, "preset_id": "p1", "file_name": "p1.xmp", "data_base64": "eG1w"},
+                 {"ok": False, "preset_id": "nope", "error": "unknown preset nope"}][: len(preset_ids or [])]
+        return self._do("preset_files", (preset_ids,), {"files": files})
+
+    def export_preset_files(self, preset_ids, dest_dir):
+        results = [{"ok": True, "preset_id": "p1", "output": "D:\\out\\p1.xmp"},
+                   {"ok": False, "preset_id": "nope", "error": "unknown preset nope"}][: len(preset_ids or [])]
+        return self._do("export_preset_files", (preset_ids, dest_dir), {"results": results})
+
+    def capabilities(self, refresh=False):
+        return self._do("capabilities", (refresh,), {"features": {"gpu": {"available": True, "reason": None},
+                                                                  "webp": {"available": False, "reason": "假原因"}}})

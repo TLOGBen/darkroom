@@ -515,3 +515,128 @@ test('PLP17: the three failure toasts are helpers', () => {
   assert.equal(L.loadEditFailed('x'), '讀取編輯失敗：x');
   assert.equal(L.loadFolderFailed('找不到照片資料夾：D:/x'), '讀取資料夾失敗：找不到照片資料夾：D:/x');
 });
+
+// ---------------------------------------------------------------- CONTRACT-s2-export-detect (E1, E8, E29, E30)
+const RESIZE_CASES = require(path.join(__dirname, '..', 'cases', 's2_resize_cases.json'));
+
+test('E8 shared cases: resizeTarget only ever shrinks, as the server does', () => {
+  assert.ok(RESIZE_CASES.length >= 20);
+  const modes = new Set(RESIZE_CASES.filter((c) => c.resize).map((c) => c.resize.mode));
+  assert.deepEqual([...modes].sort(), [...L.RESIZE_MODES].sort());       // all six modes are in the table
+  for (const c of RESIZE_CASES) {
+    assert.deepEqual(L.resizeTarget(c.width, c.height, c.resize), c.expect, c.name);
+    const [w, h] = L.resizeTarget(c.width, c.height, c.resize);
+    assert.ok(w <= c.width && h <= c.height && w >= 1 && h >= 1, c.name);
+  }
+});
+
+test('E29: the summary line, word for word', () => {
+  assert.equal(L.exportSummary({format: 'jpeg', quality: 92, resize: {mode: 'long_edge', value: 2048}, metadata: 'all',
+                                sharpen: {target: 'screen', amount: 'standard'}}),
+               'JPEG 品質 92 ・長邊 2048 px ・全部中繼資料 ・螢幕銳利化（標準）');
+  assert.equal(L.exportSummary(L.EXPORT_DEFAULTS), 'JPEG 品質 92 ・原尺寸 ・全部中繼資料');
+  assert.equal(L.exportSummary({format: 'png', bit_depth: 16, quality: null, resize: {mode: 'percent', value: 50},
+                                metadata: 'none', sharpen: null}), 'PNG 16-bit ・50% ・不含中繼資料');
+  assert.equal(L.exportSummary({format: 'tiff', bit_depth: 16, resize: {mode: 'megapixels', value: 2}, metadata: 'copyright',
+                                sharpen: {target: 'matte', amount: 'high'}}), 'TIFF 16-bit ・2 百萬像素 ・只留版權 ・霧面紙銳利化（高）');
+  assert.equal(L.exportSummary({format: 'jpeg', quality: 80, max_kb: 800, resize: {mode: 'width', value: 1920}, metadata: 'all',
+                                remove_gps: true, sharpen: {target: 'glossy', amount: 'low'}}),
+               'JPEG 品質 80 ・最大 800 KB ・寬 1920 px ・全部中繼資料（移除 GPS） ・光面紙銳利化（低）');
+  assert.equal(L.exportSummary({format: 'webp', quality: 75, resize: null, metadata: 'all', sharpen: null}), 'WebP 品質 75 ・原尺寸 ・全部中繼資料');
+});
+
+test('E29: what the dialog disables comes from exportDialogState only', () => {
+  const s = (o) => Object.assign({}, L.EXPORT_DEFAULTS, o);
+  let d = L.exportDialogState(s({}), null);
+  assert.equal(d.quality.disabled, false);
+  assert.deepEqual(d.bitDepth, {disabled: true, options: [8]});             // JPEG: only 8-bit
+  assert.equal(d.maxKbOn.disabled, false);
+  assert.equal(d.maxKb.disabled, true);                                    // not ticked
+  assert.equal(d.webp.disabled, false);
+  assert.equal(d.resizeValue.disabled, true);
+  assert.equal(d.removeGps.disabled, false);
+  assert.equal(d.sharpenAmount.disabled, true);
+  assert.equal(L.exportDialogState(s({max_kb: 500}), null).maxKb.disabled, false);
+  for (const f of ['png', 'tiff']) {                                        // no quality, both depths, no size limit
+    d = L.exportDialogState(s({format: f, quality: null}), null);
+    assert.equal(d.quality.disabled, true, f);
+    assert.deepEqual(d.bitDepth, {disabled: false, options: [8, 16]}, f);
+    assert.equal(d.maxKbOn.disabled, true, f);
+    assert.equal(d.maxKb.disabled, true, f);
+  }
+  d = L.exportDialogState(s({format: 'webp'}), null);
+  assert.equal(d.quality.disabled, false);
+  assert.deepEqual(d.bitDepth, {disabled: true, options: [8]});
+  assert.equal(d.maxKbOn.disabled, true);
+  const off = {webp: {available: false, reason: '這台電腦的 OpenCV 不能寫 WebP，WebP 匯出先關閉'}};
+  d = L.exportDialogState(s({}), off);
+  assert.deepEqual(d.webp, {disabled: true, title: '這台電腦的 OpenCV 不能寫 WebP，WebP 匯出先關閉'});
+  assert.equal(d.go.disabled, false);                                      // JPEG still exports
+  assert.equal(L.exportDialogState(s({format: 'webp'}), off).go.disabled, true);
+  assert.equal(L.exportDialogState(s({}), {webp: {available: true, reason: null}}).webp.disabled, false);
+  assert.deepEqual(L.exportDialogState(s({resize: {mode: 'long_edge', value: 2048}}), null).resizeValue,
+                   {disabled: false, min: 1, max: 65535, step: 1});
+  assert.equal(L.exportDialogState(s({resize: {mode: 'megapixels', value: 2}}), null).resizeValue.max, 1000);
+  assert.equal(L.exportDialogState(s({resize: {mode: 'percent', value: 50}}), null).resizeValue.max, 100);
+  assert.equal(L.exportDialogState(s({metadata: 'copyright'}), null).removeGps.disabled, true);
+  assert.equal(L.exportDialogState(s({sharpen: {target: 'screen', amount: 'low'}}), null).sharpenAmount.disabled, false);
+});
+
+test('E1 / E29: the form becomes the 8 settings keys; stored settings fall back to the defaults', () => {
+  const f = {format: 'jpeg', bit_depth: '16', quality: ' 80 ', max_kb_on: true, max_kb: '800', resize_mode: 'long_edge',
+             resize_value: '2048', metadata: 'all', remove_gps: true, sharpen_target: 'screen', sharpen_amount: 'standard'};
+  const out = L.settingsFromForm(f);
+  assert.deepEqual(Object.keys(out), Object.keys(L.EXPORT_DEFAULTS));
+  assert.deepEqual(Object.keys(L.EXPORT_DEFAULTS), ['format', 'bit_depth', 'quality', 'max_kb', 'resize', 'metadata', 'remove_gps', 'sharpen']);
+  assert.deepEqual(out, {format: 'jpeg', bit_depth: 8, quality: 80, max_kb: 800, resize: {mode: 'long_edge', value: 2048},
+                         metadata: 'all', remove_gps: true, sharpen: {target: 'screen', amount: 'standard'}});
+  assert.deepEqual(L.settingsFromForm(Object.assign({}, f, {format: 'png', max_kb_on: true, resize_mode: '', sharpen_target: '',
+                                                            metadata: 'none'})),
+                   {format: 'png', bit_depth: 16, quality: null, max_kb: null, resize: null, metadata: 'none', remove_gps: false, sharpen: null});
+  assert.equal(L.settingsFromForm(Object.assign({}, f, {quality: '9x'})).quality, '9x');          // the server says why
+  assert.equal(L.settingsFromForm(Object.assign({}, f, {resize_mode: 'percent', resize_value: '150'})).resize.value, 150);
+  assert.equal('dest_dir' in L.exportRequest([{path: 'a'}], out), false);                     // XP16: no folder over HTTP
+  assert.deepEqual(L.exportRequest([{path: 'a'}], out).items, [{path: 'a'}]);
+  assert.deepEqual(L.exportSettingsFrom(null), L.EXPORT_DEFAULTS);
+  assert.deepEqual(L.exportSettingsFrom('not json'), L.EXPORT_DEFAULTS);
+  assert.deepEqual(L.exportSettingsFrom(JSON.stringify(out)), out);
+  assert.deepEqual(L.exportSettingsFrom({format: 'bmp', quality: 0, metadata: 'x'}), L.EXPORT_DEFAULTS);
+  assert.deepEqual(L.exportSettingsFrom({format: 'tiff'}),
+                   {format: 'tiff', bit_depth: 16, quality: null, max_kb: null, resize: null, metadata: 'all', remove_gps: false, sharpen: null});
+  assert.equal(L.sameSettings(out, JSON.parse(JSON.stringify(out))), true);
+  assert.equal(L.sameSettings(out, Object.assign({}, out, {quality: 81})), false);
+  assert.equal(L.sameSettings({format: 'jpeg', resize: {value: 1, mode: 'width'}}, {resize: {mode: 'width', value: 1}, format: 'jpeg'}), true);
+  assert.equal(L.EXPORT_SETTINGS_KEY, 'darkroom.exportSettings');
+  assert.equal(L.CUSTOM_PRESET, '（自訂）');
+  assert.equal(L.exportPresetSaved('網路'), '已存成匯出預設：網路');
+  assert.equal(L.exportPresetUpdated('網路'), '已更新匯出預設：網路');
+  assert.equal(L.exportPresetDeleted('網路'), '已刪除匯出預設：網路');
+  assert.equal(L.UNDO_LABEL, '復原');
+});
+
+test('E30: capability status sentences and the preset download helpers', () => {
+  const all = Object.fromEntries(L.CAP_ORDER.map((k) => [k, {available: true, reason: null}]));
+  assert.equal(L.capButtonText(all), '功能正常');
+  assert.equal(L.capButtonText(null), '功能正常');
+  const two = Object.assign({}, all, {webp: {available: false, reason: 'w'}, onepassword: {available: false, reason: 'o'}});
+  assert.equal(L.capButtonText(two), '功能狀態：2 項關閉');
+  assert.deepEqual(L.capOff(two), ['webp', 'onepassword']);
+  assert.equal(L.capLine('webp', two.webp), 'WebP 匯出：關閉：w');
+  assert.equal(L.capLine('gpu', all.gpu), '顯示卡（GPU）：可用');
+  assert.equal(L.capReason(two, 'webp'), 'w');
+  assert.equal(L.capReason(two, 'gpu'), null);
+  assert.equal(L.capReason(null, 'gpu'), null);
+  assert.equal(L.CAP_REFRESH, '重新偵測');
+  assert.deepEqual(L.CAP_ORDER, ['gpu', 'heic', 'webp', 'photo_library', 'preset_library_writes', 'semantic_index', 'onepassword']);
+  assert.deepEqual(Object.keys(L.CAP_LABELS), L.CAP_ORDER);
+  assert.equal(L.DOWNLOAD_XMP, '下載 .xmp');
+  assert.equal(L.DOWNLOAD_GROUP_XMP, '下載整個群組的 .xmp');
+  const ids = Array.from({length: 1201}, (_, i) => 'p' + i);
+  assert.deepEqual(L.idBatches(ids).map((b) => b.length), [500, 500, 201]);
+  assert.deepEqual(L.idBatches(ids).flat(), ids);
+  const presets = [{id: 'a', group: '電影'}, {id: 'b', group: '電影 - 暖調'}, {id: 'c', group: '電影院'}, {id: 'd', group: ''}];
+  assert.deepEqual(L.groupPresetIds(presets, '電影'), ['a', 'b']);
+  assert.deepEqual(L.groupPresetIds(presets, '電影 - 暖調'), ['b']);
+  const rep = L.downloadReport([{ok: true, preset_id: 'a', file_name: 'A.xmp', data_base64: ''}, {ok: false, preset_id: 'x', error: 'unknown preset x'}]);
+  assert.deepEqual(rep, {summary: '已下載 1 個 .xmp，1 個沒有下載', lines: ['已下載：A.xmp', 'unknown preset x']});
+});
