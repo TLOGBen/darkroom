@@ -1,3 +1,9 @@
+@AGENTS.md
+
+使用者手冊見 AGENTS.md（給所有 Agent 的設定、啟動、CLI／MCP 用法與食譜）。
+
+## 開發者（本 repo 作者的工作規則）
+
 # darkroom — 本機專業相片編輯（Lightroom preset＋AI）
 
 回覆一律用繁體中文（台灣用語）。程式碼、識別字、指令、路徑維持原文。
