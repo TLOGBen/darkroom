@@ -1069,13 +1069,6 @@ class TestPhotoLibraryHttp(AioHTTPTestCase):
         self.assertEqual(([i["name"] for i in listing["items"]], listing["total"]), (["b.jpg"], 2))
         r = await self.client.get("/api/folder/thumbnails", params={"folder": self.photos, "limit": "x"})
         self.assertEqual((r.status, await r.json()), (400, {"error": "limit must be an integer in 1..200"}))
-        for odd in ("²", "①", "٣"):            # S15: Unicode digits int() refuses never become a 500
-            r = await self.client.get("/api/folder/thumbnails", params={"folder": self.photos, "offset": odd})
-            self.assertIn(r.status, (200, 400), odd)
-            if r.status == 400:
-                self.assertEqual(await r.json(), {"error": "offset must be an integer >= 0"})
-        from darkroom_app.server import _lenient_int
-        self.assertEqual([_lenient_int(t) for t in ("12", "²", "①", "x", "")], [12, "²", "①", "x", ""])
         r = await self.client.get("/api/folder/thumbnails", params={"folder": os.path.join(self.tmp, "no")})
         self.assertEqual(r.status, 404)
         r = await self.client.get("/api/thumbnail", params={"path": a})
@@ -1108,6 +1101,18 @@ class TestPhotoLibraryHttp(AioHTTPTestCase):
         self.assertEqual((await r.json())["id"], "user:網頁")
         r = await self.client.post("/api/edit/save-preset", json={"path": a, "name": "網頁"})
         self.assertEqual((r.status, await r.json()), (404, {"error": NO_EDIT.format(file_name="a.jpg")}))
+
+    async def test_lenient_int_unicode_digits(self):  # CONTRACT-s1-experience S15: isdecimal, never a 500
+        from darkroom_app.server import _lenient_int
+        self.assertEqual([_lenient_int(t) for t in ("12", "²", "①", "x", "", "٣")], [12, "²", "①", "x", "", 3])
+        write_photo(os.path.join(self.photos, "a.jpg"), 400, 300)
+        for odd in ("²", "①", "³", "⑦"):        # digits int() refuses: the service's 400 sentence
+            r = await self.client.get("/api/folder/thumbnails", params={"folder": self.photos, "offset": odd})
+            self.assertEqual((r.status, await r.json()), (400, {"error": "offset must be an integer >= 0"}), odd)
+            r = await self.client.get("/api/folder/thumbnails", params={"folder": self.photos, "limit": odd})
+            self.assertEqual((r.status, await r.json()), (400, {"error": "limit must be an integer in 1..200"}), odd)
+        r = await self.client.get("/api/folder/thumbnails", params={"folder": self.photos, "offset": "٠"})   # decimal: int
+        self.assertEqual(r.status, 200)
 
     async def test_thumbnail_edit_header(self):  # CONTRACT-s1-experience S8: X-Edit on GET /api/thumbnail
         from urllib.parse import unquote

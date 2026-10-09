@@ -362,6 +362,8 @@
     });
     return {shown, pending: filter === 'all' ? 0 : unknown};
   }
+  // S9: under a filter only the cells shown can be selected - a Shift range never reaches a hidden photo
+  const onlyShown = (sel, shown) => (shown ? new Set([...sel].filter((i) => shown.has(i))) : new Set(sel));
   const gridPending = (k) => `還有 ${k} 張尚未判定`;
   const resetConfirm = (n) => `要把 ${n} 張照片還原成原圖嗎？（可用「取回上一份」拿回來）`;
   const resetDone = (ok, failed) => `已還原 ${ok} 張，失敗 ${failed} 張`;
@@ -441,7 +443,7 @@
           explain, EXPLAIN_EXACT, EXPLAIN_PREFIX, openFailed, SAVE_RETRY_MS, CARRY_HINT, CARRY_HINT_SHORT, GRID_EMPTY,
           sliderVars, strengthVars, bipolar, HUE_DOTS, hueDot, CANVASES, CANVAS_STORAGE_KEY, canvasFrom,
           AB_KEY, AB_STORAGE_KEY, AB_DEFAULT_SPLIT, abStep, abSplitFrom,
-          FILTERS, FILTER_LABELS, badgeTitle, stale, gridFilter, gridPending, resetConfirm, resetDone, restoreDone,
+          FILTERS, FILTER_LABELS, badgeTitle, stale, gridFilter, onlyShown, gridPending, resetConfirm, resetDone, restoreDone,
           RESET_TOAST, RESTORE_TOAST,
           AUTOSAVE_MS, PRESET_CHANGED, PRESET_MISSING, presetStatusText, copied, pasteConfirm, pasteDone,
           exportSelectedDone, gridCount, editBody, editRequest, detailFromSnapshot, gridSelect, exportItems,

@@ -123,7 +123,8 @@ claude mcp add darkroom -- "<absolute path to repo>\.venv\Scripts\python.exe" -s
 (Other MCP clients: a stdio server, command = the venv's `python.exe`, args =
 `-s -m darkroom_app.mcp_server`, working directory = the repository root.)
 
-**Check:** the client lists 25 tools named `darkroom_*`; calling `darkroom_presets_list` with
+**Check:** the client lists 25 tools named `darkroom_*` (the last one is `darkroom_edit_restore`, the MCP twin of
+`edit restore`); calling `darkroom_presets_list` with
 `{"limit": 3}` returns presets.
 
 ## 8. Tell the person what you did

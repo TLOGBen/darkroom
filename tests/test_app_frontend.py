@@ -193,6 +193,17 @@ class TestPageStructure(unittest.TestCase):
         for col, n in (("col-lib", 1), ("col-pv", 2), ("col-sl", 3)):
             self.assertRegex(css, r"#%s \{ grid-column: %d;" % (col, n))
 
+    def test_layout_820(self):  # S18: at 820 px the strength track keeps >= 200 px and the preview >= 400 px
+        css = re.sub(r"/\*.*?\*/", "", read("app.css"), flags=re.S)
+        self.assertRegex(css, r"\.strength-track \{[^}]*min-width: 200px;")
+        narrow = [(ctx, sel, body) for ctx, sel, body in css_rules(css) if "@media (max-width: 960px)" in ctx]
+        root = "".join(body for _, sel, body in narrow if sel == ":root")
+        sl_w = int(re.search(r"--sl-w:\s*(\d+)px", root).group(1))
+        grid = "".join(body for _, sel, body in narrow if sel == "#editor")
+        self.assertIn("grid-template-columns: 0 minmax(0, 1fr) var(--sl-w);", grid)   # the preset column folds to 0
+        self.assertGreaterEqual(820 - sl_w, 400)                                     # what is left is the preview
+        # measured in a browser (S1 seal evidence): #strength 319 px, .pv-wrap 529 px, every S18 button in view
+
     def test_narrow_windows_keep_function_buttons(self):  # F1 / R6 / N2 (H11): never hidden in a media query
         found, checked = hidden_in_media(read("app.css"))
         self.assertEqual(found, [])
@@ -388,7 +399,7 @@ class TestPageStructure(unittest.TestCase):
         css = read("app.css")
         self.assertRegex(css, r"\.skip-detail \{[^}]*position: absolute;[^}]*white-space: normal;")
 
-    def test_front_end_housekeeping(self):  # S13 (a)-(h), (j)-(l) and S15
+    def test_front_end_housekeeping(self):  # S13 (a)-(h), (j)-(l)
         js, html, css = read("app.js"), read("index.html"), read("app.css")
         exp = js[js.index("async function exportSelected"):js.index("// ------------------------------------------------------------------ export (X13)")]
         self.assertIn("if (!paths.length || exp.busy) return;", exp)                           # (a)
@@ -418,10 +429,14 @@ class TestPageStructure(unittest.TestCase):
         with open(os.path.join(STATIC, "logo.svg"), "rb") as f, \
                 open(os.path.join(_util.REPO, "docs", "assets", "logo.svg"), "rb") as g:
             self.assertEqual(f.read(), g.read())
-        init = js[js.index("async function init"):]                                               # S15
+
+    def test_query_path_not_auto_opened(self):  # S15: ?path= only fills the box; lastPath still reopens
+        js = read("app.js")
+        init = js[js.index("async function init"):]
         self.assertIn("if (q) $('#photo-path').value = q;", init)
         self.assertIn("else if (last) { $('#photo-path').value = last; openPhoto(last); }", init)
         self.assertNotRegex(init, r"openPhoto\(q\)")
+        self.assertNotRegex(init, r"openPhoto\(\s*(?:params|new URLSearchParams|location)")
 
     def test_ab_compare_structure(self):  # S7
         html, js, css = read("index.html"), read("app.js"), read("app.css")
@@ -443,21 +458,31 @@ class TestPageStructure(unittest.TestCase):
         self.assertNotIn("ab.", read("logic.js"))                              # not editor state (R5 reducer)
         self.assertIn("$('#preview-img').addEventListener('load', abRefresh);", js)
 
-    def test_grid_badge_and_filter_structure(self):  # S8 / S9
+    def test_grid_badge_structure(self):  # S8
         html, js = read("index.html"), read("app.js")
-        self.assertRegex(html, r'<span id="grid-filter" class="seg" role="group" aria-label="篩選"><button data-filter="all" aria-pressed="true"[^>]*>全部</button><button data-filter="edited" aria-pressed="false"[^>]*>已編輯</button><button data-filter="plain" aria-pressed="false"[^>]*>未編輯</button></span>')
-        self.assertIn('<span id="grid-pending" class="mute" hidden></span>', html)
         thumb = js[js.index("async function loadThumb"):js.index("function selectCell")]
         self.assertIn("JSON.parse(decodeURIComponent(r.headers.get('X-Edit')))", thumb)
         self.assertIn("cell.classList.toggle('stale', edited && L.stale(info));", thumb)
         self.assertIn("cell.querySelector('.mark').title = edited ? L.badgeTitle(info) : '';", thumb)
+        self.assertIn('<span class="mark" aria-hidden="true"></span>', js)
+        css = read("app.css")
+        self.assertRegex(css, r"\.cell\.edited \.mark \{")
+        self.assertRegex(css, r"\.cell\.edited\.stale \.mark \{")
+
+    def test_grid_filter_structure(self):  # S9
+        html, js = read("index.html"), read("app.js")
+        self.assertRegex(html, r'<span id="grid-filter" class="seg" role="group" aria-label="篩選"><button data-filter="all" aria-pressed="true"[^>]*>全部</button><button data-filter="edited" aria-pressed="false"[^>]*>已編輯</button><button data-filter="plain" aria-pressed="false"[^>]*>未編輯</button></span>')
+        self.assertIn('<span id="grid-pending" class="mute" hidden></span>', html)
+        sel = js[js.index("function selectCell"):js.index("function renderGridSelection")]
+        self.assertIn("st.grid.sel = L.onlyShown(r.sel, st.grid.shown);", sel)         # selection only among shown
         grid = js[js.index("function renderGrid"):js.index("async function loadThumb")]
+        self.assertIn("st.grid.shown = shownSet;", grid)
+        self.assertIn("st.grid.sel = L.onlyShown(st.grid.sel, shownSet);", grid)
         self.assertIn("const {shown, pending} = L.gridFilter(st.grid.items, st.grid.filter);", grid)
         self.assertIn("$('#grid-pending').textContent = pending ? L.gridPending(pending) : '';", grid)
         flt = js[js.index("async function setGridFilter"):js.index("function releaseGrid")]
         self.assertIn("if (st.grid.folder) await loadGrid(st.grid.folder); else renderGrid();", flt)   # re-read the listing
         self.assertIn("$('#grid-count').textContent = L.gridCount(st.grid.sel.size, cells.length);", js)
-        self.assertRegex(read("app.css"), r"\.cell\.edited\.stale \.mark \{")
 
     def test_reset_original_structure(self):  # S10
         html, js = read("index.html"), read("app.js")

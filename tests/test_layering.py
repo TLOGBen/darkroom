@@ -286,6 +286,19 @@ class TestLayering(unittest.TestCase):
                                             "restore_edit"])                       # CONTRACT-s1-experience S4
         self.assertTrue(issubclass(DarkroomFacade, Facade))
 
+    def test_docs_tool_count(self):  # CONTRACT-s1-experience S19: the four docs state the real tool count, list restore
+        from darkroom_app.mcp_server.tools import Tools
+        n = len(Tools(lambda: None).list())
+        need = {"AGENTS.md": (f"{n} 個 `darkroom_*` 工具", f"（共 {n} 個）", "`edit restore <photo>`", "`darkroom_edit_restore`"),
+                "README.md": (f"{n} 個 `darkroom_*` 工具", "`edit restore`", "`darkroom_edit_restore`"),
+                "docs/agent-install.md": (f"lists {n} tools named `darkroom_*`", "`edit restore`", "`darkroom_edit_restore`"),
+                "CLAUDE.md": (f"{n} 個工具 `darkroom_*`", "save-preset|restore", "`darkroom_edit_restore`")}
+        for name, texts in need.items():
+            with open(os.path.join(_util.REPO, name), encoding="utf-8") as f:
+                doc = f.read()
+            for t in texts:
+                self.assertIn(t, doc, f"{name}: {t}")
+
     def test_operation_coverage(self):  # L2: every registered route, subcommand and tool exists
         import inspect
         from darkroom_app import cli

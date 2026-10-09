@@ -17,7 +17,7 @@ const st = {
   detail: null,
   edit: null, clipboard: null,                                   // the open photo's saved edit; the copied edit (PL15)
   snapshots: {}, fingerprint: null, previous: false, editStatus: null,   // S2 / S4: what the photo library told us
-  grid: {folder: null, items: [], sel: new Set(), anchor: 0, filter: 'all'},   // the thumbnail grid (PLP9, S9)
+  grid: {folder: null, items: [], sel: new Set(), anchor: 0, filter: 'all', shown: null},   // the thumbnail grid (PLP9, S9)
   search: '', openFolders: {'\u0001fav': true}, openGroups: loadPref('openGroups', {basic: true}), hslTab: 'h', focusKey: null,
   holding: false, originalUrl: null, originalFor: null,
 };
@@ -894,7 +894,8 @@ function renderGrid() {
   }
   const {shown, pending} = L.gridFilter(st.grid.items, st.grid.filter);   // S9
   const shownSet = new Set(shown.map(([i]) => i));
-  st.grid.sel = new Set([...st.grid.sel].filter((i) => shownSet.has(i)));   // selection only among what is shown
+  st.grid.shown = shownSet;
+  st.grid.sel = L.onlyShown(st.grid.sel, shownSet);   // selection only among what is shown
   $('#grid-pending').textContent = pending ? L.gridPending(pending) : '';
   $('#grid-pending').hidden = !pending;
   shown.forEach(([i, it], k) => {
@@ -951,7 +952,7 @@ async function loadThumb(cell) {        // only once the cell is visible; the by
 
 function selectCell(i, mods) {
   const r = L.gridSelect(st.grid.sel, i, mods, st.grid.anchor);
-  st.grid.sel = r.sel; st.grid.anchor = r.anchor;
+  st.grid.sel = L.onlyShown(r.sel, st.grid.shown); st.grid.anchor = r.anchor;   // S9: only what is shown
   renderGridSelection();
 }
 

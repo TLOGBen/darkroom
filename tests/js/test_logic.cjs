@@ -324,6 +324,12 @@ test('S8 / S9 / S10: badge titles, the grid filter, reset / restore sentences an
   assert.deepEqual(L.gridFilter(items, 'edited').shown.map(([i]) => i), [0, 3]);
   assert.deepEqual(L.gridFilter(items, 'plain').shown.map(([i]) => i), [1]);
   assert.equal(L.gridFilter(items, 'plain').pending, 1);
+  // selection only among the shown cells: a Shift range over a filtered grid skips the hidden photos
+  const shown = new Set(L.gridFilter(items, 'edited').shown.map(([i]) => i));
+  const range = L.gridSelect(new Set(), 3, {shift: true}, 0);
+  assert.deepEqual([...L.onlyShown(range.sel, shown)].sort(), [0, 3]);
+  assert.deepEqual([...L.onlyShown(range.sel, null)].sort(), [0, 1, 2, 3]);       // no filter rendered yet: unchanged
+  assert.notEqual(L.onlyShown(range.sel, null), range.sel);                       // a copy, never the same Set
   assert.deepEqual(L.FILTERS, ['all', 'edited', 'plain']);
   assert.deepEqual(L.FILTER_LABELS, {all: '全部', edited: '已編輯', plain: '未編輯'});
   assert.equal(L.gridPending(3), '還有 3 張尚未判定');
