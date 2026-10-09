@@ -1,6 +1,6 @@
 // darkroom front-end logic without DOM access (shared by the page and the node:test suite).
 // Contract R3 (slider semantics), R5 (undo history), R6 (tree keyboard, search, typed values, curves),
-// CONTRACT-export X13 (export request and messages).
+// CONTRACT-export X13 (export request and messages), CONTRACT-preset-library K19, CONTRACT-photo-library PL15 / PLP9.
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory();
   else root.DarkroomLogic = factory();
@@ -128,6 +128,11 @@
         return Object.keys(ed.tweaks).length ? change(ed, {tweaks: {}}) : ed;
       case 'endGesture':
         return ed.gesture ? Object.assign({}, ed, {gesture: null}) : ed;
+      case 'restoreEdit': {             // PL15 / PLP9: a photo's saved edit comes back; history starts afresh
+        const e = a.edit;
+        return {presetId: e.preset ? e.preset.id : null, strength: e.strength, tweaks: Object.assign({}, e.overrides),
+                past: [], future: [], gesture: null};
+      }
       case 'undo': {
         if (!canUndo(ed)) return ed;
         const prev = ed.past[ed.past.length - 1];
@@ -258,10 +263,56 @@
             lines: results.map((r) => (r.ok ? importedLine(r.id) : r.error))};
   }
 
+  // ---------------------------------------------------------------- PL15 / PLP9 photo library
+  // The edit of the open photo is saved AUTOSAVE_MS after the last change (latest wins); restoring a saved edit
+  // goes through the reducer's restoreEdit and never schedules a save. The grid selects, copies, pastes, exports.
+  const AUTOSAVE_MS = 500;
+  const PRESET_CHANGED = 'preset 已變更，這份編輯用的是當時的 preset 快照';
+  const PRESET_MISSING = 'preset 已不在庫裡，這份編輯用的是當時的 preset 快照';
+  const presetStatusText = (status) => (status === 'changed' ? PRESET_CHANGED : status === 'missing' ? PRESET_MISSING : '');
+  const copied = (sourceName) => `已複製 ${sourceName} 的編輯`;
+  const pasteConfirm = (sourceName, n) => `要用 ${sourceName} 的編輯取代 ${n} 張照片的編輯嗎？`;
+  const pasteDone = (ok, failed) => `已貼上 ${ok} 張，失敗 ${failed} 張`;
+  const exportSelectedDone = (ok, failed) => `已匯出 ${ok} 張，失敗 ${failed} 張`;
+  const gridCount = (n, total) => `已選 ${n}／${total} 張`;
+
+  function editBody(ed, path) {         // PUT /api/edit: the open photo's edit as the editor shows it
+    const overrides = {};
+    for (const [k, d] of Object.entries(ed.tweaks)) if (d) overrides[k] = d;
+    return {path, preset_id: ed.presetId, strength: strengthInEffect(ed), overrides};
+  }
+
+  function gridSelect(sel, i, mods, anchor) {   // click = only i; Ctrl = toggle i; Shift = anchor..i
+    const out = new Set(mods && mods.ctrl ? sel : []);
+    if (mods && mods.shift) {
+      const a = anchor == null ? 0 : anchor;
+      for (let k = Math.min(a, i); k <= Math.max(a, i); k++) out.add(k);
+      return {sel: out, anchor: a};
+    }
+    if (mods && mods.ctrl) { if (out.has(i)) out.delete(i); else out.add(i); return {sel: out, anchor: i}; }
+    out.add(i);
+    return {sel: out, anchor: i};
+  }
+
+  function exportItems(paths, edits) {  // edits: {path: get_edit result | null (failed)} -> {items, failed}
+    const items = [];
+    let failed = 0;
+    for (const p of paths) {
+      const r = edits[p];
+      if (!r) { failed++; continue; }
+      if (r.edit) items.push({path: p, preset_id: r.edit.preset ? r.edit.preset.id : null, strength: r.edit.strength,
+                              overrides: r.edit.overrides});
+      else items.push({path: p});
+    }
+    return {items, failed};
+  }
+
   return {sliderView, tweakFor, sliderTooltip, clampNote, fmtNum, History, treeKey, matchPreset,
           HISTORY_LIMIT, initialEditor, reduce, strengthEnabled, strengthInEffect, canUndo, canRedo, carryHintVisible,
           parseValueInput, curveAtStrength, curvePath,
           EXPORT_BUSY, EXPORT_DEFAULT_QUALITY, baseName, exportDone, exportFailed, exportBody, exportMessage,
           USER_GROUP, FAV_EMPTY, UPLOAD_BATCH_CHARS, presetSaved, importSummary, importedLine, canSavePreset, favMark,
-          groupCreated, saveBody, uploadBatches, importReport};
+          groupCreated, saveBody, uploadBatches, importReport,
+          AUTOSAVE_MS, PRESET_CHANGED, PRESET_MISSING, presetStatusText, copied, pasteConfirm, pasteDone,
+          exportSelectedDone, gridCount, editBody, gridSelect, exportItems};
 });

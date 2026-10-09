@@ -14,6 +14,8 @@ const st = {
   presets: [], byId: {}, flags: {}, sliders: [], groups: [], byKey: {}, libGroups: {groups: [], ungrouped: 0},
   image: null, folder: null,
   detail: null,
+  edit: null, clipboard: null,                                   // the open photo's saved edit; the copied edit (PL15)
+  grid: {folder: null, items: [], sel: new Set(), anchor: 0},   // the thumbnail grid (PLP9)
   search: '', openFolders: {'\u0001fav': true}, openGroups: loadPref('openGroups', {basic: true}), hslTab: 'h', focusKey: null,
   holding: false, originalUrl: null, originalFor: null,
 };
@@ -50,7 +52,7 @@ async function api(method, url, body) {
 function refreshUndo() { $('#undo').disabled = !L.canUndo(ed); $('#redo').disabled = !L.canRedo(ed); }
 function renderHint() { $('#carry-hint').hidden = !L.carryHintVisible(ed, !!st.image); }
 
-async function dispatch(action) {
+async function dispatch(action, opts) {
   const prev = ed;
   ed = L.reduce(ed, action);
   if (ed === prev) return;
@@ -60,6 +62,7 @@ async function dispatch(action) {
   const sameState = prev.presetId === ed.presetId && prev.strength === ed.strength &&
     JSON.stringify(prev.tweaks) === JSON.stringify(ed.tweaks);
   if (sameState) return;
+  if (!(opts && opts.restore)) scheduleSave();          // PL15: every change is saved; restoring one is not a change
   if (prev.presetId !== ed.presetId) {
     requestPreview();
     await loadPreset(ed.presetId);
@@ -569,6 +572,15 @@ async function savePreset() {
   if (name === null) return;
   const group = prompt('群組（用「 - 」分層）', L.USER_GROUP);
   if (group === null) return;
+  if (st.image) {                       // PLP6: the photo library's edit (its snapshot) is the source
+    await flushSave();
+    try {
+      const r = await (await api('POST', '/api/edit/save-preset', {path: st.image.path, name, group: group || L.USER_GROUP})).json();
+      await reloadLibrary();
+      toast(L.presetSaved(r.name));
+    } catch (e) { toast(e.message, true); }
+    return;
+  }
   const req = {preset_id: ed.presetId, strength: strengthNow(), overrides: Object.fromEntries(Object.entries(ed.tweaks).filter(([, d]) => d))};
   await libraryCall('save', L.saveBody(req, name, group), (r) => L.presetSaved(r.name));
 }
@@ -577,6 +589,7 @@ async function savePreset() {
 async function openPhoto(path) {
   path = (path || '').trim().replace(/^"|"$/g, '');
   if (!path) return;
+  await flushSave();                    // the previous photo's last change goes out first (PL15)
   setStatus('讀取照片中…', 'busy');
   let info;
   try { info = await (await api('POST', '/api/open', {path})).json(); }
@@ -590,7 +603,199 @@ async function openPhoto(path) {
   catch (e) { st.folder = null; }
   renderPosition();
   refreshExport();
-  requestPreview();
+  await loadEdit(path);
+  if (st.image && st.image.path === path) requestPreview();
+}
+
+// ------------------------------------------------------------------ photo library: autosave (PL15 / PLP9)
+// The open photo's edit is sent AUTOSAVE_MS after the last change; only the newest state waits (latest wins).
+const save = {timer: null, dirty: false, promise: null};
+
+function scheduleSave() {
+  if (!st.image) return;
+  save.dirty = true;
+  clearTimeout(save.timer);
+  save.timer = setTimeout(flushSave, L.AUTOSAVE_MS);
+}
+
+async function sendSave(path, body) {
+  try {
+    const res = await (await api('PUT', '/api/edit', body)).json();
+    if (st.image && st.image.path === path) applyEditInfo(res);
+  } catch (e) { toast('儲存編輯失敗：' + e.message, true); }
+}
+
+async function flushSave() {            // sends what is pending and waits until nothing is in flight
+  clearTimeout(save.timer); save.timer = null;
+  while (save.dirty || save.promise) {
+    if (save.promise) { await save.promise; continue; }
+    save.dirty = false;
+    if (!st.image) break;
+    const path = st.image.path;
+    save.promise = sendSave(path, L.editBody(ed, path)).finally(() => { save.promise = null; });
+  }
+}
+
+function applyEditInfo(res) {           // {fingerprint, edit, preset_status} from get_edit / set_edit
+  st.edit = res.edit;
+  const s = $('#edit-status'), text = L.presetStatusText(res.preset_status);
+  s.textContent = text; s.title = text; s.hidden = !text;
+  refreshCopy();
+}
+
+function restore(res) {                 // a saved edit comes back: through the reducer, never scheduling a save
+  applyEditInfo(res);
+  if (!res.edit) return;
+  dispatch({type: 'restoreEdit', edit: res.edit}, {restore: true});
+}
+
+async function loadEdit(path) {         // after opening: restore the saved edit, else keep today's state (R5)
+  try { restore(await (await api('GET', '/api/edit?path=' + encodeURIComponent(path))).json()); }
+  catch (e) { applyEditInfo({edit: null, preset_status: null}); toast('讀取編輯失敗：' + e.message, true); }
+}
+
+// ------------------------------------------------------------------ photo library: the grid (PL15 / PLP9)
+const gridIO = typeof IntersectionObserver === 'function'
+  ? new IntersectionObserver((entries) => { for (const e of entries) if (e.isIntersecting) loadThumb(e.target); }, {rootMargin: '200px'})
+  : null;
+
+function showGrid(on) {
+  document.body.classList.toggle('grid-open', on);
+  $('#grid').hidden = !on;
+  $('#grid-btn').setAttribute('aria-pressed', String(on));
+  if (!on) return;
+  const folder = st.image ? st.image.path.replace(/[\\/][^\\/]*$/, '') : $('#grid-path').value;
+  if (folder && !$('#grid-path').value) $('#grid-path').value = folder;
+  if (folder && folder !== st.grid.folder) loadGrid(folder);
+}
+
+async function loadGrid(folder) {
+  folder = (folder || '').trim().replace(/^"|"$/g, '');
+  if (!folder) return;
+  let res;
+  try { res = await (await api('GET', '/api/folder/thumbnails?folder=' + encodeURIComponent(folder))).json(); }
+  catch (e) { toast('讀取資料夾失敗：' + e.message, true); return; }
+  st.grid = {folder: res.folder, items: res.items, sel: new Set(), anchor: 0};
+  $('#grid-path').value = res.folder;
+  renderGrid();
+}
+
+function renderGrid() {
+  const box = $('#grid-cells');
+  box.innerHTML = '';
+  st.grid.items.forEach((it, i) => {
+    const cell = document.createElement('div');
+    cell.className = 'cell' + (it.edited ? ' edited' : '');
+    cell.dataset.path = it.path; cell.dataset.i = String(i); cell.tabIndex = i ? -1 : 0;
+    cell.setAttribute('role', 'option');
+    cell.innerHTML = '<div class="pic"></div><span class="mark" aria-hidden="true"></span><span class="nm"></span>';
+    cell.querySelector('.nm').textContent = it.name;
+    cell.title = it.path;
+    cell.onclick = (e) => selectCell(i, {ctrl: e.ctrlKey || e.metaKey, shift: e.shiftKey});
+    cell.ondblclick = () => openFromGrid(it.path);
+    cell.onkeydown = (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); openFromGrid(it.path); }
+      else if (e.key === ' ') { e.preventDefault(); selectCell(i, {ctrl: true}); }
+      else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+        const n = box.children[i + (e.key === 'ArrowRight' ? 1 : -1)];
+        if (n) { e.preventDefault(); n.focus(); }
+      }
+    };
+    box.appendChild(cell);
+    if (gridIO) gridIO.observe(cell); else loadThumb(cell);
+  });
+  renderGridSelection();
+}
+
+async function loadThumb(cell) {        // only once the cell is visible; the bytes come through api() (PLP11)
+  if (cell.dataset.loaded) return;
+  cell.dataset.loaded = '1';
+  const pic = cell.querySelector('.pic');
+  try {
+    const r = await api('GET', '/api/thumbnail?path=' + encodeURIComponent(cell.dataset.path));
+    cell.classList.toggle('edited', r.headers.get('X-Edited') === '1');
+    const img = document.createElement('img');
+    img.alt = ''; img.src = URL.createObjectURL(await r.blob());
+    pic.innerHTML = ''; pic.appendChild(img);
+  } catch (e) {
+    cell.classList.add('missing');
+    pic.textContent = cell.querySelector('.nm').textContent;
+    pic.title = e.message;
+  }
+}
+
+function selectCell(i, mods) {
+  const r = L.gridSelect(st.grid.sel, i, mods, st.grid.anchor);
+  st.grid.sel = r.sel; st.grid.anchor = r.anchor;
+  renderGridSelection();
+}
+
+function renderGridSelection() {
+  const cells = $('#grid-cells').children;
+  for (const c of cells) c.classList.toggle('selected', st.grid.sel.has(+c.dataset.i));
+  $('#grid-count').textContent = L.gridCount(st.grid.sel.size, st.grid.items.length);
+  refreshCopy();
+}
+
+async function openFromGrid(path) {
+  await openPhoto(path);
+  showGrid(false);
+}
+
+const selectedPaths = () => [...st.grid.sel].sort((a, b) => a - b).map((i) => st.grid.items[i].path);
+
+function refreshCopy() {                // copy needs the open photo's edit; paste needs a clipboard and a selection
+  $('#copy-edit-btn').disabled = !st.edit;
+  $('#paste-edit-btn').disabled = !(st.clipboard && st.grid.sel.size > 0);
+  $('#export-selected-btn').disabled = !(st.grid.sel.size > 0);
+}
+
+function copyEdit() {
+  if (!st.edit || !st.image) return;
+  st.clipboard = {edit: st.edit, name: L.baseName(st.image.path)};
+  toast(L.copied(st.clipboard.name));
+  refreshCopy();
+}
+
+async function pasteEdit() {
+  const targets = selectedPaths();
+  if (!st.clipboard || !targets.length) return;
+  if (!confirm(L.pasteConfirm(st.clipboard.name, targets.length))) return;
+  let res;
+  try { res = await (await api('POST', '/api/edit/paste', {targets, edit: st.clipboard.edit})).json(); }
+  catch (e) { toast(e.message, true); return; }
+  const ok = res.results.filter((r) => r.ok).length;
+  toast(L.pasteDone(ok, res.results.length - ok), ok < res.results.length);
+  res.results.forEach((r, k) => {
+    if (!r.ok) return;
+    const cell = $('#grid-cells').querySelector(`.cell[data-i="${st.grid.items.findIndex((it) => it.path === targets[k])}"]`);
+    if (cell) cell.classList.add('edited');
+  });
+  if (st.image && targets.includes(st.image.path)) await loadEdit(st.image.path);
+}
+
+async function exportSelected() {       // each photo with its own saved edit; format / quality from the toolbar
+  const paths = selectedPaths();
+  if (!paths.length) return;
+  await flushSave();
+  const edits = {};
+  for (const p of paths) {
+    try { edits[p] = await (await api('GET', '/api/edit?path=' + encodeURIComponent(p))).json(); }
+    catch (e) { edits[p] = null; }
+  }
+  const {items, failed} = L.exportItems(paths, edits);
+  let ok = 0, fail = failed;
+  if (items.length) {
+    const format = $('#export-format').value;
+    const body = {items, format};
+    if (format === 'jpeg') body.quality = L.exportBody({}, format, $('#export-quality').value).quality;
+    try {
+      const res = await (await api('POST', '/api/export', body)).json();
+      ok = res.results.filter((r) => r.ok).length;
+      fail += res.results.length - ok;
+    } catch (e) { fail += items.length; toast(e.message, true); }
+  }
+  toast(L.exportSelectedDone(ok, fail), fail > 0);
 }
 
 // ------------------------------------------------------------------ export (X13): reads the edit, never changes it
@@ -646,7 +851,7 @@ function toggleLib() {
 }
 
 // ------------------------------------------------------------------ wiring
-const typing = (el) => el && (el.matches('input[type=text], input[type=search]') || el.isContentEditable);
+const typing = (el) => el && (el.matches('input[type=text], input[type=search], input[type=number]') || el.isContentEditable);
 
 async function init() {
   $('#open-form').addEventListener('submit', (e) => { e.preventDefault(); openPhoto($('#photo-path').value); });
@@ -672,6 +877,14 @@ async function init() {
   document.addEventListener('click', (e) => { if (!e.target.closest('.menu-pop')) closeMenu(); });
   $('#export-format').addEventListener('change', refreshExport);
   refreshExport();
+  $('#grid-btn').onclick = () => showGrid(!document.body.classList.contains('grid-open'));
+  $('#grid-load').onclick = () => loadGrid($('#grid-path').value);
+  $('#grid-path').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); loadGrid($('#grid-path').value); } });
+  $('#copy-edit-btn').onclick = copyEdit;
+  $('#paste-edit-btn').onclick = pasteEdit;
+  $('#export-selected-btn').onclick = exportSelected;
+  window.addEventListener('beforeunload', () => { if (save.dirty) flushSave(); });
+  refreshCopy();
   $('#search').addEventListener('input', (e) => { st.search = e.target.value.trim(); renderTree(); });
   $('#preset-tree').addEventListener('keydown', onTreeKey);
   const hold = $('#hold');
@@ -682,7 +895,7 @@ async function init() {
     const k = e.key.toLowerCase();
     if ((e.ctrlKey || e.metaKey) && k === 'z') { e.preventDefault(); if (e.shiftKey) redo(); else undo(); return; }
     if ((e.ctrlKey || e.metaKey) && k === 'y') { e.preventDefault(); redo(); return; }
-    if (e.target.closest && e.target.closest('#preset-tree')) return;
+    if (e.target.closest && (e.target.closest('#preset-tree') || e.target.closest('#grid'))) return;
     if (e.key === '\\' && !e.repeat) showOriginal(true);
     else if (e.key === 'ArrowLeft' && !e.target.matches('input')) step(-1);
     else if (e.key === 'ArrowRight' && !e.target.matches('input')) step(1);
@@ -710,5 +923,6 @@ async function init() {
 }
 
 window.darkroom = {st, pv, get ed() { return ed; }, dispatch, requestPreview, selectPreset, openPhoto, step, undo, redo, setStrength,
-                   exportPhoto, savePreset, importFiles, reloadLibrary};
+                   exportPhoto, savePreset, importFiles, reloadLibrary,
+                   flushSave, loadEdit, showGrid, loadGrid, copyEdit, pasteEdit, exportSelected};
 init().catch((e) => toast('載入失敗：' + e.message, true));

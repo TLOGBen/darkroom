@@ -97,7 +97,8 @@ def hides(body):
 
 PROTECTED = ("#carry-hint", ".hint", "#reset-all", "#undo", "#redo", "#toggle-lib", "#toggle-sl",
              "#prev", "#next", "#strength-100", "#export-btn", "#export-format", "#export-quality",   # + X13
-             ".fav", ".row-menu", "#import-btn", "#save-preset-btn")                             # + K19
+             ".fav", ".row-menu", "#import-btn", "#save-preset-btn",                             # + K19
+             "#grid-btn", "#copy-edit-btn", "#paste-edit-btn", "#export-selected-btn")           # + PL15 / PLP9
 
 
 def hidden_in_media(css):
@@ -193,7 +194,8 @@ class TestPageStructure(unittest.TestCase):
         html = read("index.html")
         for ident in ("reset-all", "undo", "redo", "toggle-lib", "toggle-sl", "prev", "next", "strength-100",
                       "export-btn", "export-format", "export-quality",                                 # + X13
-                      "import-btn", "save-preset-btn"):                                                # + K19
+                      "import-btn", "save-preset-btn",                                                 # + K19
+                      "grid-btn", "copy-edit-btn", "paste-edit-btn", "export-selected-btn"):           # + PLP9
             tag = re.search(r'<[a-z]+ id="%s"[^>]*>' % ident, html).group(0)
             self.assertNotRegex(tag, r"\shidden(?:[\s=>])", ident)
         self.assertRegex(html, r'<span id="carry-hint"[^>]*title="目前修改尚未儲存，切換照片會沿用"')
@@ -295,6 +297,70 @@ class TestPageStructure(unittest.TestCase):
         from darkroom_app import cli
         m = __import__("re").search(r"const importedLine = \(id\) => `([^`]*)`;", logic)
         self.assertEqual(m.group(1).replace("${id}", "{id}"), cli.IMPORTED)
+
+    def test_photo_library_controls(self):  # CONTRACT-photo-library PL15 / PLP9
+        html = read("index.html")
+        self.assertRegex(html, r'<button id="grid-btn"[^>]*>.*縮圖格.*</button>')
+        grid = html[html.index('<main id="grid" hidden>'):html.index("</main>", html.index('<main id="grid"'))]
+        for ident in ("grid-path", "grid-load", "grid-count", "grid-cells"):
+            self.assertIn(f'id="{ident}"', grid, ident)
+        self.assertRegex(grid, r'<button id="copy-edit-btn"[^>]*\sdisabled>複製編輯</button>')
+        self.assertRegex(grid, r'<button id="paste-edit-btn"[^>]*\sdisabled>貼上編輯</button>')
+        self.assertRegex(grid, r'<button id="export-selected-btn"[^>]*\sdisabled>匯出所選</button>')
+        toolbar = html[html.index('<div class="pv-tools">'):html.index("</div>", html.index('<div class="pv-tools">'))]
+        self.assertIn('id="edit-status"', toolbar)
+        js = read("app.js")
+        # autosave: every change goes through dispatch -> scheduleSave; the PUT lives in sendSave only
+        self.assertIn("if (!(opts && opts.restore)) scheduleSave();", js)
+        self.assertEqual(js.count("api('PUT'"), 1)
+        send = js[js.index("async function sendSave"):js.index("async function flushSave")]
+        self.assertIn("api('PUT', '/api/edit', body)", send)
+        self.assertIn("save.timer = setTimeout(flushSave, L.AUTOSAVE_MS);", js)
+        # restoring a saved edit goes through the reducer with {restore: true} and never schedules a save
+        restore = js[js.index("function restore(res)"):js.index("async function loadEdit")]
+        self.assertIn("dispatch({type: 'restoreEdit', edit: res.edit}, {restore: true});", restore)
+        self.assertNotIn("scheduleSave", restore)
+        self.assertNotRegex(restore, r"(?<![\w.$])ed\s*=(?!=)")
+        load = js[js.index("async function loadEdit"):js.index("// ------------------------------------------------------------------ photo library: the grid")]
+        self.assertNotIn("scheduleSave", load)                      # get_edit failed: never saved over
+        self.assertIn("applyEditInfo({edit: null, preset_status: null})", load)
+        opened = js[js.index("async function openPhoto"):js.index("// ------------------------------------------------------------------ photo library: autosave")]
+        self.assertLess(opened.index("await flushSave();"), opened.index("api('POST', '/api/open'"))
+        self.assertLess(opened.index("await loadEdit(path);"), opened.index("requestPreview();"))
+        # the grid: thumbnails through api() once visible, selection through L.gridSelect
+        grid_js = js[js.index("// ------------------------------------------------------------------ photo library: the grid"):js.index("// ------------------------------------------------------------------ export (X13)")]
+        self.assertIn("api('GET', '/api/thumbnail?path=' + encodeURIComponent(cell.dataset.path))", grid_js)
+        self.assertIn("r.headers.get('X-Edited') === '1'", grid_js)
+        self.assertIn("IntersectionObserver", grid_js)
+        self.assertIn("L.gridSelect(st.grid.sel, i, mods, st.grid.anchor)", grid_js)
+        self.assertIn("$('#copy-edit-btn').disabled = !st.edit;", grid_js)
+        self.assertIn("$('#paste-edit-btn').disabled = !(st.clipboard && st.grid.sel.size > 0);", grid_js)
+        self.assertIn("$('#export-selected-btn').disabled = !(st.grid.sel.size > 0);", grid_js)
+        self.assertIn("confirm(L.pasteConfirm(st.clipboard.name, targets.length))", grid_js)
+        self.assertIn("api('POST', '/api/edit/paste', {targets, edit: st.clipboard.edit})", grid_js)
+        self.assertIn("toast(L.copied(st.clipboard.name));", grid_js)
+        self.assertIn("toast(L.pasteDone(ok, res.results.length - ok)", grid_js)
+        export_sel = grid_js[grid_js.index("async function exportSelected"):]
+        self.assertIn("L.exportItems(paths, edits)", export_sel)
+        self.assertIn("api('POST', '/api/export', body)", export_sel)
+        self.assertIn("toast(L.exportSelectedDone(ok, fail)", export_sel)
+        for banned in ("dest_dir", "dispatch(", "History"):
+            self.assertNotIn(banned, export_sel, banned)
+        # save as preset: with a photo open, the photo library's edit is the source (PLP6)
+        save = js[js.index("async function savePreset"):js.index("// ------------------------------------------------------------------ photo library: autosave")]
+        self.assertIn("api('POST', '/api/edit/save-preset', {path: st.image.path, name, group: group || L.USER_GROUP})", save)
+        self.assertLess(save.index("await flushSave();"), save.index("/api/edit/save-preset"))
+
+    def test_photo_library_sentences_same_in_page_and_contract(self):  # PL15 / PLP9 constants
+        logic = read("logic.js")
+        self.assertIn("const AUTOSAVE_MS = 500;", logic)
+        self.assertIn("const PRESET_CHANGED = 'preset 已變更，這份編輯用的是當時的 preset 快照';", logic)
+        self.assertIn("const PRESET_MISSING = 'preset 已不在庫裡，這份編輯用的是當時的 preset 快照';", logic)
+        self.assertIn("const copied = (sourceName) => `已複製 ${sourceName} 的編輯`;", logic)
+        self.assertIn("const pasteConfirm = (sourceName, n) => `要用 ${sourceName} 的編輯取代 ${n} 張照片的編輯嗎？`;", logic)
+        self.assertIn("const pasteDone = (ok, failed) => `已貼上 ${ok} 張，失敗 ${failed} 張`;", logic)
+        self.assertIn("const exportSelectedDone = (ok, failed) => `已匯出 ${ok} 張，失敗 ${failed} 張`;", logic)
+        self.assertIn("const gridCount = (n, total) => `已選 ${n}／${total} 張`;", logic)
 
     def test_section_headers_are_buttons(self):  # R6
         js = read("app.js")

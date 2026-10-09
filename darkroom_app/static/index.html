@@ -17,6 +17,7 @@
   <button id="prev" title="上一張（←）" disabled>◀</button>
   <span id="position" class="mute">尚未開啟照片</span>
   <button id="next" title="下一張（→）" disabled>▶</button>
+  <button id="grid-btn" title="縮圖格：看照片資料夾、多選、複製／貼上編輯、匯出所選" aria-pressed="false"><span class="btn-icon" aria-hidden="true">▦</span><span class="btn-text">縮圖格</span></button>
   <span id="carry-hint" class="hint" title="目前修改尚未儲存，切換照片會沿用" hidden><span class="hint-icon" aria-hidden="true">⚑ 未儲存</span><span class="hint-text">目前修改尚未儲存，切換照片會沿用</span></span>
   <span class="sp"></span>
   <button id="undo" class="icon" title="復原（Ctrl+Z）" disabled>↶</button>
@@ -43,6 +44,7 @@
     <div class="pv-tools">
       <button id="hold" title="按住看原圖（快捷鍵：按住 \）">按住看原圖</button>
       <span id="skip-banner" class="warnbar" hidden></span><span id="skip-note" class="skipnote" hidden></span>
+      <span id="edit-status" class="editstatus" hidden></span>
       <span class="sp"></span>
       <span class="mute" id="photo-size"></span>
       <select id="export-format" title="匯出格式：JPEG 8-bit 或 TIFF 16-bit"><option value="jpeg" selected>JPEG</option><option value="tiff">TIFF</option></select>
@@ -74,6 +76,19 @@
   <section class="col" id="col-sl">
     <div class="scroll" id="sliders"></div>
   </section>
+</main>
+
+<main id="grid" hidden>
+  <div class="gridbar">
+    <input type="text" id="grid-path" placeholder="照片資料夾路徑，例如 D:\Photos" spellcheck="false">
+    <button id="grid-load" title="列出這個資料夾的照片">載入</button>
+    <span id="grid-count" class="mute"></span>
+    <span class="sp"></span>
+    <button id="copy-edit-btn" title="複製目前照片的編輯（preset 快照、強度、微調）" disabled>複製編輯</button>
+    <button id="paste-edit-btn" title="把複製的編輯貼到選取的照片，取代它們原本的編輯" disabled>貼上編輯</button>
+    <button id="export-selected-btn" title="用各自的編輯、全解析度匯出選取的照片（格式與品質取上方匯出設定）" disabled>匯出所選</button>
+  </div>
+  <div class="scroll cells" id="grid-cells" role="listbox" aria-multiselectable="true" aria-label="照片縮圖格"></div>
 </main>
 
 <div id="toast" role="status"></div>

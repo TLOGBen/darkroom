@@ -307,3 +307,49 @@ test('K19: preset library messages, save body, upload batches', () => {
   const rep = L.importReport([{ok: true, source: 'a.xmp', id: 'import:a'}, {ok: false, source: 'b.txt', error: '不是 .xmp 檔：b.txt'}]);
   assert.deepEqual(rep, {summary: '已匯入 1 個，1 個沒有匯入', lines: ['已匯入：import:a', '不是 .xmp 檔：b.txt']});
 });
+
+test('PL15 / PLP9: restoring a saved edit, autosave body, grid selection, export items, sentences', () => {
+  let ed = L.reduce(L.initialEditor(), {type: 'selectPreset', id: 'a'});
+  ed = L.reduce(ed, {type: 'setStrength', value: 150});
+  assert.equal(ed.past.length, 2);
+  const edit = {schema: 'darkroom-edit/1', fingerprint: 'f', preset: {id: 'p', name: 'n', group: 'g', params: {}},
+                strength: 80, overrides: {Exposure2012: 0.5}};
+  const r = L.reduce(ed, {type: 'restoreEdit', edit});
+  assert.deepEqual([r.presetId, r.strength, r.tweaks, r.past, r.future, r.gesture], ['p', 80, {Exposure2012: 0.5}, [], [], null]);
+  assert.equal(L.canUndo(r), false);                                   // history starts afresh
+  assert.notEqual(r.tweaks, edit.overrides);                            // a copy, not the response object
+  const none = L.reduce(ed, {type: 'restoreEdit', edit: {schema: 'darkroom-edit/1', fingerprint: 'f', preset: null, strength: 100, overrides: {}}});
+  assert.deepEqual([none.presetId, none.strength, none.tweaks], [null, 100, {}]);
+  assert.deepEqual(L.editBody(r, 'D:/x.jpg'), {path: 'D:/x.jpg', preset_id: 'p', strength: 80, overrides: {Exposure2012: 0.5}});
+  assert.deepEqual(L.editBody(L.reduce(r, {type: 'selectPreset', id: null}), 'x').strength, 100);   // no preset: 100
+  assert.deepEqual(L.editBody(L.reduce(r, {type: 'resetAll'}), 'x').overrides, {});
+  assert.equal(L.AUTOSAVE_MS, 500);
+  // grid selection: click = only i; Ctrl = toggle; Shift = range from the anchor
+  let s = L.gridSelect(new Set(), 2, {}, 0);
+  assert.deepEqual([[...s.sel], s.anchor], [[2], 2]);
+  s = L.gridSelect(s.sel, 4, {ctrl: true}, s.anchor);
+  assert.deepEqual([[...s.sel].sort(), s.anchor], [[2, 4], 4]);
+  s = L.gridSelect(s.sel, 2, {ctrl: true}, s.anchor);
+  assert.deepEqual([[...s.sel], s.anchor], [[4], 2]);
+  s = L.gridSelect(s.sel, 6, {shift: true}, s.anchor);
+  assert.deepEqual([[...s.sel].sort(), s.anchor], [[2, 3, 4, 5, 6], 2]);
+  s = L.gridSelect(s.sel, 0, {shift: true}, s.anchor);
+  assert.deepEqual([...s.sel].sort(), [0, 1, 2]);
+  s = L.gridSelect(new Set([5]), 1, {shift: true}, undefined);
+  assert.deepEqual([...s.sel].sort(), [0, 1]);                          // anchor defaults to 0
+  s = L.gridSelect(s.sel, 7, {}, s.anchor);
+  assert.deepEqual([...s.sel], [7]);
+  // export items: each photo with its own edit; a failed get_edit counts as failed
+  const items = L.exportItems(['a', 'b', 'c'], {a: {fingerprint: 'x', edit, preset_status: 'current'},
+                                                b: {fingerprint: 'y', edit: null, preset_status: null}, c: null});
+  assert.deepEqual(items, {items: [{path: 'a', preset_id: 'p', strength: 80, overrides: {Exposure2012: 0.5}}, {path: 'b'}], failed: 1});
+  assert.equal(L.presetStatusText('changed'), 'preset 已變更，這份編輯用的是當時的 preset 快照');
+  assert.equal(L.presetStatusText('missing'), 'preset 已不在庫裡，這份編輯用的是當時的 preset 快照');
+  assert.equal(L.presetStatusText('current'), '');
+  assert.equal(L.presetStatusText(null), '');
+  assert.equal(L.copied('IMG_1.jpg'), '已複製 IMG_1.jpg 的編輯');
+  assert.equal(L.pasteConfirm('IMG_1.jpg', 3), '要用 IMG_1.jpg 的編輯取代 3 張照片的編輯嗎？');
+  assert.equal(L.pasteDone(2, 1), '已貼上 2 張，失敗 1 張');
+  assert.equal(L.exportSelectedDone(3, 0), '已匯出 3 張，失敗 0 張');
+  assert.equal(L.gridCount(2, 10), '已選 2／10 張');
+});
