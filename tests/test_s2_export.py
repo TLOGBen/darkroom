@@ -723,6 +723,34 @@ class TestExportPresets(S2Case):
                            capture_output=True, cwd=_util.REPO)
         self.assertEqual((r.returncode, r.stdout.decode().strip()), (0, "[]"), r.stderr.decode("utf-8", "replace"))
 
+    def test_export_presets_keep_good_entries_and_foreign_version(self):  # E12a (seal F2)
+        path = os.path.join(self.data, "export-presets.json")
+        os.makedirs(self.data)
+        good = dict(DEFAULTS, format="png", quality=None)
+        raw = json.dumps({"schema": "darkroom-export-presets/1",
+                          "presets": {"好的": good, "壞的": {"format": "gif"}, "舊版鍵": {"format": "jpeg"}}},
+                         ensure_ascii=False).encode("utf-8")
+        with open(path, "wb") as f:
+            f.write(raw)
+        self.assertEqual(self.f.list_export_presets(), {"presets": [{"name": "好的", "settings": good}]})
+        with mock.patch("time.time", return_value=1700000001):
+            self.f.save_export_preset("新", {})
+        self.assertEqual([p["name"] for p in self.f.list_export_presets()["presets"]], ["好的", "新"])   # kept
+        self.assertEqual(read_bytes(os.path.join(self.data, "export-presets.json.bad-1700000001")), raw)
+        # another version of the schema is never rewritten: conflict on every operation, the bytes stay
+        foreign = json.dumps({"schema": "darkroom-export-presets/2", "presets": {}, "extra": 1}).encode("utf-8")
+        with open(path, "wb") as f:
+            f.write(foreign)
+        want = ("conflict", "匯出預設檔版本不支援：darkroom-export-presets/2（export-presets.json）")
+        self.assertEqual(self.err(self.f.list_export_presets), want)
+        self.assertEqual(self.err(self.f.save_export_preset, "x", {}), want)
+        self.assertEqual(self.err(self.f.delete_export_preset, "x"), want)
+        photo = write_jpeg(self.p("f.jpg"), pattern(10, 12))
+        self.assertEqual(self.err(self.f.export, [{"path": photo}], export_preset="x", dest_dir=self.dest), want)
+        self.assertEqual(read_bytes(path), foreign)
+        self.assertEqual(sorted(n for n in os.listdir(self.data) if n.startswith("export-presets.json.bad")),
+                         ["export-presets.json.bad-1700000001"])
+
     def test_export_with_export_preset(self):  # E14
         photo = write_jpeg(self.p("e.jpg"), pattern(1000, 1500))
         self.f.save_export_preset("大檔", {"format": "png", "bit_depth": 16,
@@ -803,6 +831,13 @@ class TestSavedEdit(S2Case):
         self.assertEqual(res[0], {"ok": False, "source": "a.jpg",
                                   "error": f"匯出失敗：a.jpg：照片庫的編輯檔損壞：{edit}"})
         self.assertTrue(res[1]["ok"])
+        self.assertEqual(os.listdir(self.dest), ["a.png"])
+        # seal F6: an edit file of another version is the third "cannot read" case - that item fails, never the original
+        with open(edit, "w", encoding="utf-8") as fh:
+            json.dump({"schema": "darkroom-edit/99", "fingerprint": fp}, fh)
+        res = self.f.export([{"path": photo}], "png", dest_dir=self.dest)["results"]
+        self.assertEqual(res, [{"ok": False, "source": "a.jpg",
+                                "error": "匯出失敗：a.jpg：編輯檔版本不支援：darkroom-edit/99（a.jpg）"}])
         self.assertEqual(os.listdir(self.dest), ["a.png"])
 
 

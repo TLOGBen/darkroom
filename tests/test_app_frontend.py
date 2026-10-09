@@ -757,10 +757,22 @@ class TestPageStructure(unittest.TestCase):
         # the dialog never changes the edit and never names a folder (X13, XP16)
         for banned in ("dispatch(", "L.reduce", "History", "dest_dir", "scheduleSave"):
             self.assertNotIn(banned, dlg, banned)
-        # the open photo goes by its path after the save is flushed (E15); with the photo library off, its parameters
+        # seal F1 (E15a): the open photo always carries its shown parameters (never only its path), after the save
+        # is flushed when the photo library is on
         cei = js[js.index("async function currentExportItems"):js.index("async function exportPhoto")]
-        self.assertIn("if (capReasonOf('photo_library') !== null) return [currentRequest()];", cei)
-        self.assertRegex(cei, r"await flushSave\(\);\n\s*await flushRetries\(\);\n\s*return \[\{path: st\.image\.path\}\];")
+        self.assertRegex(cei, r"if \(capReasonOf\('photo_library'\) === null\) \{\n\s*await flushSave\(\);\n"
+                              r"\s*await flushRetries\(\);\n\s*\}\n\s*return \[currentRequest\(\)\];\n\}")
+        self.assertNotIn("{path: st.image.path}", cei)
+        self.assertEqual(cei.count("return "), 1)
+        req = js[js.index("function currentRequest()"):js.index("function requestPreview()")]
+        self.assertIn("return {image_id: st.image.image_id, preset_id: ed.presetId, strength: strengthNow(), overrides};",
+                      req)
+        # seal F3: the dialog's checkboxes are read as .checked on the real path, into the keys settingsFromForm uses
+        fv = js[js.index("function formValues()"):js.index("const dialogSettings")]
+        self.assertIn("max_kb_on: $('#xd-max-kb-on').checked", fv)
+        self.assertIn("remove_gps: $('#xd-remove-gps').checked", fv)
+        self.assertIn("metadata: $('#xd-metadata').value", fv)
+        self.assertIn("const dialogSettings = () => L.settingsFromForm(formValues());", js)
         body = js[js.index("async function exportPhoto"):js.index("function renderPosition")]
         self.assertIn("api('POST', '/api/export', L.exportRequest(items, settings || dialogSettings()))", body)
         # 820 x 600: the dialog fits and scrolls inside
@@ -809,6 +821,9 @@ class TestPageStructure(unittest.TestCase):
         self.assertIn("[L.DOWNLOAD_GROUP_XMP, () => downloadPresets(L.groupPresetIds(st.presets, path))],", js)
         dl = js[js.index("function saveBlob"):js.index("function readBase64")]
         self.assertIn("for (const batch of L.idBatches(ids)) {", dl)
+        self.assertIn("if (ids.length > L.PRESET_IDS_MAX) { toast(L.downloadTooMany(ids.length), true); return; }",
+                      dl)                                                    # seal F4: E30 "≤ 500"
+        self.assertLess(dl.index("L.downloadTooMany"), dl.index("api('POST', '/api/preset-library/files'"))
         self.assertIn("api('POST', '/api/preset-library/files', {preset_ids: batch})", dl)
         self.assertIn("new Blob([bytes], {type: 'application/octet-stream'})", dl)
         self.assertIn("a.href = url; a.download = fileName;", dl)

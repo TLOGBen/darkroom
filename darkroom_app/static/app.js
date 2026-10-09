@@ -729,6 +729,7 @@ function saveBlob(fileName, base64) {
 
 async function downloadPresets(ids) {
   if (!ids.length) return;
+  if (ids.length > L.PRESET_IDS_MAX) { toast(L.downloadTooMany(ids.length), true); return; }   // E30 (seal F4)
   const files = [];
   try {
     for (const batch of L.idBatches(ids)) {
@@ -1260,13 +1261,15 @@ function refreshExport() {
   $('#reset-original-btn').disabled = !st.image;     // S10
 }
 
-// S2 E15: the open photo is exported by its path (the server uses the saved edit, just flushed); with the photo
-// library off nothing is saved, so the shown parameters go with the photo instead
+// S2 E15a (seal F1): the open photo is exported exactly as it is shown - its own parameters go with it, never only
+// its path, so a save that failed (PLP1, a full disk) can never turn the export into the saved or original photo.
+// The save is still flushed first (S11), so the photo library holds what was exported whenever it can.
 async function currentExportItems() {
-  if (capReasonOf('photo_library') !== null) return [currentRequest()];
-  await flushSave();
-  await flushRetries();
-  return [{path: st.image.path}];
+  if (capReasonOf('photo_library') === null) {
+    await flushSave();
+    await flushRetries();
+  }
+  return [currentRequest()];
 }
 
 async function commitCarried() {        // S11: a carried-over state becomes this photo's edit before it is exported

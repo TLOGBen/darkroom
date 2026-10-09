@@ -604,6 +604,7 @@
   const PRESET_IDS_MAX = 500;                                 // E16: one request takes 1..500 ids; more go in batches
   const downloadSummary = (ok, fail) => `已下載 ${ok} 個 .xmp，${fail} 個沒有下載`;
   const downloadedLine = (fileName) => `已下載：${fileName}`;
+  const downloadTooMany = (n) => `這個群組有 ${n} 個 preset，一次最多下載 500 個；請先下載裡面的子群組`;   // E30 (seal F4)
   function idBatches(ids) {
     const out = [];
     for (let i = 0; i < ids.length; i += PRESET_IDS_MAX) out.push(ids.slice(i, i + PRESET_IDS_MAX));
@@ -624,7 +625,7 @@
           exportPresetDeleted, UNDO_LABEL, EXPORT_PRESET_NAME_PROMPT, resizeTarget, settingsFromForm, exportSettingsFrom,
           exportDialogState, exportSummary, exportRequest, sameSettings,
           CAP_ORDER, CAP_LABELS, CAP_OK, CAP_AVAILABLE, CAP_REFRESH, capStatus, capOff, capButtonText, capLine, capReason,
-          DOWNLOAD_XMP, DOWNLOAD_GROUP_XMP, PRESET_IDS_MAX, downloadSummary, downloadedLine, idBatches, groupPresetIds,
+          DOWNLOAD_XMP, DOWNLOAD_GROUP_XMP, PRESET_IDS_MAX, downloadSummary, downloadedLine, downloadTooMany, idBatches, groupPresetIds,
           downloadReport,
           HISTORY_LIMIT, initialEditor, reduce, strengthEnabled, strengthInEffect, canUndo, canRedo, carryHintVisible,
           parseValueInput, curveAtStrength, curvePath,

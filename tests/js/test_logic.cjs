@@ -634,6 +634,7 @@ test('E30: capability status sentences and the preset download helpers', () => {
   const ids = Array.from({length: 1201}, (_, i) => 'p' + i);
   assert.deepEqual(L.idBatches(ids).map((b) => b.length), [500, 500, 201]);
   assert.deepEqual(L.idBatches(ids).flat(), ids);
+  assert.equal(L.downloadTooMany(1466), '這個群組有 1466 個 preset，一次最多下載 500 個；請先下載裡面的子群組');   // seal F4
   const presets = [{id: 'a', group: '電影'}, {id: 'b', group: '電影 - 暖調'}, {id: 'c', group: '電影院'}, {id: 'd', group: ''}];
   assert.deepEqual(L.groupPresetIds(presets, '電影'), ['a', 'b']);
   assert.deepEqual(L.groupPresetIds(presets, '電影 - 暖調'), ['b']);

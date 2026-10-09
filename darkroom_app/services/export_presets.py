@@ -45,21 +45,38 @@ def _sorted(presets):
     return {k: presets[k] for k in sorted(presets, key=lambda s: (s.casefold(), s))}
 
 
+SCHEMA_PREFIX = "darkroom-export-presets/"
+
+
+def valid_entry(name, s):
+    """True when one preset is a clean name with exactly the 8 normalised settings (E12)."""
+    if clean_name(name) != name or not isinstance(s, dict) or list(s) != list(SETTING_KEYS):
+        return False
+    try:
+        return normalize_settings(s) == s
+    except DarkroomError:
+        return False
+
+
+def read_file(obj):
+    """(presets kept, "ok" | "bad" | "foreign") of a parsed file (E12a, seal F2): another version of the schema is
+    "foreign" (never rewritten, as PL9); otherwise only the presets that are not valid are dropped (state "bad", so
+    the byte copy is kept before the next write) - one bad entry never empties the whole list."""
+    if isinstance(obj, dict) and isinstance(obj.get("schema"), str) and obj["schema"] != SCHEMA \
+            and obj["schema"].startswith(SCHEMA_PREFIX):
+        return {}, "foreign"
+    if not isinstance(obj, dict) or list(obj) != ["schema", "presets"] or obj["schema"] != SCHEMA \
+            or not isinstance(obj["presets"], dict):
+        return {}, "bad"
+    kept = {k: v for k, v in obj["presets"].items() if valid_entry(k, v)}
+    if len(kept) > PRESETS_MAX:
+        kept = dict(list(kept.items())[:PRESETS_MAX])
+    return kept, ("ok" if len(kept) == len(obj["presets"]) else "bad")
+
+
 def valid_file(obj):
     """True when obj is exactly the E12 schema with normalised settings."""
-    if not isinstance(obj, dict) or list(obj) != ["schema", "presets"] or obj["schema"] != SCHEMA:
-        return False
-    if not isinstance(obj["presets"], dict) or len(obj["presets"]) > PRESETS_MAX:
-        return False
-    for name, s in obj["presets"].items():
-        if clean_name(name) != name or not isinstance(s, dict) or list(s) != list(SETTING_KEYS):
-            return False
-        try:
-            if normalize_settings(s) != s:
-                return False
-        except DarkroomError:
-            return False
-    return True
+    return read_file(obj)[1] == "ok"
 
 
 class ExportPresetService:
@@ -92,7 +109,7 @@ class ExportPresetService:
                 time.sleep(0.1)
 
     def _read(self):
-        """(presets dict, raw bytes or None, "missing" | "ok" | "bad")."""
+        """(presets dict, raw bytes or None, "missing" | "ok" | "bad"); another schema version -> conflict."""
         _, path = self._paths()
         try:
             raw = self._read_raw(path)
@@ -104,9 +121,10 @@ class ExportPresetService:
             obj = json.loads(raw.decode("utf-8"))
         except (UnicodeDecodeError, ValueError):
             return {}, raw, "bad"
-        if not valid_file(obj):
-            return {}, raw, "bad"
-        return dict(obj["presets"]), raw, "ok"
+        presets, state = read_file(obj)
+        if state == "foreign":                                    # E12a: another version is never overwritten
+            raise DarkroomError("conflict", M.XP_FOREIGN.format(schema=obj["schema"]))
+        return presets, raw, state
 
     def _root(self):
         d, _ = self._paths()

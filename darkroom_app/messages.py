@@ -118,6 +118,7 @@ XP_SETTINGS_NOT_OBJECT = "匯出設定要是物件：{settings}"                
 XP_UNKNOWN_KEY = "匯出設定不認得的鍵：{key}（可用 format、bit_depth、quality、max_kb、resize、metadata、remove_gps、sharpen）"   # IP8
 XP_NOT_FOUND = "找不到匯出預設：{name}"
 XP_BUSY = "匯出預設正被其他程式修改，請稍後再試"
+XP_FOREIGN = "匯出預設檔版本不支援：{schema}（export-presets.json）"     # E12a (seal F2), conflict
 XP_UNAVAILABLE = "無法寫入匯出預設：{reason}"
 PRESET_IDS_INVALID = "preset_ids 要是 1～500 個 preset id"
 PRESET_EXPORT_INTO_LIBRARY = "不能把 preset 匯出到 preset 資料夾或 preset 庫裡：{dest_dir}"
