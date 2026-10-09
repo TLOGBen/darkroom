@@ -694,6 +694,7 @@ async function savePreset() {
   const group = prompt('群組（用「 - 」分層）', L.USER_GROUP);
   if (group === null) return;
   if (st.image) await flushSave();
+  await flushRetries();                 // S13g''': no failed save is left to land over what follows
   if (st.image && st.edit) {            // PLP6: the photo library's edit (its snapshot) is the source
     // (a photo whose state is only carried over, never changed, has no edit yet: the library flow below, seal F4)
     try {
@@ -713,8 +714,8 @@ let openSeq = 0;                        // S1: the newest openPhoto wins; older 
 async function openPhoto(path) {
   path = (path || '').trim().replace(/^"|"$/g, '');
   if (!path) return;
-  await flushRetries();                 // S13g': a failed save of any photo goes out before anything is re-read
   await flushSave();                    // the previous photo's last change goes out first (PL15)
+  await flushRetries();                 // S13g''': no failed save is left to land over what follows
   const token = ++openSeq;
   setStatus('讀取照片中…', 'busy');
   let info;
@@ -1017,6 +1018,7 @@ async function gridResetOriginal() {
   const targets = selectedPaths();
   if (!targets.length) return;
   await flushSave();
+  await flushRetries();                 // S13g''': no failed save is left to land over what follows
   if (!confirm(L.resetConfirm(targets.length))) return;
   await gridEach('DELETE', '/api/edit', targets, L.resetDone, 'plain');
 }
@@ -1025,6 +1027,7 @@ async function gridRestore() {
   const targets = selectedPaths();
   if (!targets.length) return;
   await flushSave();
+  await flushRetries();                 // S13g''': no failed save is left to land over what follows
   await gridEach('POST', '/api/edit/restore', targets, L.restoreDone, 'edited');
 }
 
@@ -1038,6 +1041,8 @@ async function resetOriginal() {        // the editor: one undo step; the photo 
 async function restorePrevious() {
   if (!st.image || st.edit || !st.previous) return;
   await flushSave();
+  await flushRetries();                 // S13g''': no failed save is left to land over what follows
+  if (!st.image || st.edit) return;      // a retried save just gave this photo an edit: nothing to restore
   const path = st.image.path;
   try {
     const res = await (await api('POST', '/api/edit/restore', {path})).json();
@@ -1087,6 +1092,7 @@ async function pasteEdit() {
   const targets = selectedPaths();
   if (!st.clipboard || !targets.length) return;
   await flushSave();                    // S13 (h): the open photo's pending save never races the paste
+  await flushRetries();                 // S13g''': no failed save is left to land over what follows
   if (!confirm(L.pasteConfirm(st.clipboard.name, targets.length))) return;
   let res;
   try { res = await (await api('POST', '/api/edit/paste', {targets, edit: st.clipboard.edit})).json(); }
@@ -1104,6 +1110,7 @@ async function exportSelected() {       // each photo with its own saved edit; f
   btn.disabled = true; btn.textContent = L.EXPORT_BUSY;
   try {
     await flushSave();
+    await flushRetries();                 // S13g''': no failed save is left to land over what follows
     const edits = {}, lines = [];
     for (const p of paths) {
       try { edits[p] = await (await api('GET', '/api/edit?path=' + encodeURIComponent(p))).json(); }

@@ -396,7 +396,19 @@ class TestPageStructure(unittest.TestCase):
         self.assertIn("for (const path of [...save.retries.keys()]) await flushRetry(path);",
                       js[js.index("async function flushRetries"):js.index("function unloadSave")])
         op = js[js.index("async function openPhoto"):js.index("function openFailed")]
-        self.assertLess(op.index("await flushRetries();"), op.index("await flushSave();"))   # before re-read
+        self.assertLess(op.index("await flushSave();"), op.index("await flushRetries();"))   # N5: both settled
+        self.assertLess(op.index("await flushRetries();"), op.index("api('POST', '/api/open'"))  # before re-read
+        # N6 (seal re-verification 2): every user-level write or read of saved edits settles the retries first
+        for start, end in (("async function openPhoto", "function openFailed"),
+                           ("async function savePreset", "// ------------------------------------------------------------------ photo library: autosave"),
+                           ("async function gridResetOriginal", "async function gridRestore"),
+                           ("async function gridRestore", "async function resetOriginal"),
+                           ("async function restorePrevious", "// ------------------------------------------------------------------ export (X13)"),
+                           ("async function pasteEdit", "async function exportSelected"),
+                           ("async function exportSelected", "// ------------------------------------------------------------------ export (X13)")):
+            body = js[js.index(start):js.index(end, js.index(start))]
+            i = body.index("await flushSave();")
+            self.assertRegex(body[i:], r"^await flushSave\(\);[^\n]*\n\s*await flushRetries\(\);", start)
         self.assertIn("if (st.image && st.image.path === path) applyEditInfo(res);", send)
         opened = js[js.index("async function openPhoto"):js.index("function openFailed")]
         self.assertLess(opened.index("await flushSave();"), opened.index("st.loading = token;"))
