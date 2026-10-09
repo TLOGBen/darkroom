@@ -283,3 +283,26 @@ test('R3 / F8: tooltip sentence with suffixes is fixed', () => {
   assert.equal(L.sliderTooltip(S_CONTRAST, 80, 150, -5), 'preset × 150% = 120，已到上限 100；微調 -5；雙擊＝還原這一項');
   assert.equal(L.sliderTooltip(S_CONTRAST, 40, 0, 0), 'preset × 0% = 0；雙擊＝還原這一項');
 });
+
+test('K19: preset library messages, save body, upload batches', () => {
+  assert.equal(L.presetSaved('我的'), '已存成 preset：我的');
+  assert.equal(L.importSummary(2, 1), '已匯入 2 個，1 個沒有匯入');
+  assert.equal(L.FAV_EMPTY, '還沒有最愛，按 preset 旁的 ☆ 加入');
+  assert.equal(L.USER_GROUP, '自存 preset');
+  assert.equal(L.favMark(true), '★');
+  assert.equal(L.favMark(false), '☆');
+  const ed = L.initialEditor();
+  assert.equal(L.canSavePreset(ed), false);
+  assert.equal(L.canSavePreset(Object.assign({}, ed, {presetId: 'p'})), true);
+  assert.equal(L.canSavePreset(Object.assign({}, ed, {tweaks: {Exposure2012: 0.5}})), true);
+  assert.deepEqual(L.saveBody({preset_id: 'p', strength: 150, overrides: {Exposure2012: 0.5}}, '名', ''),
+                   {name: '名', group: '自存 preset', preset_id: 'p', strength: 150, overrides: {Exposure2012: 0.5}});
+  assert.equal(L.saveBody({preset_id: null, strength: 100, overrides: {}}, 'x', 'A - B').group, 'A - B');
+  const big = 'x'.repeat(400000);
+  const batches = L.uploadBatches([{name: 'a.xmp', data_base64: big}, {name: 'b.xmp', data_base64: big},
+                                   {name: 'c.xmp', data_base64: 'y'}]);
+  assert.deepEqual(batches.map((b) => b.map((f) => f.name)), [['a.xmp'], ['b.xmp', 'c.xmp']]);
+  for (const b of batches) assert.ok(b.reduce((n, f) => n + f.data_base64.length, 0) <= L.UPLOAD_BATCH_CHARS);
+  const rep = L.importReport([{ok: true, source: 'a.xmp', id: 'import:a'}, {ok: false, source: 'b.txt', error: '不是 .xmp 檔：b.txt'}]);
+  assert.deepEqual(rep, {summary: '已匯入 1 個，1 個沒有匯入', lines: ['已匯入：import:a', '不是 .xmp 檔：b.txt']});
+});

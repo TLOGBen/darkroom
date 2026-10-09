@@ -221,8 +221,46 @@
     return result.ok ? exportDone(result.output) : result.error;
   }
 
+  // ---------------------------------------------------------------- K19 preset library
+  // Favorites, the action menus, import (uploaded bytes only: no path goes over HTTP, KP4) and "save as preset".
+  // Saving reads the edit and never changes it (no dispatch, no undo step).
+  const USER_GROUP = '自存 preset';
+  const FAV_EMPTY = '還沒有最愛，按 preset 旁的 ☆ 加入';
+  const UPLOAD_BATCH_CHARS = 700000;                        // KP4: base64 per request, under the 1 MiB body limit
+  const presetSaved = (name) => `已存成 preset：${name}`;
+  const importSummary = (ok, fail) => `已匯入 ${ok} 個，${fail} 個沒有匯入`;
+  const importedLine = (id) => `已匯入：${id}`;
+  const canSavePreset = (ed) => ed.presetId !== null || Object.keys(ed.tweaks).some((k) => ed.tweaks[k]);
+  const favMark = (fav) => (fav ? '★' : '☆');
+
+  function saveBody(req, name, group) {      // req = the preview request of the current edit
+    const body = {name, group: group || USER_GROUP, preset_id: req.preset_id, strength: req.strength,
+                  overrides: req.overrides};
+    return body;
+  }
+
+  function uploadBatches(files) {            // files: [{name, data_base64}] -> batches of at most UPLOAD_BATCH_CHARS
+    const out = [];
+    let cur = [], size = 0;
+    for (const f of files) {
+      const n = f.data_base64.length + f.name.length;
+      if (cur.length && size + n > UPLOAD_BATCH_CHARS) { out.push(cur); cur = []; size = 0; }
+      cur.push(f); size += n;
+    }
+    if (cur.length) out.push(cur);
+    return out;
+  }
+
+  function importReport(results) {           // {summary, lines}: one line per file, in order
+    const ok = results.filter((r) => r.ok).length;
+    return {summary: importSummary(ok, results.length - ok),
+            lines: results.map((r) => (r.ok ? importedLine(r.id) : r.error))};
+  }
+
   return {sliderView, tweakFor, sliderTooltip, clampNote, fmtNum, History, treeKey, matchPreset,
           HISTORY_LIMIT, initialEditor, reduce, strengthEnabled, strengthInEffect, canUndo, canRedo, carryHintVisible,
           parseValueInput, curveAtStrength, curvePath,
-          EXPORT_BUSY, EXPORT_DEFAULT_QUALITY, baseName, exportDone, exportFailed, exportBody, exportMessage};
+          EXPORT_BUSY, EXPORT_DEFAULT_QUALITY, baseName, exportDone, exportFailed, exportBody, exportMessage,
+          USER_GROUP, FAV_EMPTY, UPLOAD_BATCH_CHARS, presetSaved, importSummary, importedLine, canSavePreset, favMark,
+          saveBody, uploadBatches, importReport};
 });

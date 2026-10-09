@@ -11,10 +11,10 @@ const STRENGTH = {min: 0, max: 200, step: 1};
 const NARROW = window.matchMedia('(max-width: 960px)');
 
 const st = {
-  presets: [], byId: {}, flags: {}, sliders: [], groups: [], byKey: {},
+  presets: [], byId: {}, flags: {}, sliders: [], groups: [], byKey: {}, libGroups: {groups: [], ungrouped: 0},
   image: null, folder: null,
   detail: null,
-  search: '', openFolders: {}, openGroups: loadPref('openGroups', {basic: true}), hslTab: 'h', focusKey: null,
+  search: '', openFolders: {'\u0001fav': true}, openGroups: loadPref('openGroups', {basic: true}), hslTab: 'h', focusKey: null,
   holding: false, originalUrl: null, originalFor: null,
 };
 let ed = L.initialEditor();   // {presetId, strength, tweaks, past, future, gesture}
@@ -54,6 +54,7 @@ async function dispatch(action) {
   if (ed === prev) return;
   refreshUndo();
   renderHint();
+  refreshSavePreset();
   const sameState = prev.presetId === ed.presetId && prev.strength === ed.strength &&
     JSON.stringify(prev.tweaks) === JSON.stringify(ed.tweaks);
   if (sameState) return;
@@ -159,6 +160,10 @@ function splitGroup(group) {
 
 function buildTree() {
   const root = new Map();
+  for (const g of st.libGroups.groups) {            // K10: explicit groups show even when empty
+    if (!root.has(g.name)) root.set(g.name, {subs: new Map(), items: []});
+    for (const c of g.children) if (!root.get(g.name).subs.has(c.name)) root.get(g.name).subs.set(c.name, []);
+  }
   for (const p of st.presets) {
     const [top, sub] = splitGroup(p.group);
     if (!root.has(top)) root.set(top, {subs: new Map(), items: []});
@@ -194,21 +199,27 @@ function presetEl(p, depth, showPath) {
   el.className = 'tnode preset' + (p.id === ed.presetId ? ' active' : '') + (p.supported ? '' : ' unsupported');
   el.style.paddingLeft = (6 + depth * 14) + 'px';
   el.dataset.id = p.id;
-  el.innerHTML = `<span class="tw"></span><span class="nm"></span>${flagHtml(p)}` + (showPath ? '<span class="path"></span>' : '');
+  el.innerHTML = `<span class="tw"></span><span class="nm"></span>${flagHtml(p)}` + (showPath ? '<span class="path"></span>' : '') +
+    `<span class="sp"></span><button class="fav" tabindex="-1" aria-pressed="${!!p.favorite}" title="${p.favorite ? '移除最愛' : '加入最愛'}">${L.favMark(p.favorite)}</button>` +
+    '<button class="row-menu" tabindex="-1" title="動作：改名、搬到…、新群組" aria-haspopup="menu">⋯</button>';
   el.querySelector('.nm').textContent = p.name;
   if (showPath) el.querySelector('.path').textContent = p.group;
   el.title = p.group ? p.group + ' / ' + p.name : p.name;
+  el.querySelector('.fav').onclick = (e) => { e.stopPropagation(); toggleFavorite(p); };
+  el.querySelector('.row-menu').onclick = (e) => { e.stopPropagation(); presetMenu(p, e.currentTarget); };
   if (p.supported) el.onclick = () => { st.focusKey = 'p:' + p.id; selectPreset(p.id); };
   return el;
 }
 
-function folderEl(name, key, count, depth) {
+function folderEl(name, key, count, depth, path) {
   const open = !!st.openFolders[key];
   const el = document.createElement('div');
   el.className = 'tnode folder';
   el.style.paddingLeft = (6 + depth * 14) + 'px';
-  el.innerHTML = `<span class="tw">${open ? '▼' : '▶'}</span><span class="nm"></span><span class="cnt">${count}</span>`;
+  el.innerHTML = `<span class="tw">${open ? '▼' : '▶'}</span><span class="nm"></span><span class="cnt">${count}</span>` +
+    (path ? '<span class="sp"></span><button class="row-menu" tabindex="-1" title="動作：群組改名、新群組" aria-haspopup="menu">⋯</button>' : '');
   el.querySelector('.nm').textContent = name;
+  if (path) el.querySelector('.row-menu').onclick = (e) => { e.stopPropagation(); groupMenu(path, e.currentTarget); };
   el.onclick = () => { st.focusKey = 'f:' + key; st.openFolders[key] = !open; renderTree(); };
   return el;
 }
@@ -231,15 +242,27 @@ function renderTree() {
     box.appendChild(n);
     hits.forEach((p) => addRow(presetEl(p, 0, true), {type: 'preset', key: 'p:' + p.id, id: p.id, depth: 0, parent: -1}));
   } else {
+    const favs = st.presets.filter((p) => p.favorite);
+    const FK = '\u0001fav';
+    const favIdx = treeRows.length;
+    addRow(folderEl('★ 最愛', FK, favs.length, 0, null), {type: 'folder', key: 'f:' + FK, fkey: FK, depth: 0, open: !!st.openFolders[FK], parent: -1});
+    if (st.openFolders[FK]) {
+      if (!favs.length) {
+        const e = document.createElement('div');
+        e.className = 'fav-empty'; e.textContent = L.FAV_EMPTY;
+        box.appendChild(e);
+      }
+      favs.forEach((p) => addRow(presetEl(p, 1, true), {type: 'preset', key: 'p:\u0001' + p.id, id: p.id, depth: 1, parent: favIdx}));
+    }
     for (const [top, node] of buildTree()) {
       const count = node.items.length + [...node.subs.values()].reduce((a, l) => a + l.length, 0);
       const topIdx = treeRows.length;
-      addRow(folderEl(top, top, count, 0), {type: 'folder', key: 'f:' + top, fkey: top, depth: 0, open: !!st.openFolders[top], parent: -1});
+      addRow(folderEl(top, top, count, 0, top === '（未分組）' ? null : top), {type: 'folder', key: 'f:' + top, fkey: top, depth: 0, open: !!st.openFolders[top], parent: -1});
       if (!st.openFolders[top]) continue;
       for (const [sub, list] of node.subs) {
         const key = top + '\u0000' + sub;
         const subIdx = treeRows.length;
-        addRow(folderEl(sub, key, list.length, 1), {type: 'folder', key: 'f:' + key, fkey: key, depth: 1, open: !!st.openFolders[key], parent: topIdx});
+        addRow(folderEl(sub, key, list.length, 1, top + ' - ' + sub), {type: 'folder', key: 'f:' + key, fkey: key, depth: 1, open: !!st.openFolders[key], parent: topIdx});
         if (st.openFolders[key]) list.forEach((p) => addRow(presetEl(p, 2, false), {type: 'preset', key: 'p:' + p.id, id: p.id, depth: 2, parent: subIdx}));
       }
       node.items.forEach((p) => addRow(presetEl(p, 1, false), {type: 'preset', key: 'p:' + p.id, id: p.id, depth: 1, parent: topIdx}));
@@ -439,6 +462,115 @@ function renderStrength() {
 }
 const setStrength = (v, gesture) => dispatch({type: 'setStrength', value: v, gesture});
 
+// ------------------------------------------------------------------ preset library (K19): index only, never the files
+async function reloadLibrary() {
+  const [presets, flags, groups] = await Promise.all([
+    api('GET', '/api/presets').then((r) => r.json()),
+    api('GET', '/api/preset_flags').then((r) => r.json()),
+    api('GET', '/api/preset-library/groups').then((r) => r.json()),
+  ]);
+  st.presets = presets; st.flags = flags; st.libGroups = groups; st.byId = {};
+  presets.forEach((p) => { st.byId[p.id] = p; });
+  renderTree();
+}
+
+async function libraryCall(path, body, done) {
+  try {
+    const res = await (await api('POST', '/api/preset-library/' + path, body)).json();
+    await reloadLibrary();
+    if (done) toast(done(res));
+    return res;
+  } catch (e) { toast(e.message, true); return null; }
+}
+
+const toggleFavorite = (p) => libraryCall('favorite', {preset_id: p.id, favorite: !p.favorite});
+
+function closeMenu() { const m = document.querySelector('.menu-pop'); if (m) m.remove(); }
+
+function showMenu(anchor, items) {
+  closeMenu();
+  const m = document.createElement('div');
+  m.className = 'menu-pop'; m.setAttribute('role', 'menu');
+  for (const [label, fn] of items) {
+    const b = document.createElement('button');
+    b.setAttribute('role', 'menuitem'); b.textContent = label;
+    b.onclick = (e) => { e.stopPropagation(); closeMenu(); fn(); };
+    m.appendChild(b);
+  }
+  const r = anchor.getBoundingClientRect();
+  m.style.left = Math.min(r.left, window.innerWidth - 180) + 'px'; m.style.top = (r.bottom + 2) + 'px';
+  document.body.appendChild(m);
+  m.querySelector('button').focus();
+  m.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeMenu(); anchor.focus(); } });
+}
+
+function askNewGroup(base) {
+  const g = prompt('新群組名稱（用「 - 」分層）', base ? base + ' - ' : '');
+  if (g !== null) libraryCall('groups/create', {group: g}, (r) => '已建立群組：' + r.group);
+}
+
+function presetMenu(p, anchor) {
+  showMenu(anchor, [
+    ['改名…', () => { const n = prompt('preset 名稱', p.name); if (n !== null) libraryCall('rename', {preset_id: p.id, name: n}); }],
+    ['搬到…', () => { const g = prompt('搬到群組（用「 - 」分層）', p.group); if (g !== null) libraryCall('move', {preset_id: p.id, group: g}); }],
+    ['新群組…', () => askNewGroup(p.group)],
+  ]);
+}
+
+function groupMenu(path, anchor) {
+  showMenu(anchor, [
+    ['群組改名…', () => { const n = prompt('群組的新名稱（完整路徑）', path); if (n !== null) libraryCall('groups/rename', {group: path, new_name: n}); }],
+    ['新群組…', () => askNewGroup(path)],
+  ]);
+}
+
+function readBase64(file) {
+  return new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload = () => resolve(String(fr.result).replace(/^data:[^,]*,/, ''));
+    fr.onerror = () => reject(fr.error);
+    fr.readAsDataURL(file);
+  });
+}
+
+async function importFiles(fileList) {
+  const files = [];
+  for (const f of fileList) files.push({name: f.name, data_base64: await readBase64(f)});
+  if (!files.length) return;
+  const results = [];
+  try {
+    for (const batch of L.uploadBatches(files)) {      // only the bytes the user picked, never a path (KP4)
+      results.push(...(await (await api('POST', '/api/preset-library/import', {files: batch})).json()).results);
+    }
+  } catch (e) { toast(e.message, true); }
+  if (!results.length) return;
+  const rep = L.importReport(results);
+  const box = $('#import-result');
+  box.innerHTML = '';
+  const head = document.createElement('div'); head.className = 'ir-head'; head.textContent = rep.summary;
+  const close = document.createElement('button'); close.className = 'icon'; close.textContent = '×'; close.title = '關閉';
+  close.onclick = () => { box.hidden = true; };
+  head.appendChild(close);
+  box.appendChild(head);
+  results.forEach((r, i) => { const l = document.createElement('div'); l.className = r.ok ? 'ok' : 'err'; l.textContent = rep.lines[i]; box.appendChild(l); });
+  box.hidden = false;
+  toast(rep.summary, results.some((r) => !r.ok));
+  await reloadLibrary();
+}
+
+// "save as preset" reads the edit and never changes it: no dispatch, no undo step (K19)
+function refreshSavePreset() { $('#save-preset-btn').disabled = !L.canSavePreset(ed); }
+
+async function savePreset() {
+  if (!L.canSavePreset(ed)) return;
+  const name = prompt('自存 preset 的名稱', ed.presetId !== null && st.byId[ed.presetId] ? st.byId[ed.presetId].name : '');
+  if (name === null) return;
+  const group = prompt('群組（用「 - 」分層）', L.USER_GROUP);
+  if (group === null) return;
+  const req = {preset_id: ed.presetId, strength: strengthNow(), overrides: Object.fromEntries(Object.entries(ed.tweaks).filter(([, d]) => d))};
+  await libraryCall('save', L.saveBody(req, name, group), (r) => L.presetSaved(r.name));
+}
+
 // ------------------------------------------------------------------ photos
 async function openPhoto(path) {
   path = (path || '').trim().replace(/^"|"$/g, '');
@@ -531,6 +663,11 @@ async function init() {
   });
   $('#reset-all').onclick = () => dispatch({type: 'resetAll'});
   $('#export-btn').onclick = exportPhoto;
+  $('#save-preset-btn').onclick = savePreset;
+  $('#import-btn').onclick = () => $('#import-file').click();
+  $('#import-file').addEventListener('change', (e) => { const fl = [...e.target.files]; e.target.value = ''; importFiles(fl); });
+  $('#new-group-btn').onclick = () => askNewGroup('');
+  document.addEventListener('click', (e) => { if (!e.target.closest('.menu-pop')) closeMenu(); });
   $('#export-format').addEventListener('change', refreshExport);
   refreshExport();
   $('#search').addEventListener('input', (e) => { st.search = e.target.value.trim(); renderTree(); });
@@ -550,12 +687,13 @@ async function init() {
   });
   document.addEventListener('keyup', (e) => { if (e.key === '\\' && st.holding) showOriginal(false); });
 
-  const [presets, sl, flags] = await Promise.all([
+  const [presets, sl, flags, groups] = await Promise.all([
     api('GET', '/api/presets').then((r) => r.json()),
     api('GET', '/api/sliders').then((r) => r.json()),
     api('GET', '/api/preset_flags').then((r) => r.json()),
+    api('GET', '/api/preset-library/groups').then((r) => r.json()),
   ]);
-  st.presets = presets; st.flags = flags;
+  st.presets = presets; st.flags = flags; st.libGroups = groups;
   presets.forEach((p) => { st.byId[p.id] = p; });
   st.sliders = sl.sliders; st.groups = sl.groups;
   sl.sliders.forEach((s) => { st.byKey[s.key] = s; });
@@ -563,11 +701,12 @@ async function init() {
   renderStrength();
   renderSliders();
   refreshUndo();
+  refreshSavePreset();
   const q = new URLSearchParams(location.search).get('path');
   const last = q || loadPref('lastPath', '');
   if (last) { $('#photo-path').value = last; openPhoto(last); }
 }
 
 window.darkroom = {st, pv, get ed() { return ed; }, dispatch, requestPreview, selectPreset, openPhoto, step, undo, redo, setStrength,
-                   exportPhoto};
+                   exportPhoto, savePreset, importFiles, reloadLibrary};
 init().catch((e) => toast('載入失敗：' + e.message, true));

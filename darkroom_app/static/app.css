@@ -134,6 +134,23 @@ input.v-edit { width: 58px; font: inherit; font-size: 12px; text-align: right; c
 #toast.err { background: #a33; }
 
 /* medium windows: narrower side columns */
+/* K19: favorites, row actions, import results (always visible: never hidden on narrow windows, R6 / H11) */
+.tnode .sp { flex: 1; }
+.tnode .fav, .tnode .row-menu { flex: none; background: none; border: none; color: #9a9a9a; padding: 0 3px; cursor: pointer;
+  font-size: 13px; line-height: 1; }
+.tnode .fav[aria-pressed="true"] { color: #f2c94c; }
+.tnode .fav:hover, .tnode .row-menu:hover { color: #fff; }
+.fav-empty { color: var(--faint); font-size: 12px; padding: 2px 8px 4px 26px; }
+.libbar { gap: 4px; }
+.import-result { max-height: 140px; overflow: auto; font-size: 12px; padding: 4px 8px; border-bottom: 1px solid var(--line); }
+.import-result .ir-head { display: flex; justify-content: space-between; align-items: center; color: #e6e6e6; }
+.import-result .ok { color: #9fd49f; }
+.import-result .err { color: var(--warn); }
+.menu-pop { position: fixed; z-index: 20; display: flex; flex-direction: column; min-width: 160px; background: #2b2b2b;
+  border: 1px solid var(--line); box-shadow: 0 4px 14px rgba(0, 0, 0, .5); }
+.menu-pop button { text-align: left; background: none; border: none; color: #ddd; padding: 6px 10px; cursor: pointer; }
+.menu-pop button:hover, .menu-pop button:focus { background: #33404f; outline: none; }
+
 @media (max-width: 1280px) {
   :root { --lib-w: 230px; --sl-w: 340px; }
   #topbar .hint { flex: none; }

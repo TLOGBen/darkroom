@@ -96,7 +96,8 @@ def hides(body):
 
 
 PROTECTED = ("#carry-hint", ".hint", "#reset-all", "#undo", "#redo", "#toggle-lib", "#toggle-sl",
-             "#prev", "#next", "#strength-100", "#export-btn", "#export-format", "#export-quality")   # + X13
+             "#prev", "#next", "#strength-100", "#export-btn", "#export-format", "#export-quality",   # + X13
+             ".fav", ".row-menu", "#import-btn", "#save-preset-btn")                             # + K19
 
 
 def hidden_in_media(css):
@@ -191,7 +192,8 @@ class TestPageStructure(unittest.TestCase):
         self.assertGreater(checked, 0)                                  # the clipped text children are seen
         html = read("index.html")
         for ident in ("reset-all", "undo", "redo", "toggle-lib", "toggle-sl", "prev", "next", "strength-100",
-                      "export-btn", "export-format", "export-quality"):                                # + X13
+                      "export-btn", "export-format", "export-quality",                                 # + X13
+                      "import-btn", "save-preset-btn"):                                                # + K19
             tag = re.search(r'<[a-z]+ id="%s"[^>]*>' % ident, html).group(0)
             self.assertNotRegex(tag, r"\shidden(?:[\s=>])", ident)
         self.assertRegex(html, r'<span id="carry-hint"[^>]*title="目前修改尚未儲存，切換照片會沿用"')
@@ -249,6 +251,48 @@ class TestPageStructure(unittest.TestCase):
         from darkroom_app import messages
         self.assertEqual(m.group(1).replace("${fileName}", "{file_name}").replace("${reason}", "{reason}"),
                          messages.EXPORT_FAILED)
+
+    def test_preset_library_controls(self):  # CONTRACT-preset-library K19 / KP4
+        html = read("index.html")
+        start = html.index('<div class="pv-tools">')
+        toolbar = html[start:html.index("</div>", start)]
+        self.assertRegex(toolbar, r'<button id="save-preset-btn"[^>]*\sdisabled>存成 preset</button>')
+        lib = html[html.index('<section class="col" id="col-lib">'):html.index('<section class="col" id="col-pv">')]
+        self.assertRegex(lib, r'<button id="import-btn"[^>]*>匯入</button>')
+        self.assertRegex(lib, r'<input type="file" id="import-file" multiple accept="\.xmp" hidden>')
+        js = read("app.js")
+        # favorites first in the tree, toggles carry aria-pressed, rows get an action menu
+        render = js[js.index("function renderTree"):js.index("function focusRow")]
+        self.assertLess(render.index("★ 最愛"), render.index("buildTree()"))
+        self.assertIn("L.FAV_EMPTY", render)
+        self.assertIn('aria-pressed="${!!p.favorite}"', js)
+        self.assertIn("presetMenu(p, e.currentTarget)", js)
+        self.assertIn("groupMenu(path, e.currentTarget)", js)
+        for label in ("'改名…'", "'搬到…'", "'新群組…'", "'群組改名…'"):
+            self.assertIn(label, js)
+        # import: uploaded bytes in batches, never a path; one line per file
+        imp = js[js.index("async function importFiles"):js.index("function refreshSavePreset")]
+        self.assertIn("{files: batch}", imp)
+        self.assertIn("L.uploadBatches(files)", imp)
+        self.assertIn("L.importReport(results)", imp)
+        self.assertNotIn("paths", imp)
+        # save as preset never changes the edit (no dispatch, no undo step) and is disabled without anything to save
+        save = js[js.index("function refreshSavePreset"):js.index("// ------------------------------------------------------------------ photos")]
+        self.assertIn("$('#save-preset-btn').disabled = !L.canSavePreset(ed);", save)
+        self.assertIn("L.presetSaved(r.name)", save)
+        for banned in ("dispatch(", "History", "requestPreview"):
+            self.assertNotIn(banned, save, banned)
+        self.assertNotRegex(save, r"(?<![\w.$])ed\s*=(?!=)")
+        self.assertIn("refreshSavePreset();\n  const sameState", js)
+
+    def test_library_sentences_same_in_page_and_contract(self):  # K19 constants
+        logic = read("logic.js")
+        self.assertIn("const presetSaved = (name) => `已存成 preset：${name}`;", logic)
+        self.assertIn("const importSummary = (ok, fail) => `已匯入 ${ok} 個，${fail} 個沒有匯入`;", logic)
+        self.assertIn("const FAV_EMPTY = '還沒有最愛，按 preset 旁的 ☆ 加入';", logic)
+        from darkroom_app import cli
+        m = __import__("re").search(r"const importedLine = \(id\) => `([^`]*)`;", logic)
+        self.assertEqual(m.group(1).replace("${id}", "{id}"), cli.IMPORTED)
 
     def test_section_headers_are_buttons(self):  # R6
         js = read("app.js")
