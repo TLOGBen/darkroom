@@ -7,3 +7,6 @@ scratch/
 .strategic-advance/
 config.local.json
 *.lnk
+# purchased-preset derived files and captured third-party articles: local only, never published
+.claude/wayfinder/darkroom/prototypes/calibration/presets/
+.claude/read/material/
