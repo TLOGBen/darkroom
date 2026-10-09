@@ -418,6 +418,10 @@
   const gridCount = (n, total) => `已選 ${n}／${total} 張`;
   const saveEditFailed = (reason) => `儲存編輯失敗：${reason}`;
   const loadEditFailed = (reason) => `讀取編輯失敗：${reason}`;
+  // S3 seal (CONTRACT-s3-crop C29): a photo whose saved edit could not be read is never saved over - the screen
+  // state is not that edit, so an autosave would replace the saved crop and colours with it
+  const EDIT_UNREADABLE = '讀不到已存的編輯：這張的修改先不會自動存檔（以免蓋掉原本存的裁切與顏色），請重新開啟這張照片';
+  const saveAllowed = (unreadablePath, path) => unreadablePath == null || unreadablePath !== path;
   const loadFolderFailed = (reason) => `讀取資料夾失敗：${reason}`;
 
   function editBody(ed, path) {         // PUT /api/edit: the open photo's edit as the editor shows it
@@ -911,5 +915,5 @@
           RESET_TOAST, RESTORE_TOAST,
           AUTOSAVE_MS, PRESET_CHANGED, PRESET_MISSING, presetStatusText, copied, pasteConfirm, pasteDone,
           exportSelectedDone, gridCount, editBody, editRequest, detailFromSnapshot, gridSelect, exportItems,
-          saveEditFailed, loadEditFailed, loadFolderFailed};
+          saveEditFailed, loadEditFailed, loadFolderFailed, EDIT_UNREADABLE, saveAllowed};
 });

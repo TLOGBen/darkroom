@@ -323,13 +323,13 @@ def _shape_mask(s, H, W, device, grid=None):
         dx, dy = fx - zx, fy - zy
         n2 = dx * dx + dy * dy
         if n2 < 1e-9:
-            return torch.zeros(1, 1, H, W, device=device)
+            return torch.zeros_like(xs + ys)       # the size of what is rendered (S3 seal F1: with a grid too)
         m = (((xs - zx) * dx + (ys - zy) * dy) / n2).clamp(0, 1)
     else:  # Mask/CircularGradient: ellipse in the Left/Top/Right/Bottom box, rotated by Angle
         cx, cy = (s["Left"] + s["Right"]) / 2 * W, (s["Top"] + s["Bottom"]) / 2 * H
         a, b = abs(s["Right"] - s["Left"]) / 2 * W, abs(s["Bottom"] - s["Top"]) / 2 * H
         if a < 1e-6 or b < 1e-6:
-            return torch.zeros(1, 1, H, W, device=device)
+            return torch.zeros_like(xs + ys)       # the size of what is rendered (S3 seal F1: with a grid too)
         th = math.radians(s["Angle"])
         u = (xs - cx) * math.cos(th) + (ys - cy) * math.sin(th)
         v = -(xs - cx) * math.sin(th) + (ys - cy) * math.cos(th)

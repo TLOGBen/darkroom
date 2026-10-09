@@ -21,6 +21,7 @@ const st = {
   search: '', openFolders: {'\u0001fav': true}, openGroups: loadPref('openGroups', {basic: true}), hslTab: 'h', focusKey: null,
   holding: false, originalUrl: null, originalFor: null,
   caps: null, exportPresets: [],                                 // S2: GET /api/capabilities features; the export presets
+  editUnreadable: null,                                          // S3 C29: the path whose saved edit could not be read
 };
 let ed = L.initialEditor();   // {presetId, strength, tweaks, geometry, past, future, gesture}
 
@@ -857,6 +858,7 @@ async function openPhoto(path) {
   st.image = Object.assign(info, {path});
   await dispatch({type: 'carry'}, {restore: true});   // C24 (S11'): the crop is this photo's own, never carried over
   st.snapshots = {}; st.fingerprint = null; st.previous = false; st.editStatus = null;
+  st.editUnreadable = null;              // C29: until its edit is read, nothing knows whether it may be saved
   $('#photo-path').value = path;
   savePref('lastPath', path);
   $('#photo-size').textContent = `${info.width}×${info.height}`;
@@ -893,6 +895,7 @@ const save = {timer: null, dirty: false, pending: null, promise: null, retries: 
 
 function scheduleSave() {
   if (!st.image || st.loading) return;
+  if (!L.saveAllowed(st.editUnreadable, st.image.path)) return;   // C29: never over an edit that could not be read
   if (capReasonOf('photo_library') !== null) return;   // S2 E23: the photo library is off - nothing is saved
   const path = st.image.path;
   save.pending = {path, req: L.editRequest(ed, path, st.snapshots, st.fingerprint), retried: false};
@@ -968,7 +971,8 @@ function applyEditInfo(res) {           // {fingerprint, edit, preset_status, pr
   st.previous = !!res.previous;
   st.editStatus = res.preset_status || null;
   if (res.edit && res.edit.preset) st.snapshots[res.edit.preset.id] = res.edit.preset;   // S2: remembered
-  const s = $('#edit-status'), text = L.presetStatusText(res.preset_status);
+  const unreadable = !!(st.image && !L.saveAllowed(st.editUnreadable, st.image.path));   // C29: said on screen
+  const s = $('#edit-status'), text = unreadable ? L.EDIT_UNREADABLE : L.presetStatusText(res.preset_status);
   s.textContent = text; s.title = text; s.hidden = !text;
   renderHint();
   refreshCopy();
@@ -987,10 +991,12 @@ async function loadEdit(path, token) {  // after opening: restore the saved edit
   try { res = await (await api('GET', '/api/edit?path=' + encodeURIComponent(path))).json(); }
   catch (e) {
     if (!st.image || st.image.path !== path) return;
+    st.editUnreadable = path;           // C29: no autosave for this photo until a read succeeds
     applyEditInfo({edit: null, preset_status: null}); toast(L.loadEditFailed(L.explain(e.message)), true, e.message);
     return;
   }
   if (!st.image || st.image.path !== path || (token !== undefined && token !== openSeq)) return;   // S1
+  if (st.editUnreadable === path) st.editUnreadable = null;   // C29: read again successfully - saving may resume
   restore(res);
 }
 

@@ -825,5 +825,101 @@ test('C18 / C25 / C26: badges, the original cache key, paste confirmation, sente
   assert.equal(L.BADGE_ONLY_GEOMETRY, '只有裁切／旋轉');
   assert.equal(L.BADGE_CROPPED, '・已裁切');
   assert.equal(L.CROP_LABEL, '裁切');
+  assert.deepEqual([L.ORIENT_PORTRAIT, L.ORIENT_LANDSCAPE], ['直式', '橫式']);     // seal F3
   assert.deepEqual([L.CROP_MIN_PX, L.CROP_KEY_STEP, L.CROP_KEY_STEP_BIG, L.ANGLE_STEP], [32, 0.005, 0.05, 0.1]);
+});
+
+// ---------------------------------------------------------------- CONTRACT-s3-crop C29 (seal): app.js itself, in a small fake DOM
+// The page's real autosave path runs: open a photo whose saved edit cannot be read, move a slider, flush - nothing
+// may be sent that replaces the saved edit (no PUT /api/edit, no POST /api/edit/paste). A control run with a
+// readable edit proves the harness does send the save.
+const vm = require('node:vm');
+
+class FakeEl {
+  constructor(tag) {
+    this.tagName = (tag || 'div').toUpperCase(); this.style = {setProperty() {}}; this.dataset = {}; this.children = [];
+    this.hidden = false; this.disabled = false; this.value = ''; this.textContent = ''; this.title = ''; this.checked = false;
+    this.options = []; this.offsetLeft = 0; this.offsetTop = 0; this.offsetWidth = 100; this.offsetHeight = 100;
+    this.clientWidth = 100; this.clientHeight = 100; this.scrollTop = 0; this.src = ''; this.innerHTML = '';
+    const cls = new Set();
+    this.classList = {toggle: (c, on) => { if (on === undefined ? !cls.has(c) : on) cls.add(c); else cls.delete(c); },
+                      add: (c) => cls.add(c), remove: (c) => cls.delete(c), contains: (c) => cls.has(c)};
+    this._q = {};
+  }
+  addEventListener() {} removeEventListener() {} setAttribute() {} getAttribute() { return null; } removeAttribute() {}
+  appendChild(c) { this.children.push(c); return c; } remove() {} focus() {} click() {} replaceWith() {} scrollIntoView() {}
+  setPointerCapture() {} closest() { return null; } matches() { return false; }
+  querySelector(s) { return this._q[s] || (this._q[s] = new FakeEl()); } querySelectorAll() { return []; }
+  getBoundingClientRect() { return {left: 0, top: 0, right: 100, bottom: 100, width: 100, height: 100}; }
+}
+
+async function runPage(editAnswer) {
+  const calls = [];
+  const els = {};
+  const json = (status, body) => ({ok: status === 200, status, json: async () => body, blob: async () => ({}),
+                                   headers: {get: () => null}});
+  const routes = (method, url) => {
+    if (url === '/api/presets') return json(200, []);
+    if (url === '/api/sliders') return json(200, {sliders: [{key: 'Contrast2012', group: 'basic', label: '對比', min: -100,
+                                                             max: 100, default: 0, step: 1, hue: false}], groups: [['basic', '基本']]});
+    if (url === '/api/preset_flags') return json(200, {});
+    if (url === '/api/preset-library/groups') return json(200, {groups: [], ungrouped: 0});
+    if (url.startsWith('/api/capabilities')) return json(200, {features: {}});
+    if (url === '/api/open') return json(200, {image_id: 'i1', width: 300, height: 200, preview_width: 300, preview_height: 200});
+    if (url.startsWith('/api/folder')) return json(200, {folder: 'F', files: [], index: -1});
+    if (url.startsWith('/api/edit?')) return editAnswer();
+    if (url === '/api/preview') return json(200, {});
+    if (url === '/api/edit' && method === 'PUT') return json(200, {fingerprint: 'f', edit: {preset: null}, preset_status: null});
+    return json(200, {results: []});
+  };
+  const doc = {
+    querySelector: (s) => els[s] || (els[s] = new FakeEl()), querySelectorAll: () => [], createElement: (t) => new FakeEl(t),
+    addEventListener() {}, body: new FakeEl('body'), activeElement: null, hidden: false,
+  };
+  const store = {getItem: () => null, setItem() {}};
+  const win = {
+    document: doc, localStorage: store, sessionStorage: store, location: {search: ''},
+    matchMedia: () => ({matches: false, addEventListener() {}}), addEventListener() {},
+    performance: {now: () => Date.now()}, setTimeout, clearTimeout, console, Promise, JSON, Math, Date, Set, Map,
+    URLSearchParams, encodeURIComponent, decodeURIComponent, Object, Array, Number, String, Error,
+    URL: {createObjectURL: () => 'blob:x', revokeObjectURL() {}},
+    Image: class { set src(v) { setTimeout(() => this.onload && this.onload(), 0); } },
+    confirm: () => true, prompt: () => null, alert() {}, Blob: class {}, atob: (s) => s,
+    fetch: async (url, opt) => { calls.push({method: opt.method, url, body: opt.body}); return routes(opt.method, url); },
+  };
+  win.window = win; win.self = win; win.globalThis = win;
+  const ctx = vm.createContext(win);
+  const read = (n) => fs.readFileSync(path.join(__dirname, '..', '..', 'darkroom_app', 'static', n), 'utf8');
+  vm.runInContext(read('logic.js'), ctx, {filename: 'logic.js'});
+  vm.runInContext(read('app.js'), ctx, {filename: 'app.js'});
+  const dr = win.darkroom;
+  for (let i = 0; i < 50 && !dr.st.sliders.length; i++) await new Promise((r) => setTimeout(r, 5));
+  await dr.openPhoto('D:/p/a.jpg');
+  calls.length = 0;
+  const slider = dr.st.byKey.Contrast2012;
+  await dr.dispatch({type: 'setValue', slider, presetValue: 0, value: 30});           // the user moves a slider
+  await dr.dispatch({type: 'setGeometry', geometry: {rotate: 90, flip: false, angle: 0, aspect: 'original', crop: null}});
+  await new Promise((r) => setTimeout(r, L.AUTOSAVE_MS + 50));
+  await dr.flushSave();
+  return {calls, st: dr.st, status: els['#edit-status']};
+}
+
+test('C29 (seal): a saved edit that could not be read is never replaced by the autosave', async () => {
+  const replaces = (calls) => calls.filter((c) => (c.method === 'PUT' && c.url === '/api/edit') ||
+                                                 (c.method === 'POST' && c.url === '/api/edit/paste'));
+  const failed = await runPage(() => ({ok: false, status: 503, json: async () => ({error: '照片庫的編輯檔損壞：x'})}));
+  assert.deepEqual(replaces(failed.calls), []);
+  assert.equal(failed.st.editUnreadable, 'D:/p/a.jpg');
+  assert.equal(failed.status.textContent, L.EDIT_UNREADABLE);                         // said on screen
+  assert.equal(failed.status.hidden, false);
+  // control: a readable edit -> the very same moves are saved (the harness does reach the save)
+  const ok = await runPage(() => ({ok: true, status: 200, json: async () => ({fingerprint: 'f', edit: null, preset_status: null,
+                                                                             previous: false})}));
+  const sent = replaces(ok.calls);
+  assert.equal(sent.length, 1);
+  assert.equal(JSON.parse(sent[0].body).geometry.rotate, 90);
+  assert.equal(L.EDIT_UNREADABLE, '讀不到已存的編輯：這張的修改先不會自動存檔（以免蓋掉原本存的裁切與顏色），請重新開啟這張照片');
+  assert.equal(L.saveAllowed('a', 'a'), false);
+  assert.equal(L.saveAllowed(null, 'a'), true);
+  assert.equal(L.saveAllowed('a', 'b'), true);
 });

@@ -234,6 +234,10 @@ class TestPageStructure(unittest.TestCase):
         self.assertIn("const b = L.fitCrop(crop.s.draft, width, height).box;", crop)         # C3: the one rule draws
         self.assertIn("$('#crop-angle').addEventListener('dblclick', () => angle(0));", crop)
         self.assertIn("const mv = L.cropKeyMove(e.key, e.shiftKey);", crop)
+        # seal F3: 直式／橫式 is off for 1:1 and free, X follows it, the text says what pressing it gives
+        self.assertIn("ob.disabled = d.aspect === 'free' || d.aspect === '1:1';", crop)
+        self.assertIn("ob.textContent = orient === 'portrait' ? L.ORIENT_LANDSCAPE : L.ORIENT_PORTRAIT;", crop)
+        self.assertIn("if (k === 'x' && !e.ctrlKey && !e.metaKey && !e.altKey && !$('#crop-orient').disabled) { geometryAct('orient'); return true; }", crop)
         self.assertIn("pv.pending = {body: frame ? frameRequest() : currentRequest(), seq: ++pv.seq, "
                       "kind: frame ? 'frame' : 'edit'};", js)
         self.assertIn("return Object.assign(currentRequest(), {geometry: L.normGeometry(d), frame: true});", crop)
@@ -248,6 +252,10 @@ class TestPageStructure(unittest.TestCase):
         self.assertIn("const body = {image_id: st.image.image_id, preset_id: null, strength: 100, overrides: {}, "
                       "geometry: L.normGeometry(g)};", orq)
         self.assertIn("if (st.originalFor === key) return true;", js)
+        # seal F3: holding \ in the crop mode shows the draft's whole frame, not the committed geometry
+        self.assertIn("const frame = cropActive();\n  const g = frame ? Object.assign({}, crop.s.draft, {crop: null}) : ed.geometry;",
+                      orq)
+        self.assertIn("if (frame) body.frame = true;", orq)
         self.assertIn("if (want && (!st.image || cropActive())) return;", js)
         ref = js[js.index("function refreshAb()"):js.index("function initCompare")]
         self.assertIn("b.disabled = !st.image || cropActive();", ref)

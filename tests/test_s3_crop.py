@@ -277,6 +277,22 @@ class TestGeometryRender(unittest.TestCase):
         same_warp = render(full, Params(), geometry=g)                           # the same resampling of the result
         self.assertLessEqual(mad(render(src, p, geometry=g), same_warp), 1 / 255)
 
+    def test_degenerate_masks_with_geometry(self):  # seal F1 (C8): a mask with no area still renders, at the output size
+        src = smooth_img(60, 80) * 0.5
+        flat = {"type": "Mask/Gradient", "inverted": False, "opacity": 1.0, "ZeroX": 0.4, "ZeroY": 0.4, "FullX": 0.4,
+                "FullY": 0.4}
+        thin = {"type": "Mask/CircularGradient", "inverted": True, "opacity": 1.0, "Top": 0.2, "Left": 0.5, "Bottom": 0.8,
+                "Right": 0.5, "Angle": 0.0, "Feather": 50.0, "Flipped": True}
+        good = mask_params().masks[0]
+        for shapes in ([flat], [thin], [flat, good["shapes"][0]]):
+            p = Params(masks=[{"name": "m", "amount": 1.0, "values": {"LocalExposure2012": 0.25}, "shapes": shapes}])
+            full = render(src, p)
+            self.assertTrue(np.array_equal(render(src, p, geometry=geo(rotate=90)), np.rot90(full, k=-1)), shapes)
+            lower = render(src, p, geometry=geo(aspect="free", crop=(0.0, 0.5, 1.0, 1.0)))
+            self.assertLessEqual(float(np.abs(lower - full[30:]).max()), 1e-5)
+            tilted = render(src, p, geometry=geo(angle=5))
+            self.assertEqual(tilted.shape[:2], tuple(reversed(geo(angle=5).output_size(80, 60))))
+
     def test_geometry_cpu_matches_gpu(self):  # C9 (M2): grid_sample bicubic vs cv2.warpAffine INTER_CUBIC
         u8 = (smooth_img(300, 420) * 255 + 0.5).astype(np.uint8)
         u8 = np.clip(u8.astype(int) + np.random.default_rng(0).integers(-30, 30, u8.shape), 0, 255).astype(np.uint8)
