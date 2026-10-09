@@ -591,6 +591,24 @@ class TestGpu(ExportCase):
         self.assertLessEqual(torch.cuda.memory_reserved(), before + 256 * MIB)
 
 
+class TestThroughput(unittest.TestCase):  # XP8 (ADR-0003): the numbers of tools/bench_export.py, inside a root
+    def test_export_batch_throughput(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("bench_export", os.path.join(_util.REPO, "tools",
+                                                                                   "bench_export.py"))
+        bench = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(bench)
+        self.assertEqual((bench.N_PHOTOS, bench.WIDTH, bench.HEIGHT, bench.QUALITY, bench.PER_PHOTO_LIMIT_S,
+                          bench.OVERLAP_LIMIT), (20, 6000, 4000, 92, 0.8, 0.7))          # verbatim (XP8)
+        skip, msg = bench.gpu_check()
+        print(msg)
+        if skip:
+            self.skipTest(msg)              # R1: only while the GPU is really busy, or without CUDA (reason shown)
+        out = bench.measure(_util.tmpdir(self), log=print)
+        self.assertLessEqual(out["per_photo"], 0.8, out)
+        self.assertLessEqual(out["overlap"], 0.7, out)
+
+
 class TestHttpExport(AioHTTPTestCase):  # X1 shape over HTTP, XP5 writes only in dest_dir
     async def get_application(self):
         from darkroom_app.server import make_app
