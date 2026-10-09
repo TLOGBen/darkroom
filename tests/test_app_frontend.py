@@ -17,28 +17,47 @@ def read(name):
 
 
 def css_rules(css):
-    """[(enclosing at-rules, selector, declarations)] for every style rule, at any nesting depth."""
+    """[(enclosing at-rules, selector, declarations)] for every style rule, at any nesting depth.
+
+    Native CSS nesting counts too (H11 / seal round 2 N1): a style rule inside a style rule is recorded with
+    the combined selector ("outer inner", or "&" replaced by the outer item), and an at-rule inside a style
+    rule keeps the outer selector for its declarations."""
     css = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
     rules = []
 
-    def walk(text, ctx):
-        i = 0
+    def compose(parents, head):
+        items = split_selectors(head)
+        if not parents:
+            return items
+        return [c.replace("&", p) if "&" in c else f"{p} {c}" for p in parents for c in items]
+
+    def walk(text, ctx, parents):
+        """Records the nested rules of `text`; returns its own declarations (text outside nested blocks)."""
+        decls, i = [], 0
         while True:
             j = text.find("{", i)
             if j < 0:
-                return
-            head = text[i:j].strip()
+                decls.append(text[i:])
+                return "".join(decls)
+            seg = text[i:j]
+            cut = max(seg.rfind(";"), seg.rfind("}"))
+            decls.append(seg[:cut + 1])
+            head = seg[cut + 1:].strip()
             depth, k = 1, j + 1
             while k < len(text) and depth:
                 depth += {"{": 1, "}": -1}.get(text[k], 0)
                 k += 1
             body = text[j + 1:k - 1]
             if head.startswith("@"):
-                walk(body, ctx + (" ".join(head.split()),))
+                at = ctx + (" ".join(head.split()),)
+                inner = walk(body, at, parents)
+                if parents:
+                    rules.append((at, ", ".join(parents), inner))
             else:
-                rules.append((ctx, head, body))
+                sel = compose(parents, head)
+                rules.append((ctx, ", ".join(sel), walk(body, ctx, sel)))
             i = k
-    walk(css, ())
+    walk(css, (), None)
     return rules
 
 
@@ -76,6 +95,54 @@ def hides(body):
     return bool(_HIDING.search(body))
 
 
+PROTECTED = ("#carry-hint", ".hint", "#reset-all", "#undo", "#redo", "#toggle-lib", "#toggle-sl",
+             "#prev", "#next", "#strength-100")
+
+
+def hidden_in_media(css):
+    """(protected controls hidden inside any @media, number of hiding selector items judged) - H11."""
+    found, checked = [], 0
+    for ctx, selector, body in css_rules(css):
+        if not any(c.startswith("@media") for c in ctx):          # any depth: @supports inside @media too
+            continue
+        if not hides(body):
+            continue
+        for item in split_selectors(selector):                     # judge every comma-separated item
+            checked += 1
+            # exception (R6 / H11): only the long-text child of a shrunk control may be clipped
+            if item.endswith((".hint-text", ".btn-text")):
+                continue
+            found += [f"{p} hidden in a media query: {item} {{{body.strip()}}} in {ctx}" for p in PROTECTED if p in item]
+    return found, checked
+
+
+class TestHidingJudge(unittest.TestCase):
+    """Seal round 2 N1: the H11 judge itself must see native CSS nesting, not only at-rule nesting."""
+
+    def test_native_nesting_is_seen(self):
+        for css in ("@media (max-width: 960px) { #topbar { #undo { display: none; } } }",
+                    "@media (max-width: 960px) { #topbar { & #undo { visibility: hidden; } } }",
+                    "@media (max-width: 960px) { #topbar { color: red; .x, #redo { opacity: 0; } } }",
+                    "#topbar { @media (max-width: 960px) { #prev { display: none; } } }",
+                    "#undo { @media (max-width: 960px) { display: none; } }"):
+            found, _ = hidden_in_media(css)
+            self.assertTrue(found, css)
+
+    def test_allowed_and_unrelated_rules_pass(self):
+        for css in ("@media (max-width: 960px) { #reset-all { .btn-text { display: none; } } }",
+                    "@media (max-width: 960px) { #topbar { #undo { color: red; } } }",
+                    "#topbar { #undo { display: none; } }"):              # not in a media query (R6 scope)
+            found, _ = hidden_in_media(css)
+            self.assertEqual(found, [], css)
+
+    def test_outer_declarations_kept_apart_from_nested_ones(self):
+        rules = css_rules("@media (max-width: 1px) { #a { color: red; #b { display: none; } margin: 0; } }")
+        self.assertIn((("@media (max-width: 1px)",), "#a #b", " display: none; "), rules)
+        outer = [r for r in rules if r[1] == "#a"][0]
+        self.assertNotIn("display", outer[2])
+        self.assertIn("margin: 0", outer[2])
+
+
 class TestLogicJs(unittest.TestCase):
     def test_logic_suite(self):  # B13 / F3: the front-end suite must run; a missing node is a failure, not a skip
         self.assertIsNotNone(NODE, "node not found: the front-end tests (node --test) cannot be skipped")
@@ -99,6 +166,9 @@ class TestPageStructure(unittest.TestCase):
         toolbar = html[start:html.index("</div>", start)]
         self.assertIn('id="skip-banner"', toolbar)          # an inline element inside the one-line toolbar
 
+    def test_photo_path_hint_lists_heic(self):  # H7 / seal round 2 N2: the on-screen format hint lists HEIC
+        self.assertRegex(read("index.html"), r'id="photo-path" placeholder="照片路徑（JPEG／PNG／TIFF／HEIC），')
+
     def test_photo_switch_hint(self):  # R5 constant
         self.assertIn("目前修改尚未儲存，切換照片會沿用", read("index.html"))
 
@@ -116,23 +186,8 @@ class TestPageStructure(unittest.TestCase):
             self.assertRegex(css, r"#%s \{ grid-column: %d;" % (col, n))
 
     def test_narrow_windows_keep_function_buttons(self):  # F1 / R6 / N2 (H11): never hidden in a media query
-        css = read("app.css")
-        protected = ("#carry-hint", ".hint", "#reset-all", "#undo", "#redo", "#toggle-lib", "#toggle-sl",
-                     "#prev", "#next", "#strength-100")
-        checked = 0
-        for ctx, selector, body in css_rules(css):
-            if not any(c.startswith("@media") for c in ctx):          # any depth: @supports inside @media too
-                continue
-            if not hides(body):
-                continue
-            for item in split_selectors(selector):                     # judge every comma-separated item
-                checked += 1
-                # exception (R6 / H11): only the long-text child of a shrunk control may be clipped
-                if item.endswith((".hint-text", ".btn-text")):
-                    continue
-                for p in protected:
-                    if p in item:
-                        self.fail(f"{p} hidden in a media query: {item} {{{body.strip()}}} in {ctx}")
+        found, checked = hidden_in_media(read("app.css"))
+        self.assertEqual(found, [])
         self.assertGreater(checked, 0)                                  # the clipped text children are seen
         html = read("index.html")
         for ident in ("reset-all", "undo", "redo", "toggle-lib", "toggle-sl", "prev", "next", "strength-100"):

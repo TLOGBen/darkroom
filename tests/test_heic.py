@@ -411,5 +411,28 @@ class TestFastPath(unittest.TestCase):  # H3 / F6: the lookup-table path matches
         self.assertLessEqual(float(np.abs(plain - codes / 1023.0).max()), 1e-6)
 
 
+# ---------------------------------------------------------------- seal round 2 (HEIC)
+class TestSealRound2(HeicCase):
+    def test_p3_8bit_ignoring_profile_is_far_off(self):  # N6 / H4: the 8-bit P3 conversion really happens
+        img = _heicgen.pattern()
+        p3 = _heicgen.srgb_to_p3(img)
+        wrong = read_image(_heicgen.write_heic(self.p("p3_8_as_srgb.heic"), p3, bits=8))   # profile ignored
+        self.assertGreater(lin_diff(wrong, img)[0], 10 * P3_8_LIN_MAX)
+
+    def test_multiline_library_message_is_one_line(self):  # N7 / H13: outside messages become one line at source
+        from unittest import mock
+        from darkroom import _heif
+        src = _heicgen.write_heic(self.p("ok.heic"), _heicgen.pattern(), bits=8)
+        with mock.patch("pillow_heif.open_heif", side_effect=RuntimeError("Invalid input:\n  bad box\r\n")):
+            with self.assertRaises(ValueError) as cm:
+                read_image(src)
+        self.assertEqual(str(cm.exception), _heif.DECODE_FAILED.format(detail="Invalid input: bad box"))
+
+    def test_cli_help_mentions_heic(self):  # N2 / H8: the CLI's own format hint lists HEIC
+        rc, out, err = _util.run_cli("--help")
+        self.assertEqual(rc, 0, err)
+        self.assertIn("apply a preset to a JPEG/PNG/TIFF/HEIC", out)
+
+
 if __name__ == "__main__":
     unittest.main()

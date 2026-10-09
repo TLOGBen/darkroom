@@ -108,7 +108,7 @@ def main(argv=None):
             pass
     ap = argparse.ArgumentParser(prog="python -m darkroom", description="Apply Lightroom xmp presets locally.")
     sub = ap.add_subparsers(dest="cmd", required=True)
-    p = sub.add_parser("apply", usage=USAGE_APPLY, help="apply a preset to a JPEG/PNG/TIFF")
+    p = sub.add_parser("apply", usage=USAGE_APPLY, help="apply a preset to a JPEG/PNG/TIFF/HEIC")
     p.add_argument("--preset", required=True)
     p.add_argument("--strength", type=float, default=100.0)
     p.add_argument("--overwrite", action="store_true")
