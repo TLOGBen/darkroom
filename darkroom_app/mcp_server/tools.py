@@ -9,10 +9,9 @@ import json
 
 from ..errors import DarkroomError
 from ..facade import Facade
-from ..operations import OPERATIONS
+from ..operations import OPERATIONS, READ_ONLY_ANNOTATIONS
 from .protocol import INVALID_PARAMS, RpcError
 
-ANNOTATIONS = {"readOnlyHint": True, "openWorldHint": False}
 BY_TOOL = {spec["mcp"]: op for op, spec in OPERATIONS.items()}
 
 
@@ -26,7 +25,8 @@ class Tools:
 
     def list(self):
         return [{"name": spec["mcp"], "description": spec["description"], "inputSchema": spec["input_schema"],
-                 "annotations": dict(ANNOTATIONS)} for spec in OPERATIONS.values()]
+                 "annotations": dict(spec.get("mcp_annotations", READ_ONLY_ANNOTATIONS))}
+                for spec in OPERATIONS.values()]
 
     def call(self, name, arguments):
         op = BY_TOOL.get(name) if isinstance(name, str) else None
@@ -51,5 +51,7 @@ class Tools:
                                  "data": base64.b64encode(result.jpeg).decode("ascii")}],
                     "structuredContent": {"render_ms": result.render_ms, "width": result.width,
                                           "height": result.height}}
+        if op == "export":     # CONTRACT-export XP11: partial failure is counted, never an error result
+            result = {**result, "failed": sum(1 for r in result["results"] if not r["ok"])}
         return {"content": [{"type": "text", "text": json.dumps(result, ensure_ascii=False)}],
                 "structuredContent": result}

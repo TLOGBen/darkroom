@@ -20,8 +20,8 @@ FORBIDDEN_CALLS = ("os.path.isfile", "os.listdir")
 FORBIDDEN_NAMES = ("validate_strength", "validate_overrides", "effective_params", "folder_listing")
 FORBIDDEN_MODULES = ("darkroom_app.services", "darkroom_app.preview")
 SAFE_WRITE = "safe_write.py"
-SAFE_WRITE_USERS = ()   # G10 whitelist, this slice: empty -> XP5 services/export.py -> K18 +services/preset_library.py
-#                         -> PL14 +services/photo_library.py
+SAFE_WRITE_USERS = ("services/export.py",)   # G10 whitelist (CONTRACT-export XP10): export -> K18
+#                         +services/preset_library.py -> PL14 +services/photo_library.py
 NATIVE_WRITES = ("write_image", "imwrite", ".save(", ".tofile(")   # G10: no audit event, banned everywhere
 
 
@@ -108,7 +108,8 @@ class TestLayering(unittest.TestCase):
 
     def test_services_import_no_interface_libraries(self):  # L13
         files = py_files("services")
-        self.assertEqual({os.path.basename(f) for f in files}, {"__init__.py", "presets.py", "photos.py", "preview.py"})
+        self.assertEqual({os.path.basename(f) for f in files},
+                         {"__init__.py", "presets.py", "photos.py", "preview.py", "export.py"})   # XP1
         for path in files:
             for mod in imported_modules(path):
                 self.assertNotIn(mod.split(".")[0], ("aiohttp", "argparse"), path)
@@ -222,7 +223,7 @@ class TestLayering(unittest.TestCase):
         """
         files = py_files()
         self.assertIn(os.path.join(APP, SAFE_WRITE), files)
-        self.assertEqual(SAFE_WRITE_USERS, ())
+        self.assertEqual(SAFE_WRITE_USERS, ("services/export.py",))          # CONTRACT-export XP10
         for path in files:
             rel = os.path.relpath(path, APP).replace("\\", "/")
             with open(path, encoding="utf-8") as f:
@@ -255,7 +256,7 @@ class TestLayering(unittest.TestCase):
         proto = [n for n, v in vars(Facade).items() if callable(v) and not n.startswith("_")]
         self.assertEqual(proto, list(OPERATIONS))
         self.assertEqual(list(OPERATIONS), ["list_presets", "preset_detail", "preset_flags", "slider_table",
-                                            "open_photo", "list_folder", "preview"])
+                                            "open_photo", "list_folder", "preview", "export"])   # XP1
         self.assertTrue(issubclass(DarkroomFacade, Facade))
 
     def test_operation_coverage(self):  # L2: every registered route, subcommand and tool exists
@@ -288,6 +289,17 @@ class TestLayering(unittest.TestCase):
                 self.assertIn(k, params, op)
         self.assertEqual(OPERATIONS["list_presets"]["mcp_defaults"], {"limit": 50})
         self.assertEqual(OPERATIONS["preview"]["mcp_defaults"], {"max_pixels": 786432})
+        # CONTRACT-export XP1 / XP4: export is the 8th operation, its tool is last, with exactly these annotations
+        self.assertEqual(OPERATIONS["export"]["http"], ("POST", "/api/export"))
+        self.assertEqual((OPERATIONS["export"]["cli"], OPERATIONS["export"]["mcp"]), ("export", "darkroom_export"))
+        listed = Tools(lambda: None).list()
+        self.assertEqual(listed[-1]["name"], "darkroom_export")
+        self.assertEqual(listed[-1]["annotations"], {"readOnlyHint": False, "destructiveHint": False,
+                                                     "idempotentHint": False, "openWorldHint": False})
+        for t in listed[:-1]:
+            self.assertEqual(t["annotations"], {"readOnlyHint": True, "openWorldHint": False}, t["name"])
+        schema = OPERATIONS["export"]["input_schema"]
+        self.assertEqual(schema["required"], ["items", "format"])
 
     def test_fake_matches_facade(self):  # L13
         from darkroom_app.facade import Facade
@@ -338,6 +350,19 @@ class TestHttpControllerWithFake(AioHTTPTestCase):  # L7 / L13: HTTP translation
                                            ("list_folder", ("",)), ("open_photo", (" x ",)),
                                            ("preset_detail", ("abc",))])
 
+    async def test_export_translation(self):  # CONTRACT-export XP1 / XP11: 200 with results, no failed count
+        items = [{"path": "a.jpg"}, {"path": "b.jpg", "preset_id": "p"}]
+        r = await self.client.post("/api/export", json={"items": items, "format": "tiff", "quality": 80,
+                                                         "dest_dir": "D:\\x"})
+        self.assertEqual(r.status, 200)
+        self.assertEqual(await r.json(), {"results": RESULTS})
+        r = await self.client.post("/api/export", json={"items": items[:1]})
+        self.assertEqual(self.fake.calls, [("export", (items, "tiff", 80, "D:\\x")),
+                                           ("export", (items[:1], None, None, None))])
+        self.fake.fail["export"] = DarkroomError("invalid", "沒有要匯出的照片")
+        r = await self.client.post("/api/export", json={"items": []})
+        self.assertEqual((r.status, await r.json()), (400, {"error": "沒有要匯出的照片"}))
+
     async def test_error_translation(self):
         for kind, (status, _) in KINDS.items():
             self.fake.fail["preset_flags"] = DarkroomError(kind, f"句子 {kind}")
@@ -347,6 +372,10 @@ class TestHttpControllerWithFake(AioHTTPTestCase):  # L7 / L13: HTTP translation
         with self.assertLogs("aiohttp.server", "ERROR"):
             r = await self.client.get("/api/preset_flags")
         self.assertEqual(r.status, 500)
+
+
+RESULTS = [{"ok": True, "source": "a.jpg", "output": "D:\\out\\a.jpg"},
+                   {"ok": False, "source": "b.jpg", "error": "匯出失敗：b.jpg：壞了"}]
 
 
 class TestCliControllerWithFake(unittest.TestCase):  # L7 / L9 / L13
@@ -373,6 +402,29 @@ class TestCliControllerWithFake(unittest.TestCase):  # L7 / L9 / L13
         self.run_cli(["folder", "b.png", "--json"], fake)
         self.assertEqual(fake.calls, [("list_presets", ("q", 3, 7)), ("open_photo", ("b.png",)),
                                       ("list_folder", ("fake-image",))])
+
+    def test_cli_export_json(self):  # CONTRACT-export XP3 / XP11
+        fake = FakeDarkroom()
+        rc, out, err = self.run_cli(["export", "a.jpg", "b.jpg", "--preset", "p", "--strength", "50", "--override",
+                                     "Exposure2012=0.5", "--format", "tiff", "--quality", "80", "--dest-dir", "D:\\x",
+                                     "--json"], fake)
+        self.assertEqual((rc, err), (6, ""))                         # one photo failed: exit 6, full result kept
+        self.assertEqual(out, json.dumps({"ok": True, "result": {"results": RESULTS}}, ensure_ascii=False,
+                                         separators=(",", ":")) + "\n")
+        item = {"preset_id": "p", "strength": 50.0, "overrides": {"Exposure2012": 0.5}}
+        self.assertEqual(fake.calls, [("export", ([{"path": "a.jpg", **item}, {"path": "b.jpg", **item}],
+                                                  "tiff", 80, "D:\\x"))])
+        rc, out, err = self.run_cli(["export", "a.jpg", "b.jpg"], fake)
+        self.assertEqual((rc, out, err), (6, "已匯出：D:\\out\\a.jpg\n匯出失敗：b.jpg：壞了\n", ""))
+        rc, out, err = self.run_cli(["export", "a.jpg", "--json"], fake)
+        self.assertEqual((rc, err), (0, ""))
+        self.assertEqual(json.loads(out)["result"]["results"], RESULTS[:1])
+        self.assertEqual(fake.calls[-1], ("export", ([{"path": "a.jpg", "preset_id": None, "strength": 100,
+                                                       "overrides": None}], "jpeg", None, None)))
+        rc, out, err = self.run_cli(["export", "--quality", "abc", "--json"], fake)   # the service judges it
+        self.assertEqual(fake.calls[-1], ("export", ([], "jpeg", "abc", None)))
+        fake.fail["export"] = DarkroomError("invalid", "沒有要匯出的照片")
+        self.assertEqual(self.run_cli(["export"], fake), (2, "", "沒有要匯出的照片\n"))
 
     def test_error_translation(self):
         for kind, (_, code) in KINDS.items():
@@ -408,6 +460,24 @@ class TestMcpControllerWithFake(unittest.TestCase):  # L7 / L10 / L13
         self.assertEqual(res[1]["result"], {"content": [{"type": "image", "mimeType": "image/jpeg",
                                                          "data": "/9hmYWtlLWpwZWf/2Q=="}],
                                             "structuredContent": {"render_ms": 1.23456, "width": 4, "height": 2}})
+
+    def test_mcp_export_annotations(self):  # CONTRACT-export XP4 / XP11
+        from darkroom_app.mcp_server.tools import Tools
+        tool = Tools(lambda: None).list()[-1]
+        self.assertEqual(tool["name"], "darkroom_export")
+        self.assertEqual(tool["annotations"], {"readOnlyHint": False, "destructiveHint": False,
+                                               "idempotentHint": False, "openWorldHint": False})
+        self.assertEqual(tool["inputSchema"]["required"], ["items", "format"])
+        fake = FakeDarkroom()
+        items = [{"path": "a.jpg"}, {"path": "b.jpg"}]
+        res = self.exchange(fake, ("darkroom_export", {"items": items, "format": "jpeg"}),
+                            ("darkroom_export", {"items": items[:1], "format": "tiff", "quality": 5, "dest_dir": "D"}))
+        self.assertEqual(fake.calls, [("export", (items, "jpeg", None, None)), ("export", (items[:1], "tiff", 5, "D"))])
+        sc = {"results": RESULTS, "failed": 1}
+        self.assertEqual(res[0]["result"], {"content": [{"type": "text", "text": json.dumps(sc, ensure_ascii=False)}],
+                                            "structuredContent": sc})
+        self.assertEqual(res[1]["result"]["structuredContent"], {"results": RESULTS[:1], "failed": 0})
+        self.assertNotIn("isError", res[1]["result"])
 
     def test_error_translation(self):
         for kind in KINDS:

@@ -1,7 +1,8 @@
 """aiohttp application: static editor page plus the JSON / JPEG API (contract B3-B8).
 
 Handlers only translate HTTP <-> facade calls (ADR-0001, CONTRACT-layering): the rules and every error
-sentence live in darkroom_app.services. The server only reads photos and presets; it never writes either.
+sentence live in darkroom_app.services. Photos and presets are only read; the one operation that writes is the
+facade's `export` (POST /api/export: new files in the export folder only, CONTRACT-export X14).
 """
 import asyncio
 import os
@@ -98,6 +99,12 @@ async def api_preview(request):
                                  "Access-Control-Expose-Headers": "X-Render-Ms"})
 
 
+async def api_export(request):
+    body = await _json_body(request)
+    return await _json(request, "export", body.get("items"), body.get("format"), body.get("quality"),
+                       body.get("dest_dir"))
+
+
 async def api_folder(request):
     return await _json(request, "list_folder", request.query.get("image_id", ""))
 
@@ -120,6 +127,7 @@ def make_app(preset_dir, engine=None):
     app.router.add_post("/api/open", api_open)
     app.router.add_post("/api/preview", api_preview)
     app.router.add_get("/api/folder", api_folder)
+    app.router.add_post("/api/export", api_export)
     app.router.add_static("/static/", STATIC)
     app.on_cleanup.append(_on_cleanup)
     return app

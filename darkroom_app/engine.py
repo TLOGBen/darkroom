@@ -117,6 +117,35 @@ class Engine:
             raise RuntimeError("JPEG encoding failed")
         return buf.tobytes(), (time.perf_counter() - t0) * 1000.0
 
+    def render_full(self, image, params, bits):
+        """Export render (CONTRACT-export X3, X11): a full-resolution HxWx3 float32 host image at `params` (final
+        values, strength 1) -> host array: bits 8 -> HxWx3 uint8 in BGR order (for cv2.imencode), bits 16 ->
+        HxWx3 uint16 RGB. Same stream as the preview; only that stream is synchronized."""
+        if not isinstance(params, Params):
+            raise TypeError("params must be a darkroom.Params")
+        host = torch.from_numpy(np.ascontiguousarray(image, dtype=np.float32)).permute(2, 0, 1)[None]
+        with self._on_stream():
+            t = host.to(self.device, non_blocking=False)
+            out = render(t, params, strength=1.0)                       # stays on the device
+            del t
+            x = out[0].clamp(0, 1)
+            del out
+            if bits == 8:
+                q = (x * 255.0 + 0.5).to(torch.uint8).flip(0).permute(1, 2, 0).contiguous()
+            else:
+                q = (x * 65535.0 + 0.5).to(torch.int32).permute(1, 2, 0).contiguous()
+            del x
+            res = q.cpu()
+            del q
+        self._sync()
+        arr = res.numpy()
+        return arr if bits == 8 else arr.astype(np.uint16)
+
+    def release_cached_memory(self):
+        """After an export batch (XP7): hand the cached full-resolution blocks back (no device synchronize)."""
+        if self.device.type == "cuda":
+            torch.cuda.empty_cache()
+
     def warm_up(self):
         """Run the heavy pipeline once at preview size so the first real preview is fast."""
         if self.device.type != "cuda":

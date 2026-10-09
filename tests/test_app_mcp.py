@@ -16,7 +16,10 @@ from test_app_server import make_presets, write_photo
 
 SERVER_INFO = {"name": "darkroom", "version": "0.1.0"}                      # verbatim
 TOOLS = ["darkroom_presets_list", "darkroom_preset_show", "darkroom_preset_flags", "darkroom_sliders",
-         "darkroom_open_photo", "darkroom_photo_folder", "darkroom_preview"]    # verbatim, in order
+         "darkroom_open_photo", "darkroom_photo_folder", "darkroom_preview",
+         "darkroom_export"]    # verbatim, in order (CONTRACT-export XP4: export last)
+EXPORT_ANNOTATIONS = {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False,
+                      "openWorldHint": False}   # verbatim (CONTRACT-export XP4)
 MODERN = {"io.modelcontextprotocol/protocolVersion": "2026-07-28"}
 
 
@@ -72,7 +75,8 @@ class TestMcpProtocol(McpCase):
         self.assertNotIn("nextCursor", res[1]["result"])
         self.assertEqual([t["name"] for t in tools], TOOLS)
         for t in tools:
-            self.assertEqual(t["annotations"], {"readOnlyHint": True, "openWorldHint": False})
+            self.assertEqual(t["annotations"], EXPORT_ANNOTATIONS if t["name"] == "darkroom_export"
+                             else {"readOnlyHint": True, "openWorldHint": False})
             self.assertEqual(t["inputSchema"]["type"], "object")
             self.assertIs(t["inputSchema"]["additionalProperties"], False)
         call = res[2]["result"]

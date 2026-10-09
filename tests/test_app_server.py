@@ -482,6 +482,14 @@ class TestNeverWrites(AppCase):  # B12
                                               overrides={"Exposure2012": 0.2})
                     self.assertEqual(r.status, 200)
                 await self.client.get("/api/folder", params={"image_id": info["image_id"]})
+            # CONTRACT-export XP5 / XP10: the export scenario adds X9-named files to its dest_dir and nowhere else
+            dest = os.path.join(self.tmp, "dest")
+            os.makedirs(dest)
+            r = await self.client.post("/api/export", json={"items": [{"path": os.path.join(self.photos, n)}
+                                                                      for n in ("a.jpg", "b.png", "c.tif", "a.jpg")],
+                                                             "format": "jpeg", "dest_dir": dest})
+            self.assertEqual(r.status, 200)
+        self.assertEqual(sorted(os.listdir(dest)), ["a (2).jpg", "a.jpg", "b.jpg", "c.jpg"])
         self.assertEqual(writes, [])
         self.assertEqual(snapshot(self.photos, self.presets), before)
         self.assertEqual({d: sorted(os.listdir(d)) for d in (self.photos, self.presets)}, names_before)

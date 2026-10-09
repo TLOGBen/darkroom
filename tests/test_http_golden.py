@@ -220,13 +220,13 @@ class TestGoldenFolder(GoldenCase):
 
 
 class TestGoldenRoutes(GoldenCase):
-    async def test_exactly_nine_routes(self):
+    async def test_exactly_ten_routes(self):  # nine of L8 + POST /api/export (CONTRACT-export X1 / XP1)
         routes = sorted((r.method, r.resource.canonical) for r in self.app.router.routes()
                         if r.method != "HEAD" and not r.resource.canonical.startswith("/static"))
         self.assertEqual(routes, sorted([
             ("GET", "/"), ("GET", "/api/health"), ("GET", "/api/presets"), ("GET", "/api/preset_flags"),
             ("GET", "/api/presets/{id}"), ("GET", "/api/sliders"), ("POST", "/api/open"), ("POST", "/api/preview"),
-            ("GET", "/api/folder")]))
+            ("GET", "/api/folder"), ("POST", "/api/export")]))
 
 
 if __name__ == "__main__":

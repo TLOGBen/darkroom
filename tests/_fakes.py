@@ -42,3 +42,8 @@ class FakeDarkroom:
     def preview(self, image_id, preset_id=None, strength=100, overrides=None, max_pixels=None):
         return self._do("preview", (image_id, preset_id, strength, overrides, max_pixels),
                         PreviewResult(JPEG, 1.23456, 4, 2))
+
+    def export(self, items, format, quality=None, dest_dir=None):
+        results = [{"ok": True, "source": "a.jpg", "output": "D:\\out\\a.jpg"},
+                   {"ok": False, "source": "b.jpg", "error": "匯出失敗：b.jpg：壞了"}][: len(items or [])]
+        return self._do("export", (items, format, quality, dest_dir), {"results": results})

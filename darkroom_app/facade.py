@@ -22,12 +22,15 @@ class Facade(Protocol):
 
     def preview(self, image_id, preset_id=None, strength=100, overrides=None, max_pixels=None): ...
 
+    def export(self, items, format, quality=None, dest_dir=None): ...
+
 
 class DarkroomFacade:
-    def __init__(self, presets, photos, previews):
+    def __init__(self, presets, photos, previews, exports):
         self._presets = presets
         self._photos = photos
         self._previews = previews
+        self._exports = exports
 
     def list_presets(self, query=None, offset=0, limit=None):
         return self._presets.list_presets(query, offset, limit)
@@ -49,3 +52,6 @@ class DarkroomFacade:
 
     def preview(self, image_id, preset_id=None, strength=100, overrides=None, max_pixels=None):
         return self._previews.preview(image_id, preset_id, strength, overrides, max_pixels)
+
+    def export(self, items, format, quality=None, dest_dir=None):
+        return self._exports.export(items, format, quality, dest_dir)

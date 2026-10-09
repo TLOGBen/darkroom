@@ -7,11 +7,14 @@
     open <photo>
     folder <photo>                      (open, then list the folder, in this one process)
     preview <photo> [--preset ID] [--strength S] [--override KEY=VALUE]... [--max-pixels N]
+    export <photo>... [--preset ID] [--strength S] [--override KEY=VALUE]... [--format jpeg|tiff] [--quality N]
+                      [--dest-dir D]
 
 Every subcommand takes --json: stdout is then exactly one line {"ok":true,"result":...} or
 {"ok":false,"error":{"kind":...,"message":...}} and stderr stays empty. Without --json a failure is one line
-on stderr. Exit codes: 0 ok, 1 unexpected, 2 invalid / usage, 3 not_found (4 conflict, 5 unavailable reserved).
-Nothing is ever written to disk; `preview` without --json writes the JPEG bytes to stdout.
+on stderr. Exit codes: 0 ok, 1 unexpected, 2 invalid / usage, 3 not_found (4 conflict, 5 unavailable reserved), 6 export
+with at least one failed photo (stdout still holds every result; CONTRACT-export XP11). Only `export` writes files
+(new files, through the facade); `preview` without --json writes the JPEG bytes to stdout.
 """
 import argparse
 import base64
@@ -23,6 +26,8 @@ from . import config
 from .errors import DarkroomError
 
 EXIT = {"invalid": 2, "not_found": 3, "conflict": 4, "unavailable": 5}
+EXIT_PARTIAL = 6                        # export: some photos failed (CONTRACT-export XP11)
+EXPORTED = "已匯出：{output_path}"        # verbatim (XP3)
 UNEXPECTED = "未預期錯誤：{type_name}：{detail}"
 TTY_REFUSAL = "預覽是 JPEG 位元組，請導向檔案（> out.jpg）或加 --json"
 CONFIG_ERROR = "darkroom：{e}"
@@ -45,10 +50,17 @@ class _OneLineParser(argparse.ArgumentParser):
         self.exit(2, f"{self.prog}: error: {' '.join(str(message).split())}\n")
 
 
+def _lenient_int(text):
+    try:
+        return int(text)
+    except ValueError:
+        return text                # the service reports it (JPEG quality)
+
+
 def _parser():
     ap = _OneLineParser(prog="python -m darkroom_app.cli",
                                  description="darkroom for agents: presets, sliders, open and preview photos "
-                                             "(read-only)")
+                                             "(read-only), export photos as new files")
     ap.add_argument("--preset-dir", default=None, help="default: from LOCALLLMS_ROOT or config.local.json")
     sub = ap.add_subparsers(dest="command", required=True, metavar="COMMAND")
 
@@ -78,6 +90,15 @@ def _parser():
     p.add_argument("--override", type=_override, action="append", default=None, metavar="KEY=VALUE",
                    help="slider difference added after strength (repeatable)")
     p.add_argument("--max-pixels", type=int, default=None, help="limit the preview to N pixels")
+    p = leaf(sub, "export", "export photos at full resolution as new files (never overwrites)")
+    p.add_argument("photo", nargs="*")
+    p.add_argument("--preset", default=None, help="preset id")
+    p.add_argument("--strength", type=float, default=100, help="percent, 0..200 (default 100)")
+    p.add_argument("--override", type=_override, action="append", default=None, metavar="KEY=VALUE",
+                   help="slider difference added after strength (repeatable)")
+    p.add_argument("--format", default="jpeg", help="jpeg (default) or tiff")
+    p.add_argument("--quality", type=_lenient_int, default=None, help="JPEG quality 1..100 (default 92)")
+    p.add_argument("--dest-dir", default=None, help="existing absolute folder (default: <photo folder>/darkroom 匯出)")
     return ap
 
 
@@ -92,6 +113,11 @@ def _run(a, facade):
         return facade.preset_flags()
     if cmd == "sliders":
         return facade.slider_table()
+    if cmd == "export":           # every photo is a path item with the same parameters; nothing is opened first
+        overrides = dict(a.override) if a.override else None
+        items = [{"path": p, "preset_id": a.preset, "strength": a.strength, "overrides": overrides}
+                 for p in a.photo]
+        return facade.export(items, a.format, a.quality, a.dest_dir)
     info = facade.open_photo(a.photo)
     if cmd == "open":
         return info
@@ -107,6 +133,9 @@ def _line(text, stream):
 
 
 def _human(a, result):
+    if a.command == "export":
+        return "\n".join(EXPORTED.format(output_path=r["output"]) if r["ok"] else r["error"]
+                         for r in result["results"])
     if a.command == "presets" and a.presets_command == "list":
         lines = [f"{r['id']}\t{r['group']}\t{r['name']}" + ("" if r["supported"] else "\t(unsupported)")
                  for r in result["items"]]
@@ -164,6 +193,8 @@ def main(argv=None, facade=None):
         _line(json.dumps({"ok": True, "result": result}, ensure_ascii=False, separators=(",", ":")), sys.stdout)
     else:
         _line(_human(a, result), sys.stdout)
+    if a.command == "export" and not all(r["ok"] for r in result["results"]):
+        return EXIT_PARTIAL
     return 0
 
 

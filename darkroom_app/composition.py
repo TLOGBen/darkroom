@@ -7,6 +7,7 @@ from . import config
 from .facade import DarkroomFacade
 from .presets import Library
 from .services import EngineRef
+from .services.export import ExportService
 from .services.photos import PhotoService
 from .services.presets import PresetService
 from .services.preview import PreviewService
@@ -17,4 +18,6 @@ def build_facade(preset_dir=None, *, library=None, engine=None):
     if library is None:
         library = Library(preset_dir if preset_dir is not None else config.preset_dir())
     ref = EngineRef(engine)
-    return DarkroomFacade(PresetService(library), PhotoService(ref), PreviewService(library, ref))
+    # the export service gets the preset folder in use, so writes into it are refused (CONTRACT-export XP12)
+    return DarkroomFacade(PresetService(library), PhotoService(ref), PreviewService(library, ref),
+                          ExportService(library, ref, library.preset_dir))

@@ -1,12 +1,15 @@
 """The registry of facade operations (CONTRACT-layering L2, L10).
 
 Describes only: which HTTP route, CLI subcommand and MCP tool expose each operation, the MCP input schema and
-the MCP defaults. It does not dispatch and does not validate; whether a value is acceptable is decided by the
+the MCP defaults and annotations. It does not dispatch and does not validate; whether a value is acceptable is decided by the
 services (the schemas below are descriptions for the agent, nothing checks arguments against them).
 """
 
 MCP_DEFAULT_LIMIT = 50
 MCP_DEFAULT_MAX_PIXELS = 786432
+READ_ONLY_ANNOTATIONS = {"readOnlyHint": True, "openWorldHint": False}                          # L10
+EXPORT_ANNOTATIONS = {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False,   # XP4 (verbatim)
+                      "openWorldHint": False}
 
 
 def _schema(properties, required=()):
@@ -95,5 +98,33 @@ OPERATIONS = {
                            "default": MCP_DEFAULT_MAX_PIXELS},
         }, ["image_id"]),
         "mcp_defaults": {"max_pixels": MCP_DEFAULT_MAX_PIXELS},
+    },
+    "export": {
+        "http": ("POST", "/api/export"),
+        "cli": "export",
+        "mcp": "darkroom_export",
+        "description": "Export photos at full resolution as new files (JPEG 8-bit, quality 1..100, default 92; or "
+                       "TIFF 16-bit), with the sRGB profile, the photo's EXIF and upright pixels. Each item is a "
+                       "photo (path, or image_id from darkroom_open_photo) with an optional preset, strength 0..200 "
+                       "and overrides, as in darkroom_preview. Files go to '<photo folder>/darkroom 匯出' or dest_dir "
+                       "(an existing absolute folder); an existing file is never overwritten (a numbered name is "
+                       "used instead) and the photo is never changed. results has one entry per item, in order: "
+                       "{ok, source, output} or {ok: false, source, error}; failed counts the failures.",
+        "input_schema": _schema({
+            "items": {"type": "array", "minItems": 1, "items": {
+                "type": "object", "additionalProperties": False, "properties": {
+                    "path": dict(_STR, description="absolute path of the photo"),
+                    "image_id": dict(_STR, description="from darkroom_open_photo (instead of path)"),
+                    "preset_id": {"type": ["string", "null"], "description": "id from darkroom_presets_list"},
+                    "strength": {"type": "number", "minimum": 0, "maximum": 200, "default": 100},
+                    "overrides": {"type": "object", "additionalProperties": {"type": "number"},
+                                  "description": "{slider key from darkroom_sliders: difference}"}}}},
+            "format": {"type": "string", "enum": ["jpeg", "tiff"]},
+            "quality": {"type": "integer", "minimum": 1, "maximum": 100, "default": 92,
+                        "description": "JPEG quality"},
+            "dest_dir": dict(_STR, description="existing absolute folder; default '<photo folder>/darkroom 匯出'"),
+        }, ["items", "format"]),
+        "mcp_defaults": {},
+        "mcp_annotations": EXPORT_ANNOTATIONS,
     },
 }
