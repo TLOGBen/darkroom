@@ -19,7 +19,12 @@ CONTENT_TYPE_REFUSED = "request refused: POST body must be application/json"    
 DEST_DIR_REFUSED = "dest_dir is not accepted over HTTP (use the CLI or MCP)"           # verbatim (XP16)
 ROUTES = [("GET", "/"), ("GET", "/api/health"), ("GET", "/api/presets"), ("GET", "/api/preset_flags"),
           ("GET", "/api/presets/x"), ("GET", "/api/sliders"), ("GET", "/api/folder?image_id=i"),
-          ("GET", "/static/app.js"), ("POST", "/api/open"), ("POST", "/api/preview"), ("POST", "/api/export")]
+          ("GET", "/static/app.js"), ("POST", "/api/open"), ("POST", "/api/preview"), ("POST", "/api/export"),
+          # CONTRACT-photo-library PLP2: the seven photo library routes, PUT and DELETE included
+          ("GET", "/api/edit?path=a.jpg"), ("PUT", "/api/edit"), ("DELETE", "/api/edit?path=a.jpg"),
+          ("POST", "/api/edit/paste"), ("POST", "/api/edit/save-preset"),
+          ("GET", "/api/folder/thumbnails?folder=f"), ("GET", "/api/thumbnail?path=a.jpg")]
+DATA_DIR_REFUSED = "data_dir is not accepted over HTTP (it is configured)"            # verbatim (PLP2)
 
 
 class _NoEngine:
@@ -45,8 +50,9 @@ class SecurityCase(AioHTTPTestCase):
         return self.client.port
 
     async def send(self, method, path, headers=None, body=b'{"items": [{"path": "a.jpg"}], "format": "jpeg"}'):
-        h = {"Content-Type": "application/json", **(headers or {})} if method == "POST" else dict(headers or {})
-        r = await self.client.request(method, path, headers=h, data=body if method == "POST" else None)
+        with_body = method in ("POST", "PUT")
+        h = {"Content-Type": "application/json", **(headers or {})} if with_body else dict(headers or {})
+        r = await self.client.request(method, path, headers=h, data=body if with_body else None)
         return r.status, await r.text()
 
 
@@ -84,6 +90,24 @@ class TestRefused(SecurityCase):
             r = await self.client.post("/api/export", json={"items": [{"path": "a.jpg"}], "format": "jpeg",
                                                             "dest_dir": dest})
             self.assertEqual((r.status, await r.json()), (400, {"error": DEST_DIR_REFUSED}), dest)
+        self.assertEqual(self.fake.calls, [])
+
+    async def test_photo_library_bodies_need_json_content_type(self):  # PLP2: PUT too, and the two POSTs
+        for ctype in ("text/plain", "text/plain;charset=UTF-8", "application/x-www-form-urlencoded", None):
+            for method, path in (("PUT", "/api/edit"), ("POST", "/api/edit/paste"), ("POST", "/api/edit/save-preset")):
+                h = {"Content-Type": ctype} if ctype else {}
+                r = await self.client.request(method, path, data=b'{"path": "a.jpg", "targets": ["a.jpg"], "name": "n"}',
+                                              headers=h, skip_auto_headers=["Content-Type"])
+                self.assertEqual((r.status, await r.json()), (415, {"error": CONTENT_TYPE_REFUSED}), (ctype, path))
+        self.assertEqual(self.fake.calls, [])
+
+    async def test_http_photo_library_takes_no_data_dir(self):  # PLP2: the data folder is configured, never sent
+        for method, path, body in (("PUT", "/api/edit", {"path": "a.jpg"}),
+                                   ("POST", "/api/edit/paste", {"targets": ["a.jpg"], "source": "b.jpg"}),
+                                   ("POST", "/api/edit/save-preset", {"path": "a.jpg", "name": "n"})):
+            for dd in (self.tmp, "relative", None, ""):
+                r = await self.client.request(method, path, json={**body, "data_dir": dd})
+                self.assertEqual((r.status, await r.json()), (400, {"error": DATA_DIR_REFUSED}), (path, dd))
         self.assertEqual(self.fake.calls, [])
 
     async def test_check_order(self):  # Host -> Origin -> Content-Type -> route
@@ -124,7 +148,30 @@ class TestRealFacadeUntouched(AioHTTPTestCase):  # a refused export reads and wr
         make_presets(self.presets)
         self.photos = os.path.join(self.tmp, "photos")
         os.makedirs(self.photos)
-        return make_app(self.presets)
+        self.data_dir = os.path.join(self.tmp, "data")
+        return make_app(self.presets, data_dir=self.data_dir)
+
+    async def test_refused_photo_library_requests_touch_nothing(self):  # PLP2: no edit, thumbnail or index appears
+        photo = write_photo(os.path.join(self.photos, "a.jpg"), 64, 48)
+        before = snapshot(self.photos, self.presets)
+        evil = ({"Content-Type": "text/plain;charset=UTF-8", "Origin": f"http://127.0.0.1:{self.client.port}"},
+                {"Content-Type": "application/json", "Origin": "http://evil.example"},
+                {"Content-Type": "application/json", "Host": "evil.example"})
+        for headers in evil:
+            for method, path, body in (("PUT", "/api/edit", {"path": photo, "preset_id": "p-expo"}),
+                                       ("POST", "/api/edit/paste", {"targets": [photo], "source": photo}),
+                                       ("POST", "/api/edit/save-preset", {"path": photo, "name": "n"})):
+                r = await self.client.request(method, path, data=json.dumps(body).encode(), headers=headers)
+                self.assertIn(r.status, (403, 415, 421), (path, headers))
+        for headers in evil[1:]:                      # GET / DELETE carry no body: Origin and Host decide
+            for method, path in (("GET", f"/api/edit?path={photo}"), ("DELETE", f"/api/edit?path={photo}"),
+                                 ("GET", f"/api/thumbnail?path={photo}"),
+                                 ("GET", f"/api/folder/thumbnails?folder={self.photos}")):
+                r = await self.client.request(method, path, headers={k: v for k, v in headers.items()
+                                                                     if k != "Content-Type"})
+                self.assertIn(r.status, (403, 421), (path, headers))
+        self.assertFalse(os.path.exists(self.data_dir))
+        self.assertEqual(snapshot(self.photos, self.presets), before)
 
     async def test_no_cors_export_writes_nothing(self):
         photo = write_photo(os.path.join(self.photos, "a.jpg"), 64, 48)

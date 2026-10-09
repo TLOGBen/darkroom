@@ -4,7 +4,10 @@ Handlers only translate HTTP <-> facade calls (ADR-0001, CONTRACT-layering): the
 sentence live in darkroom_app.services. Photos and purchased presets are only read; what writes is the facade's
 `export` (POST /api/export: new files in the export folder only, CONTRACT-export X14) and the preset library
 operations under /api/preset-library/ (the index, import/ and user/ of the library root only,
-CONTRACT-preset-library K18 / KP1). None of them takes a path over HTTP: import takes uploaded bytes (KP4).
+CONTRACT-preset-library K18 / KP1), and the photo library under /api/edit, /api/edit/paste, /api/edit/save-preset,
+/api/folder/thumbnails and /api/thumbnail (edits, thumbnails and the thumbnail index in the configured data_dir
+only, CONTRACT-photo-library PLP1 / PLP2). No request names a place to write: import takes uploaded bytes (KP4), the
+photo library's paths are photos that are only read (hashed, decoded), like /api/open.
 
 Cross-site protection (CONTRACT-export XP16, app shell R10): every request first passes `_local_only`: the Host
 header must be 127.0.0.1:{port} or localhost:{port} (DNS rebinding), an Origin header must be the page's own origin,
@@ -38,6 +41,12 @@ ORIGIN_REFUSED = "request refused: cross-site Origin {origin}"                  
 CONTENT_TYPE_REFUSED = "request refused: POST body must be application/json"          # verbatim (XP16), 415
 DEST_DIR_REFUSED = "dest_dir is not accepted over HTTP (use the CLI or MCP)"           # verbatim (XP16), 400
 PATHS_REFUSED = "paths is not accepted over HTTP (upload the files)"                   # verbatim (KP4), 400
+DATA_DIR_REFUSED = "data_dir is not accepted over HTTP (it is configured)"             # verbatim (PLP2), 400
+
+
+def _lenient_int(text):
+    """A query-string number -> int when it is all digits, else the raw string (the service says why; PLP8)."""
+    return int(text) if text.isdigit() else text
 
 
 @web.middleware
@@ -51,7 +60,7 @@ async def _local_only(request, handler):
     origin = request.headers.get("Origin")
     if origin is not None and origin.lower() not in tuple("http://" + a for a in allowed):
         return web.json_response({"error": ORIGIN_REFUSED.format(origin=origin)}, status=403)
-    if request.method == "POST" and request.content_type != "application/json":
+    if request.method in ("POST", "PUT") and request.content_type != "application/json":   # PLP2: PUT too
         return web.json_response({"error": CONTENT_TYPE_REFUSED}, status=415)
     return await handler(request)
 
@@ -186,16 +195,65 @@ async def api_folder(request):
     return await _json(request, "list_folder", request.query.get("image_id", ""))
 
 
+# ---- CONTRACT-photo-library PL6 / PLP2: paths over HTTP are only read; every write lands in the configured data_dir
+async def api_edit_get(request):
+    return await _json(request, "get_edit", request.query.get("path"))
+
+
+async def api_edit_set(request):
+    body = await _json_body(request)
+    if "data_dir" in body:                 # an interface rule (PLP2): the data folder is configured, never sent
+        return web.json_response({"error": DATA_DIR_REFUSED}, status=400)
+    return await _json(request, "set_edit", body.get("path"), body.get("preset_id"), body.get("strength", 100),
+                       body.get("overrides"))
+
+
+async def api_edit_clear(request):
+    return await _json(request, "clear_edit", request.query.get("path"))
+
+
+async def api_edit_paste(request):
+    body = await _json_body(request)
+    if "data_dir" in body:
+        return web.json_response({"error": DATA_DIR_REFUSED}, status=400)
+    return await _json(request, "paste_edit", body.get("targets"), body.get("source"), body.get("edit"))
+
+
+async def api_edit_save_preset(request):
+    body = await _json_body(request)
+    if "data_dir" in body:
+        return web.json_response({"error": DATA_DIR_REFUSED}, status=400)
+    return await _json(request, "save_edit_as_preset", body.get("path"), body.get("name"), body.get("group"))
+
+
+async def api_folder_thumbnails(request):
+    q = request.query
+    offset = _lenient_int(q["offset"]) if "offset" in q else 0
+    limit = _lenient_int(q["limit"]) if "limit" in q else None
+    return await _json(request, "folder_thumbnails", q.get("folder"), offset, limit)
+
+
+async def api_thumbnail(request):
+    try:
+        res = await _call(request, "thumbnail", request.query.get("path"))
+    except DarkroomError as e:
+        return _error(e)
+    return web.Response(body=res.jpeg, content_type="image/jpeg",
+                        headers={"X-Fingerprint": res.fingerprint, "X-Edited": "1" if res.edited else "0",
+                                 "Cache-Control": "no-store"})
+
+
 async def _on_cleanup(app):
     app[ENGINE].shutdown()
 
 
-def make_app(preset_dir, engine=None, library_dir=None):
-    """library_dir: the preset library root (default dirname(preset_dir); CONTRACT-preset-library KP2)."""
+def make_app(preset_dir, engine=None, library_dir=None, data_dir=None):
+    """library_dir: the preset library root (default dirname(preset_dir); CONTRACT-preset-library KP2);
+    data_dir: the photo library's folder (default config.data_dir() on first use; CONTRACT-photo-library PL1)."""
     app = web.Application(client_max_size=1 << 20, middlewares=[_local_only])
     app[LIBRARY] = Library(preset_dir, library_dir)
     app[ENGINE] = engine or engine_mod.Engine()
-    app[FACADE] = build_facade(library=app[LIBRARY], engine=app[ENGINE])
+    app[FACADE] = build_facade(library=app[LIBRARY], engine=app[ENGINE], data_dir=data_dir)
     app.router.add_get("/", index)
     app.router.add_get("/api/health", health)
     app.router.add_get("/api/presets", api_presets)
@@ -215,14 +273,21 @@ def make_app(preset_dir, engine=None, library_dir=None):
     app.router.add_post("/api/preset-library/import", api_library_import)
     app.router.add_post("/api/preset-library/save", api_library_save)
     app.router.add_post("/api/preset-library/rebuild", api_library_rebuild)
+    app.router.add_get("/api/edit", api_edit_get)
+    app.router.add_put("/api/edit", api_edit_set)
+    app.router.add_delete("/api/edit", api_edit_clear)
+    app.router.add_post("/api/edit/paste", api_edit_paste)
+    app.router.add_post("/api/edit/save-preset", api_edit_save_preset)
+    app.router.add_get("/api/folder/thumbnails", api_folder_thumbnails)
+    app.router.add_get("/api/thumbnail", api_thumbnail)
     app.router.add_static("/static/", STATIC)
     app.on_cleanup.append(_on_cleanup)
     return app
 
 
-async def start(preset_dir, port=DEFAULT_PORT, engine=None, warm_up=True, library_dir=None):
+async def start(preset_dir, port=DEFAULT_PORT, engine=None, warm_up=True, library_dir=None, data_dir=None):
     """Start serving on 127.0.0.1:port (0 = any free port). Returns (runner, actual_port)."""
-    app = make_app(preset_dir, engine, library_dir)
+    app = make_app(preset_dir, engine, library_dir, data_dir)
     if warm_up:
         await asyncio.get_running_loop().run_in_executor(app[ENGINE].executor, app[ENGINE].warm_up)
     runner = web.AppRunner(app, access_log=None)

@@ -51,7 +51,12 @@ class Tools:
                                  "data": base64.b64encode(result.jpeg).decode("ascii")}],
                     "structuredContent": {"render_ms": result.render_ms, "width": result.width,
                                           "height": result.height}}
-        if op in ("export", "import_presets"):   # XP11 / KP5: partial failure is counted, never an error result
+        if op == "thumbnail":                  # CONTRACT-photo-library PL13
+            return {"content": [{"type": "image", "mimeType": "image/jpeg",
+                                 "data": base64.b64encode(result.jpeg).decode("ascii")}],
+                    "structuredContent": {"fingerprint": result.fingerprint, "edited": result.edited,
+                                          "width": result.width, "height": result.height}}
+        if op in ("export", "import_presets", "paste_edit"):   # XP11 / KP5 / PLP4: partial failure is counted
             result = {**result, "failed": sum(1 for r in result["results"] if not r["ok"])}
         return {"content": [{"type": "text", "text": json.dumps(result, ensure_ascii=False)}],
                 "structuredContent": result}

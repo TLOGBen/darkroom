@@ -16,18 +16,26 @@ from _fakes import JPEG, FakeDarkroom
 from darkroom_app.errors import DarkroomError
 
 APP = os.path.join(_util.REPO, "darkroom_app")
-FORBIDDEN_CALLS = ("os.path.isfile", "os.listdir")
-FORBIDDEN_NAMES = ("validate_strength", "validate_overrides", "effective_params", "folder_listing")
-FORBIDDEN_MODULES = ("darkroom_app.services", "darkroom_app.preview")
+FORBIDDEN_CALLS = ("os.path.isfile", "os.listdir", "os.replace")          # + os.replace (PLP8)
+FORBIDDEN_NAMES = ("validate_strength", "validate_overrides", "effective_params", "folder_listing", "hashlib")
+FORBIDDEN_MODULES = ("darkroom_app.services", "darkroom_app.preview", "hashlib")
+FORBIDDEN_STRINGS = ("edits/", "thumbs/", "index/")                       # data_dir layout is the service's (PLP8)
 SAFE_WRITE = "safe_write.py"
-SAFE_WRITE_USERS = ("services/export.py", "services/preset_library.py")   # G10 whitelist: XP10, K18 / KP3
-#                         -> PL14 +services/photo_library.py
+SAFE_WRITE_USERS = ("services/export.py", "services/preset_library.py",
+                    "services/photo_library.py")      # G10 whitelist: XP10, K18 / KP3, PL14 / PLP1
 LIBRARY_TOOLS = ["darkroom_preset_groups", "darkroom_preset_rename", "darkroom_preset_move", "darkroom_preset_favorite",
                  "darkroom_group_create", "darkroom_group_rename", "darkroom_presets_import", "darkroom_preset_save",
                  "darkroom_presets_rebuild"]          # verbatim, in order (CONTRACT-preset-library K16)
 LIBRARY_WRITES = {"darkroom_preset_rename": True, "darkroom_preset_move": True, "darkroom_preset_favorite": True,
                   "darkroom_presets_rebuild": True, "darkroom_group_create": False, "darkroom_group_rename": False,
                   "darkroom_presets_import": False, "darkroom_preset_save": False}   # idempotentHint (K16)
+PHOTO_TOOLS = ["darkroom_edit_get", "darkroom_edit_set", "darkroom_edit_clear", "darkroom_edit_paste",
+               "darkroom_folder_thumbnails", "darkroom_thumbnail", "darkroom_edit_save_preset"]   # verbatim (PL6, PLP6)
+EDIT_WRITES = {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": True, "openWorldHint": False}  # PL6
+PHOTO_ANNOTATIONS = {"darkroom_edit_set": EDIT_WRITES, "darkroom_edit_clear": EDIT_WRITES,
+                     "darkroom_edit_paste": EDIT_WRITES,
+                     "darkroom_edit_save_preset": {"readOnlyHint": False, "destructiveHint": False,
+                                                   "idempotentHint": False, "openWorldHint": False}}   # PLP6
 NATIVE_WRITES = ("write_image", "imwrite", ".save(", ".tofile(")   # G10: no audit event, banned everywhere
 
 
@@ -96,6 +104,10 @@ class TestLayering(unittest.TestCase):
             for mod in imported_modules(path):
                 for bad in FORBIDDEN_MODULES:
                     self.assertFalse(mod == bad or mod.startswith(bad + "."), (path, mod))
+            with open(path, encoding="utf-8") as f:
+                src = f.read()
+            for needle in FORBIDDEN_STRINGS:                    # PLP8: no controller knows the data_dir layout
+                self.assertNotIn(needle, src, (path, needle))
 
     def test_server_uses_engine_and_presets_only_for_appkeys_and_make_app(self):  # L13
         path = py_files("server.py")[0]
@@ -116,7 +128,7 @@ class TestLayering(unittest.TestCase):
         files = py_files("services")
         self.assertEqual({os.path.basename(f) for f in files},
                          {"__init__.py", "presets.py", "photos.py", "preview.py", "export.py",
-                          "preset_library.py"})   # XP1, K16
+                          "preset_library.py", "photo_library.py"})   # XP1, K16, PL6
         for path in files:
             for mod in imported_modules(path):
                 self.assertNotIn(mod.split(".")[0], ("aiohttp", "argparse"), path)
@@ -230,7 +242,8 @@ class TestLayering(unittest.TestCase):
         """
         files = py_files()
         self.assertIn(os.path.join(APP, SAFE_WRITE), files)
-        self.assertEqual(SAFE_WRITE_USERS, ("services/export.py", "services/preset_library.py"))   # XP10, KP3
+        self.assertEqual(SAFE_WRITE_USERS, ("services/export.py", "services/preset_library.py",
+                                            "services/photo_library.py"))   # XP10, KP3, PLP1
         for path in files:
             rel = os.path.relpath(path, APP).replace("\\", "/")
             with open(path, encoding="utf-8") as f:
@@ -266,7 +279,9 @@ class TestLayering(unittest.TestCase):
                                             "open_photo", "list_folder", "preview", "export",   # XP1
                                             "preset_groups", "rename_preset", "move_preset", "set_favorite",
                                             "create_group", "rename_group", "import_presets", "save_user_preset",
-                                            "rebuild_library"])   # CONTRACT-preset-library K16
+                                            "rebuild_library",   # CONTRACT-preset-library K16
+                                            "get_edit", "set_edit", "clear_edit", "paste_edit", "folder_thumbnails",
+                                            "thumbnail", "save_edit_as_preset"])   # CONTRACT-photo-library PL6, PLP6
         self.assertTrue(issubclass(DarkroomFacade, Facade))
 
     def test_operation_coverage(self):  # L2: every registered route, subcommand and tool exists
@@ -306,13 +321,19 @@ class TestLayering(unittest.TestCase):
         self.assertEqual(list(listed)[7], "darkroom_export")          # K16: the library tools come after export
         self.assertEqual(listed["darkroom_export"], {"readOnlyHint": False, "destructiveHint": False,
                                                      "idempotentHint": False, "openWorldHint": False})
-        self.assertEqual(list(listed)[8:], LIBRARY_TOOLS)
+        self.assertEqual(list(listed)[8:17], LIBRARY_TOOLS)
+        self.assertEqual(list(listed)[17:], PHOTO_TOOLS)                   # PL6 / PLP6: operations 18..24
         for name, ann in listed.items():
             if name in LIBRARY_WRITES:
                 self.assertEqual(ann, {"readOnlyHint": False, "destructiveHint": False,
                                        "idempotentHint": LIBRARY_WRITES[name], "openWorldHint": False}, name)
+            elif name in PHOTO_ANNOTATIONS:
+                self.assertEqual(ann, PHOTO_ANNOTATIONS[name], name)
             elif name != "darkroom_export":
                 self.assertEqual(ann, {"readOnlyHint": True, "openWorldHint": False}, name)
+        self.assertEqual(OPERATIONS["folder_thumbnails"]["mcp_defaults"], {"limit": 50})
+        self.assertEqual(OPERATIONS["set_edit"]["http"], ("PUT", "/api/edit"))
+        self.assertEqual(OPERATIONS["clear_edit"]["http"], ("DELETE", "/api/edit"))
         schema = OPERATIONS["export"]["input_schema"]
         self.assertEqual(schema["required"], ["items", "format"])
 

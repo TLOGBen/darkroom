@@ -29,17 +29,27 @@ def _render(eng, image_id, final, max_pixels):
 
 
 class PreviewService:
-    def __init__(self, library, engine_ref):
+    def __init__(self, library, engine_ref, photo_library):
         self.library = library
         self.engine_ref = engine_ref
+        self.photo_library = photo_library      # resolve_params: snapshot first (CONTRACT-photo-library PL5)
 
     def preview(self, image_id, preset_id=None, strength=100, overrides=None, max_pixels=None):
         eng = known_engine(self.engine_ref, image_id)
         params = None
         if preset_id is not None:
-            if not isinstance(preset_id, str) or preset_id not in self.library.params:
-                raise DarkroomError("not_found", M.UNKNOWN_OR_UNSUPPORTED_PRESET.format(pid=preset_id))
-            params = self.library.get(preset_id)
+            try:
+                info = eng.get(image_id)
+            except KeyError:
+                raise DarkroomError("not_found", M.UNKNOWN_IMAGE) from None
+            if "fingerprint" not in info:               # opened without the service: hash once, keep it
+                from .photo_library import fingerprint
+                from .photos import read_error
+                try:
+                    info["fingerprint"] = fingerprint(info["path"])
+                except OSError as e:
+                    raise read_error(info["path"], e) from None
+            params = self.photo_library.resolve_params(info["fingerprint"], preset_id)
         try:
             strength = semantics.validate_strength(strength)
             overrides = semantics.validate_overrides(overrides)

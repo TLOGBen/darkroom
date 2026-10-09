@@ -3,9 +3,12 @@
 Controllers (HTTP handlers, CLI, MCP tools) are checked against it for format translation only: what they pass
 to the facade, how a result is serialized, how each DarkroomError kind and an unexpected exception come out.
 """
+from darkroom_app.services.photo_library import ThumbnailResult
 from darkroom_app.services.preview import PreviewResult
 
 JPEG = b"\xff\xd8fake-jpeg\xff\xd9"
+FP = "ab" * 32
+EDIT = {"schema": "darkroom-edit/1", "fingerprint": FP, "preset": None, "strength": 100, "overrides": {"Exposure2012": 0.5}}
 
 
 class FakeDarkroom:
@@ -79,3 +82,30 @@ class FakeDarkroom:
 
     def rebuild_library(self):
         return self._do("rebuild_library", (), {"added": 0, "removed": 0, "kept": 0})
+
+    # CONTRACT-photo-library PL6 / PLP6
+    def get_edit(self, path):
+        return self._do("get_edit", (path,), {"fingerprint": FP, "edit": EDIT, "preset_status": None})
+
+    def set_edit(self, path, preset_id=None, strength=100, overrides=None):
+        return self._do("set_edit", (path, preset_id, strength, overrides),
+                        {"fingerprint": FP, "edit": EDIT, "preset_status": None})
+
+    def clear_edit(self, path):
+        return self._do("clear_edit", (path,), {"fingerprint": FP, "edit": None, "preset_status": None})
+
+    def paste_edit(self, targets, source=None, edit=None):
+        results = [{"ok": True, "target": "a.jpg"},
+                   {"ok": False, "target": "b.jpg", "error": "photo not found: b.jpg"}][: len(targets or [])]
+        return self._do("paste_edit", (targets, source, edit), {"results": results})
+
+    def folder_thumbnails(self, folder, offset=0, limit=None):
+        return self._do("folder_thumbnails", (folder, offset, limit),
+                        {"folder": folder, "items": [], "total": 0, "next_offset": None})
+
+    def thumbnail(self, path):
+        return self._do("thumbnail", (path,), ThumbnailResult(JPEG, FP, True, 4, 2))
+
+    def save_edit_as_preset(self, path, name, group=None):
+        return self._do("save_edit_as_preset", (path, name, group),
+                        {"id": "user:x", "name": name, "group": group, "file": "user/x.xmp"})

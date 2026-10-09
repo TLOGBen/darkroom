@@ -28,6 +28,7 @@ from .. import preview as semantics
 from .. import safe_write
 from ..errors import DarkroomError
 from . import on_gpu
+from .photo_library import fingerprint
 from .photos import _photo_ext
 
 EXPORT_DIR = "darkroom 匯出"            # verbatim (X8)
@@ -104,10 +105,11 @@ def candidate_names(stem, ext):
 
 
 class ExportService:
-    def __init__(self, library, engine_ref, preset_dir):
+    def __init__(self, library, engine_ref, preset_dir, photo_library):
         self.library = library
         self.engine_ref = engine_ref
         self.preset_dir = preset_dir            # the preset folder in use, for safe_write (XP12)
+        self.photo_library = photo_library      # resolve_params: the edit's snapshot first (photo library PL5)
 
     # ------------------------------------------------------------------ checks
     def _request(self, items, format, quality, dest_dir):
@@ -156,10 +158,15 @@ class ExportService:
         name, path = self._source(item)
         params = None
         preset_id = item.get("preset_id")
-        if preset_id is not None:
-            if not isinstance(preset_id, str) or preset_id not in self.library.params:
-                raise _ItemFailed(name, M.UNKNOWN_OR_UNSUPPORTED_PRESET.format(pid=preset_id))
-            params = self.library.get(preset_id)
+        if preset_id is not None:               # PLP5: the photo is hashed again, the edit's snapshot wins
+            try:
+                fp = fingerprint(path)
+            except OSError as e:
+                raise _ItemFailed(name, _one_line(e)) from None
+            try:
+                params = self.photo_library.resolve_params(fp, preset_id)
+            except DarkroomError as e:
+                raise _ItemFailed(name, e.message) from None
         try:
             strength = semantics.validate_strength(item.get("strength", 100))
             overrides = semantics.validate_overrides(item.get("overrides"))

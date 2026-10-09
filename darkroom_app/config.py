@@ -1,9 +1,10 @@
 """Where the user's LocalLLMs checkout and preset folder are (never hard-coded).
 
 Order: environment variable LOCALLLMS_ROOT, then config.local.json at the repo root (keys: localllms_root,
-preset_dir, preset_library_dir; the file is not in git). preset_dir defaults to <localllms_root>/artifact/11_preset/xmp.
-preset_library_dir (the preset library root: library.json, import/, user/) has no default here: callers fall back to
-dirname(preset_dir) (CONTRACT-preset-library K1, KP2).
+preset_dir, preset_library_dir, data_dir; the file is not in git). preset_dir defaults to
+<localllms_root>/artifact/11_preset/xmp. preset_library_dir (the preset library root: library.json, import/, user/)
+has no default here: callers fall back to dirname(preset_dir) (CONTRACT-preset-library K1, KP2). data_dir (the photo
+library: edits/, thumbs/, index/) defaults to %LOCALAPPDATA%/darkroom (CONTRACT-photo-library PL1).
 """
 import json
 import os
@@ -12,6 +13,7 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CONFIG_FILE = os.path.join(REPO, "config.local.json")
 ENV_ROOT = "LOCALLLMS_ROOT"
 PYTHON_REL = ("runtimes", "darkroom-python", "py3.13.14-torch2.14.0-cu130", "python.exe")
+DATA_DIR_ERROR = "找不到照片庫資料區：請在 config.local.json 設定 data_dir，或確認 LOCALAPPDATA 存在"   # verbatim (PL1)
 
 
 class ConfigError(RuntimeError):
@@ -48,3 +50,16 @@ def preset_dir(config_file=None, env=None):
 def preset_library_dir(config_file=None):
     """The configured preset library root (key preset_library_dir), or None (then dirname(preset_dir), KP2)."""
     return _read(config_file).get("preset_library_dir") or None
+
+
+def data_dir(config_file=None, env=None):
+    """The photo library's data folder (CONTRACT-photo-library PL1, PLP8): the config key data_dir, else
+    %LOCALAPPDATA%/darkroom; ConfigError when neither is known."""
+    env = os.environ if env is None else env
+    d = _read(config_file).get("data_dir")
+    if isinstance(d, str) and d.strip():
+        return d
+    local = env.get("LOCALAPPDATA")
+    if local:
+        return os.path.join(local, "darkroom")
+    raise ConfigError(DATA_DIR_ERROR)

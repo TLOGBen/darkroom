@@ -232,7 +232,7 @@ class TestGoldenCrossSite(GoldenCase):  # CONTRACT-export XP16 / app shell R10: 
 
 
 class TestGoldenRoutes(GoldenCase):
-    async def test_exactly_nineteen_routes(self):  # nine of L8 + POST /api/export (XP1) + nine library routes (K16)
+    async def test_exactly_twenty_six_routes(self):  # nine of L8 + export (XP1) + nine library (K16) + seven photo library (PL6, PLP2)
         routes = sorted((r.method, r.resource.canonical) for r in self.app.router.routes()
                         if r.method != "HEAD" and not r.resource.canonical.startswith("/static"))
         self.assertEqual(routes, sorted([
@@ -243,7 +243,9 @@ class TestGoldenRoutes(GoldenCase):
             ("POST", "/api/preset-library/move"), ("POST", "/api/preset-library/favorite"),
             ("POST", "/api/preset-library/groups/create"), ("POST", "/api/preset-library/groups/rename"),
             ("POST", "/api/preset-library/import"), ("POST", "/api/preset-library/save"),
-            ("POST", "/api/preset-library/rebuild")]))
+            ("POST", "/api/preset-library/rebuild"),
+            ("GET", "/api/edit"), ("PUT", "/api/edit"), ("DELETE", "/api/edit"), ("POST", "/api/edit/paste"),
+            ("POST", "/api/edit/save-preset"), ("GET", "/api/folder/thumbnails"), ("GET", "/api/thumbnail")]))
 
 
 if __name__ == "__main__":

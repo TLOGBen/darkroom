@@ -403,7 +403,15 @@ class PresetLibraryService:
             raise DarkroomError("invalid", str(e)) from None
         if preset_id is None and not o:
             raise DarkroomError("invalid", M.LIB_NOTHING_TO_SAVE)
-        data = xmp_bytes(semantics.effective_params(params, s, o), n, g)    # the preview's own function (K12)
+        return self._save(n, g, semantics.effective_params(params, s, o))    # the preview's own function (K12)
+
+    def save_params(self, name, group, params):
+        """The K12 write for Params already final - the photo library's "save the edit's snapshot as a preset"
+        (CONTRACT-photo-library PLP6); name / group rules and sentences as K6 / K7."""
+        return self._save(_name(name), USER_GROUP if group is None else _group(group), params)
+
+    def _save(self, n, g, final):
+        data = xmp_bytes(final, n, g)
 
         def unavailable(reason):
             return DarkroomError("unavailable", M.LIB_SAVE_UNAVAILABLE.format(reason=reason))

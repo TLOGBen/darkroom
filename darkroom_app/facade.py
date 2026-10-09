@@ -42,14 +42,29 @@ class Facade(Protocol):
 
     def rebuild_library(self): ...
 
+    def get_edit(self, path): ...
+
+    def set_edit(self, path, preset_id=None, strength=100, overrides=None): ...
+
+    def clear_edit(self, path): ...
+
+    def paste_edit(self, targets, source=None, edit=None): ...
+
+    def folder_thumbnails(self, folder, offset=0, limit=None): ...
+
+    def thumbnail(self, path): ...
+
+    def save_edit_as_preset(self, path, name, group=None): ...
+
 
 class DarkroomFacade:
-    def __init__(self, presets, photos, previews, exports, library):
+    def __init__(self, presets, photos, previews, exports, library, photo_library):
         self._presets = presets
         self._photos = photos
         self._previews = previews
         self._exports = exports
         self._library = library
+        self._photo_library = photo_library
 
     def list_presets(self, query=None, offset=0, limit=None, favorites=False):
         return self._presets.list_presets(query, offset, limit, favorites)
@@ -101,3 +116,25 @@ class DarkroomFacade:
 
     def rebuild_library(self):
         return self._library.rebuild_library()
+
+    # CONTRACT-photo-library PL6 / PLP6: operations 18..24
+    def get_edit(self, path):
+        return self._photo_library.get_edit(path)
+
+    def set_edit(self, path, preset_id=None, strength=100, overrides=None):
+        return self._photo_library.set_edit(path, preset_id, strength, overrides)
+
+    def clear_edit(self, path):
+        return self._photo_library.clear_edit(path)
+
+    def paste_edit(self, targets, source=None, edit=None):
+        return self._photo_library.paste_edit(targets, source, edit)
+
+    def folder_thumbnails(self, folder, offset=0, limit=None):
+        return self._photo_library.folder_thumbnails(folder, offset, limit)
+
+    def thumbnail(self, path):
+        return self._photo_library.thumbnail(path)
+
+    def save_edit_as_preset(self, path, name, group=None):
+        return self._photo_library.save_edit_as_preset(path, name, group)

@@ -17,6 +17,11 @@ def _writes(idempotent):
     return {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": idempotent, "openWorldHint": False}
 
 
+def _edits():
+    """CONTRACT-photo-library PL6: set / clear / paste replace a photo's edit (idempotent, destructive to the old edit)."""
+    return {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": True, "openWorldHint": False}
+
+
 def _schema(properties, required=()):
     s = {"type": "object", "properties": properties, "additionalProperties": False}
     if required:
@@ -238,5 +243,97 @@ OPERATIONS = {
         "input_schema": _schema({}),
         "mcp_defaults": {},
         "mcp_annotations": _writes(True),
+    },
+    # ---- CONTRACT-photo-library PL6 / PLP6: operations 18..24, in this order
+    "get_edit": {
+        "http": ("GET", "/api/edit"),
+        "cli": "edit get",
+        "mcp": "darkroom_edit_get",
+        "description": "The edit darkroom keeps for a photo (by its content fingerprint, in the app's data folder): "
+                       "{fingerprint, edit: null | {schema, fingerprint, preset: null | {id, name, group, params "
+                       "snapshot}, strength, overrides}, preset_status: null | current | changed | missing}.",
+        "input_schema": _schema({"path": dict(_STR, description="absolute path of the photo")}, ["path"]),
+        "mcp_defaults": {},
+    },
+    "set_edit": {
+        "http": ("PUT", "/api/edit"),
+        "cli": "edit set",
+        "mcp": "darkroom_edit_set",
+        "description": "Replace a photo's edit: preset (its parameters are snapshotted now; a later change of the "
+                       "preset file never changes this edit), strength 0..200 and overrides as in darkroom_preview. "
+                       "No preset and no overrides removes the edit. The photo itself is never written.",
+        "input_schema": _schema({
+            "path": dict(_STR, description="absolute path of the photo"),
+            "preset_id": {"type": ["string", "null"], "description": "id from darkroom_presets_list; null = none"},
+            "strength": {"type": "number", "minimum": 0, "maximum": 200, "default": 100},
+            "overrides": {"type": "object", "additionalProperties": {"type": "number"},
+                          "description": "{slider key from darkroom_sliders: difference}"},
+        }, ["path"]),
+        "mcp_defaults": {},
+        "mcp_annotations": _edits(),
+    },
+    "clear_edit": {
+        "http": ("DELETE", "/api/edit"),
+        "cli": "edit clear",
+        "mcp": "darkroom_edit_clear",
+        "description": "Remove a photo's edit (fine when it has none). The photo itself is never written.",
+        "input_schema": _schema({"path": dict(_STR, description="absolute path of the photo")}, ["path"]),
+        "mcp_defaults": {},
+        "mcp_annotations": _edits(),
+    },
+    "paste_edit": {
+        "http": ("POST", "/api/edit/paste"),
+        "cli": "edit paste",
+        "mcp": "darkroom_edit_paste",
+        "description": "Copy one edit (from the photo `source`, or the `edit` object of darkroom_edit_get) onto "
+                       "1..500 target photos, replacing their edits (snapshot, strength and overrides as they are). "
+                       "results has one entry per target, in order: {ok, target} or {ok: false, target, error}; "
+                       "failed counts the failures.",
+        "input_schema": _schema({
+            "targets": {"type": "array", "minItems": 1, "maxItems": 500, "items": _STR,
+                        "description": "absolute paths of the photos to paste onto"},
+            "source": dict(_STR, description="absolute path of the photo whose edit is copied"),
+            "edit": {"type": "object", "description": "a darkroom-edit/1 object (instead of source)"},
+        }, ["targets"]),
+        "mcp_defaults": {},
+        "mcp_annotations": _edits(),
+    },
+    "folder_thumbnails": {
+        "http": ("GET", "/api/folder/thumbnails"),
+        "cli": "thumbnails",
+        "mcp": "darkroom_folder_thumbnails",
+        "description": "The supported photos of a folder, sorted by file name, for the thumbnail grid: {folder, "
+                       "items: [{name, path, fingerprint, edited, cached}], total, next_offset}; fingerprint and "
+                       "edited are null until the photo has been thumbnailed. Thumbnails of the whole folder are "
+                       "made in the background. Page with offset / limit.",
+        "input_schema": _schema({
+            "folder": dict(_STR, description="absolute path of the photo folder"),
+            "offset": {"type": "integer", "minimum": 0, "default": 0},
+            "limit": {"type": "integer", "minimum": 1, "maximum": 200, "default": MCP_DEFAULT_LIMIT},
+        }, ["folder"]),
+        "mcp_defaults": {"limit": MCP_DEFAULT_LIMIT},
+    },
+    "thumbnail": {
+        "http": ("GET", "/api/thumbnail"),
+        "cli": "thumbnail",
+        "mcp": "darkroom_thumbnail",
+        "description": "A JPEG thumbnail of a photo (long edge 256, upright; colours are approximate), cached in "
+                       "the app's data folder, plus {fingerprint, edited, width, height}.",
+        "input_schema": _schema({"path": dict(_STR, description="absolute path of the photo")}, ["path"]),
+        "mcp_defaults": {},
+    },
+    "save_edit_as_preset": {
+        "http": ("POST", "/api/edit/save-preset"),
+        "cli": "edit save-preset",
+        "mcp": "darkroom_edit_save_preset",
+        "description": "Save a photo's edit (its preset snapshot at its strength plus its overrides) as a new user "
+                       "preset .xmp (never overwrites; group default '自存 preset'). Returns {id, name, group, file}.",
+        "input_schema": _schema({
+            "path": dict(_STR, description="absolute path of the photo"),
+            "name": _STR,
+            "group": _STR,
+        }, ["path", "name"]),
+        "mcp_defaults": {},
+        "mcp_annotations": _writes(False),
     },
 }

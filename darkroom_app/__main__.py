@@ -1,4 +1,4 @@
-"""`python -s -m darkroom_app [--port 8765] [--preset-dir DIR]`: serve the editor on 127.0.0.1."""
+"""`python -s -m darkroom_app [--port 8765] [--preset-dir DIR] [--data-dir DIR]`: serve the editor on 127.0.0.1."""
 import argparse
 import asyncio
 import sys
@@ -7,8 +7,8 @@ from . import config
 from .server import DEFAULT_PORT, READY_LINE, start
 
 
-async def _serve(preset_dir, port, library_dir=None):
-    runner, actual = await start(preset_dir, port, library_dir=library_dir)
+async def _serve(preset_dir, port, library_dir=None, data_dir=None):
+    runner, actual = await start(preset_dir, port, library_dir=library_dir, data_dir=data_dir)
     print(READY_LINE.format(port=actual), flush=True)
     try:
         await asyncio.Event().wait()
@@ -25,6 +25,8 @@ def main(argv=None):
     ap = argparse.ArgumentParser(prog="python -m darkroom_app", description="darkroom editor (local only)")
     ap.add_argument("--port", type=int, default=DEFAULT_PORT)
     ap.add_argument("--preset-dir", default=None, help="default: from LOCALLLMS_ROOT or config.local.json")
+    ap.add_argument("--data-dir", default=None, help="photo library folder (default: config data_dir or "
+                                                     "%%LOCALAPPDATA%%/darkroom)")
     a = ap.parse_args(argv)
     try:
         preset_dir = a.preset_dir or config.preset_dir()
@@ -34,7 +36,7 @@ def main(argv=None):
         print(f"darkroom：{e}", file=sys.stderr)
         return 2
     try:
-        asyncio.run(_serve(preset_dir, a.port, library_dir))
+        asyncio.run(_serve(preset_dir, a.port, library_dir, a.data_dir))
     except KeyboardInterrupt:
         pass
     except OSError as e:

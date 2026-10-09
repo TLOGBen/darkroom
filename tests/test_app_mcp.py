@@ -20,10 +20,16 @@ TOOLS = ["darkroom_presets_list", "darkroom_preset_show", "darkroom_preset_flags
          "darkroom_export",    # verbatim, in order (CONTRACT-export XP4; K16: the library tools after it)
          "darkroom_preset_groups", "darkroom_preset_rename", "darkroom_preset_move", "darkroom_preset_favorite",
          "darkroom_group_create", "darkroom_group_rename", "darkroom_presets_import", "darkroom_preset_save",
-         "darkroom_presets_rebuild"]
+         "darkroom_presets_rebuild",
+         "darkroom_edit_get", "darkroom_edit_set", "darkroom_edit_clear", "darkroom_edit_paste",
+         "darkroom_folder_thumbnails", "darkroom_thumbnail", "darkroom_edit_save_preset"]   # PL6 / PLP6: 18..24
 LIBRARY_IDEMPOTENT = {"darkroom_preset_rename": True, "darkroom_preset_move": True, "darkroom_preset_favorite": True,
                       "darkroom_presets_rebuild": True, "darkroom_group_create": False, "darkroom_group_rename": False,
-                      "darkroom_presets_import": False, "darkroom_preset_save": False}   # K16
+                      "darkroom_presets_import": False, "darkroom_preset_save": False,
+                      "darkroom_edit_save_preset": False}   # K16, PLP6
+EDIT_ANNOTATIONS = {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": True,
+                    "openWorldHint": False}   # verbatim (CONTRACT-photo-library PL6)
+EDIT_TOOLS = ("darkroom_edit_set", "darkroom_edit_clear", "darkroom_edit_paste")
 EXPORT_ANNOTATIONS = {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False,
                       "openWorldHint": False}   # verbatim (CONTRACT-export XP4)
 MODERN = {"io.modelcontextprotocol/protocolVersion": "2026-07-28"}
@@ -83,6 +89,8 @@ class TestMcpProtocol(McpCase):
         for t in tools:
             if t["name"] in LIBRARY_IDEMPOTENT:
                 want = dict(EXPORT_ANNOTATIONS, idempotentHint=LIBRARY_IDEMPOTENT[t["name"]])
+            elif t["name"] in EDIT_TOOLS:
+                want = EDIT_ANNOTATIONS
             else:
                 want = EXPORT_ANNOTATIONS if t["name"] == "darkroom_export" else {"readOnlyHint": True,
                                                                                   "openWorldHint": False}

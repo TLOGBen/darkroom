@@ -166,14 +166,22 @@ class TestCliLightImports(CliCase):
                 "for argv in (['presets','list'], ['presets','show','p-expo'], ['presets','flags'], ['sliders'],\n"
                 "             ['presets','groups'], ['presets','favorite','p-expo','on'], ['presets','rename','p-expo','X'],\n"
                 "             ['presets','save','--name','s','--preset','p-expo'], ['groups','create','G'],\n"
-                "             ['presets','rebuild']):\n"   # KP11: the library commands that write stay torch-free
+                "             ['presets','rebuild'],\n"   # KP11: the library commands that write stay torch-free
+                "             ['edit','get',sys.argv[2]], ['edit','set',sys.argv[2],'--preset','p-expo'],\n"
+                "             ['edit','paste','--from',sys.argv[2],sys.argv[2]], ['edit','clear',sys.argv[2]],\n"
+                "             ['edit','set',sys.argv[2],'--preset','p-expo'],\n"
+                "             ['edit','save-preset',sys.argv[2],'--name','e'], ['thumbnails',sys.argv[3]]):\n"  # PLP8
                 "    with contextlib.redirect_stdout(io.StringIO()):\n"
-                "        assert cli.main(['--preset-dir', sys.argv[1], *argv, '--json']) == 0, argv\n"
-                "print(sorted(m for m in ('torch', 'cv2') if m in sys.modules))\n")
-        r = subprocess.run([*_util.guarded_python(), "-c", code, self.presets], cwd=_util.REPO, capture_output=True,
-                           timeout=120)
+                "        assert cli.main(['--preset-dir', sys.argv[1], '--data-dir', sys.argv[4], *argv, '--json']) == 0, argv\n"
+                "print(sorted(m for m in ('torch', 'cv2') if m in sys.modules))\n"
+                "with contextlib.redirect_stdout(io.StringIO()):\n"
+                "    assert cli.main(['--preset-dir', sys.argv[1], '--data-dir', sys.argv[4], 'thumbnail', sys.argv[2], '--json']) == 0\n"
+                "print(sorted(m for m in ('torch',) if m in sys.modules))\n")
+        data_dir = os.path.join(self.tmp, "data")
+        r = subprocess.run([*_util.guarded_python(), "-c", code, self.presets, self.photo, self.photos, data_dir],
+                           cwd=_util.REPO, capture_output=True, timeout=120)
         self.assertEqual(r.returncode, 0, r.stderr.decode("utf-8", "replace"))
-        self.assertEqual(r.stdout.decode().strip(), "[]")
+        self.assertEqual(r.stdout.decode().split(), ["[]", "[]"])
 
 
 if __name__ == "__main__":

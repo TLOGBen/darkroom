@@ -13,13 +13,18 @@
     presets import <path>... [--group G] | save --name N [--group G] [--preset ID] [--strength S] [--override K=V]...
     presets rebuild
     groups create <group> | rename <group> <new>          (CONTRACT-preset-library K16)
+    edit get <photo> | set <photo> [--preset ID] [--strength S] [--override KEY=VALUE]... | clear <photo>
+    edit paste --from <photo> <target>... | save-preset <photo> --name N [--group G]
+    thumbnails <folder> [--offset N] [--limit N] | thumbnail <photo>      (CONTRACT-photo-library PL6)
 
 Every subcommand takes --json: stdout is then exactly one line {"ok":true,"result":...} or
 {"ok":false,"error":{"kind":...,"message":...}} and stderr stays empty. Without --json a failure is one line
-on stderr. Exit codes: 0 ok, 1 unexpected, 2 invalid / usage, 3 not_found, 4 conflict, 5 unavailable, 6 export or
-presets import with at least one failed item (stdout still holds every result; CONTRACT-export XP11, preset library
-KP5). What writes files goes through the facade: `export` (new files) and the preset library commands (the library
-index, import/ and user/); `preview` without --json writes the JPEG bytes to stdout.
+on stderr. Exit codes: 0 ok, 1 unexpected, 2 invalid / usage, 3 not_found, 4 conflict, 5 unavailable, 6 export,
+presets import or edit paste with at least one failed item (stdout still holds every result; CONTRACT-export XP11,
+preset library KP5, photo library PLP4). What writes files goes through the facade: `export` (new files), the preset
+library commands (the library index, import/ and user/) and the photo library (edits, thumbnails and the thumbnail
+index in --data-dir / the configured data folder; photos are only read); `preview` and `thumbnail` without --json
+write the JPEG bytes to stdout.
 """
 import argparse
 import base64
@@ -31,9 +36,11 @@ from . import config
 from .errors import DarkroomError
 
 EXIT = {"invalid": 2, "not_found": 3, "conflict": 4, "unavailable": 5}
-EXIT_PARTIAL = 6                        # export: some photos failed (CONTRACT-export XP11)
+EXIT_PARTIAL = 6                        # export / import / paste: some items failed (CONTRACT-export XP11)
 EXPORTED = "已匯出：{output_path}"        # verbatim (XP3)
 IMPORTED = "已匯入：{id}"                 # verbatim (KP5)
+PASTED = "已貼上：{target}"               # verbatim (CONTRACT-photo-library PLP4)
+BYTES_COMMANDS = ("preview", "thumbnail")   # without --json these write JPEG bytes to stdout (L9, PL13)
 FAVORITE_WORDS = {"on": True, "off": False}   # presets favorite <id> on|off; anything else goes to the service (KP9)
 UNEXPECTED = "未預期錯誤：{type_name}：{detail}"
 TTY_REFUSAL = "預覽是 JPEG 位元組，請導向檔案（> out.jpg）或加 --json"
@@ -69,6 +76,8 @@ def _parser():
                                  description="darkroom for agents: presets, sliders, open and preview photos "
                                              "(read-only), export photos as new files")
     ap.add_argument("--preset-dir", default=None, help="default: from LOCALLLMS_ROOT or config.local.json")
+    ap.add_argument("--data-dir", default=None, help="photo library folder (default: config data_dir or "
+                                                     "%%LOCALAPPDATA%%/darkroom)")
     sub = ap.add_subparsers(dest="command", required=True, metavar="COMMAND")
 
     def leaf(parent, name, help_text):
@@ -135,6 +144,32 @@ def _parser():
     p.add_argument("--format", default="jpeg", help="jpeg (default) or tiff")
     p.add_argument("--quality", type=_lenient_int, default=None, help="JPEG quality 1..100 (default 92)")
     p.add_argument("--dest-dir", default=None, help="existing absolute folder (default: <photo folder>/darkroom 匯出)")
+    # CONTRACT-photo-library PL6 / PLP6
+    edit = sub.add_parser("edit", help="the photo library: the edit kept for each photo")
+    esub = edit.add_subparsers(dest="edit_command", required=True, metavar="SUBCOMMAND")
+    p = leaf(esub, "get", "the edit kept for a photo")
+    p.add_argument("photo")
+    p = leaf(esub, "set", "replace a photo's edit (preset snapshot, strength, overrides); nothing chosen removes it")
+    p.add_argument("photo")
+    p.add_argument("--preset", default=None, help="preset id")
+    p.add_argument("--strength", type=float, default=100, help="percent, 0..200 (default 100)")
+    p.add_argument("--override", type=_override, action="append", default=None, metavar="KEY=VALUE",
+                   help="slider difference added after strength (repeatable)")
+    p = leaf(esub, "clear", "remove a photo's edit")
+    p.add_argument("photo")
+    p = leaf(esub, "paste", "copy one photo's edit onto other photos (their edits are replaced)")
+    p.add_argument("--from", dest="source", required=True, metavar="PHOTO", help="the photo whose edit is copied")
+    p.add_argument("target", nargs="*")
+    p = leaf(esub, "save-preset", "save a photo's edit (its preset snapshot x strength + overrides) as a user preset")
+    p.add_argument("photo")
+    p.add_argument("--name", default=None)
+    p.add_argument("--group", default=None, help="default: 自存 preset")
+    p = leaf(sub, "thumbnails", "the photos of a folder for the thumbnail grid (thumbnails are made in the background)")
+    p.add_argument("folder")
+    p.add_argument("--offset", type=int, default=0)
+    p.add_argument("--limit", type=int, default=None)
+    p = leaf(sub, "thumbnail", "a JPEG thumbnail of a photo")
+    p.add_argument("photo")
     return ap
 
 
@@ -173,6 +208,22 @@ def _run(a, facade):
         items = [{"path": p, "preset_id": a.preset, "strength": a.strength, "overrides": overrides}
                  for p in a.photo]
         return facade.export(items, a.format, a.quality, a.dest_dir)
+    if cmd == "edit":             # CONTRACT-photo-library PL6: photos are only read, edits live in data_dir
+        sc = a.edit_command
+        if sc == "get":
+            return facade.get_edit(a.photo)
+        if sc == "set":
+            overrides = dict(a.override) if a.override else None
+            return facade.set_edit(a.photo, a.preset, a.strength, overrides)
+        if sc == "clear":
+            return facade.clear_edit(a.photo)
+        if sc == "paste":
+            return facade.paste_edit(a.target, a.source, None)
+        return facade.save_edit_as_preset(a.photo, a.name, a.group)
+    if cmd == "thumbnails":
+        return facade.folder_thumbnails(a.folder, a.offset, a.limit)
+    if cmd == "thumbnail":
+        return facade.thumbnail(a.photo)
     info = facade.open_photo(a.photo)
     if cmd == "open":
         return info
@@ -186,6 +237,15 @@ def _is_import(a):
     return a.command == "presets" and a.presets_command == "import"
 
 
+def _is_paste(a):
+    return a.command == "edit" and a.edit_command == "paste"
+
+
+def _is_batch(a):
+    """Operations whose result is {"results": [...]} with per-item ok (exit 6 when any failed)."""
+    return a.command == "export" or _is_import(a) or _is_paste(a)
+
+
 def _line(text, stream):
     stream.write(text + "\n")
     stream.flush()
@@ -197,6 +257,8 @@ def _human(a, result):
                          for r in result["results"])
     if _is_import(a):
         return "\n".join(IMPORTED.format(id=r["id"]) if r["ok"] else r["error"] for r in result["results"])
+    if _is_paste(a):
+        return "\n".join(PASTED.format(target=r["target"]) if r["ok"] else r["error"] for r in result["results"])
     if a.command == "presets" and a.presets_command == "list":
         lines = [f"{r['id']}\t{r['group']}\t{r['name']}" + ("" if r["supported"] else "\t(unsupported)")
                  for r in result["items"]]
@@ -217,7 +279,7 @@ def _reconfigure():
 def main(argv=None, facade=None):
     _reconfigure()
     a = _parser().parse_args(argv)          # usage errors: argparse exits with 2
-    preview_bytes = a.command == "preview" and not a.json
+    preview_bytes = a.command in BYTES_COMMANDS and not a.json
     if preview_bytes and sys.stdout.isatty():
         _line(TTY_REFUSAL, sys.stderr)
         return 2
@@ -225,12 +287,16 @@ def main(argv=None, facade=None):
         from .composition import build_facade
         try:
             # KP2: without --preset-dir both the preset folder and the library root come from the configuration
-            facade = build_facade(a.preset_dir) if a.preset_dir else build_facade()
+            facade = (build_facade(a.preset_dir, data_dir=a.data_dir) if a.preset_dir
+                      else build_facade(data_dir=a.data_dir))
         except (config.ConfigError, FileNotFoundError) as e:
             _line(CONFIG_ERROR.format(e=e), sys.stderr)
             return 2
     try:
         result = _run(a, facade)
+    except config.ConfigError as e:         # the data folder is resolved on first use (PLP8): same line, exit 2
+        _line(CONFIG_ERROR.format(e=e), sys.stderr)
+        return 2
     except DarkroomError as e:
         if a.json:
             _line(json.dumps({"ok": False, "error": {"kind": e.kind, "message": e.message}},
@@ -242,10 +308,14 @@ def main(argv=None, facade=None):
         detail = re.sub(r"\r\n|\r|\n", " ", str(e))
         _line(UNEXPECTED.format(type_name=type(e).__name__, detail=detail), sys.stderr)
         return 1
-    if a.command == "preview":
+    if a.command in BYTES_COMMANDS:
         if a.json:
-            result = {"render_ms": result.render_ms, "width": result.width, "height": result.height,
-                      "jpeg_base64": base64.b64encode(result.jpeg).decode("ascii")}
+            if a.command == "preview":
+                result = {"render_ms": result.render_ms, "width": result.width, "height": result.height,
+                          "jpeg_base64": base64.b64encode(result.jpeg).decode("ascii")}
+            else:
+                result = {"fingerprint": result.fingerprint, "edited": result.edited, "width": result.width,
+                          "height": result.height, "jpeg_base64": base64.b64encode(result.jpeg).decode("ascii")}
         else:
             sys.stdout.flush()
             sys.stdout.buffer.write(result.jpeg)
@@ -255,7 +325,7 @@ def main(argv=None, facade=None):
         _line(json.dumps({"ok": True, "result": result}, ensure_ascii=False, separators=(",", ":")), sys.stdout)
     else:
         _line(_human(a, result), sys.stdout)
-    if (a.command == "export" or _is_import(a)) and not all(r["ok"] for r in result["results"]):
+    if _is_batch(a) and not all(r["ok"] for r in result["results"]):
         return EXIT_PARTIAL
     return 0
 
