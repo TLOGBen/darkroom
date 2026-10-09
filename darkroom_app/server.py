@@ -1,6 +1,7 @@
 """aiohttp application: static editor page plus the JSON / JPEG API (contract B3-B8).
 
-The server only reads photos and presets; it never writes either (there is no export in this slice).
+Handlers only translate HTTP <-> facade calls (ADR-0001, CONTRACT-layering): the rules and every error
+sentence live in darkroom_app.services. The server only reads photos and presets; it never writes either.
 """
 import asyncio
 import os
@@ -8,21 +9,26 @@ import os
 from aiohttp import web
 
 from . import engine as engine_mod
-from . import preview, sliders
+from .composition import build_facade
+from .errors import DarkroomError
+from .facade import Facade
+from .messages import OPEN_ERROR  # noqa: F401  (re-exported: verbatim constant, CONTRACT-heic)
 from .presets import Library
 
 HOST = "127.0.0.1"          # only ever bound to the local machine (B2)
 DEFAULT_PORT = 8765
-OPEN_ERROR = "照片讀取失敗：{file_name}：{reason}"   # verbatim (CONTRACT-heic)
 READY_LINE = "darkroom 已啟動：http://127.0.0.1:{port}/"
 STATIC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 
 LIBRARY = web.AppKey("library", Library)
 ENGINE = web.AppKey("engine", engine_mod.Engine)
+FACADE = web.AppKey("facade", Facade)
+
+STATUS = {"invalid": 400, "not_found": 404, "conflict": 409, "unavailable": 503}
 
 
-def _bad(msg, status=400):
-    return web.json_response({"error": msg}, status=status)
+def _error(e):
+    return web.json_response({"error": e.message}, status=STATUS[e.kind])
 
 
 async def _json_body(request):
@@ -35,9 +41,16 @@ async def _json_body(request):
     return body
 
 
-async def _run(request, fn, *args):
-    loop = asyncio.get_running_loop()
-    return await loop.run_in_executor(request.app[ENGINE].executor, fn, *args)
+async def _call(request, operation, *args):
+    """facade.<operation>(*args) off the event loop; DarkroomError propagates for the handler to translate."""
+    return await asyncio.to_thread(getattr(request.app[FACADE], operation), *args)
+
+
+async def _json(request, operation, *args):
+    try:
+        return web.json_response(await _call(request, operation, *args))
+    except DarkroomError as e:
+        return _error(e)
 
 
 async def index(request):
@@ -49,87 +62,44 @@ async def health(request):
 
 
 async def api_presets(request):
-    return web.json_response([{k: e[k] for k in ("id", "group", "name", "supported", "skipped")}
-                              for e in request.app[LIBRARY].entries])
+    try:
+        listing = await _call(request, "list_presets")
+    except DarkroomError as e:
+        return _error(e)
+    return web.json_response(listing["items"])
 
 
 async def api_preset_detail(request):
-    lib = request.app[LIBRARY]
-    pid = request.match_info["id"]
-    if pid not in lib.by_id:
-        return _bad(f"unknown preset {pid}", 404)
-    return web.json_response(lib.detail(pid))
+    return await _json(request, "preset_detail", request.match_info["id"])
 
 
 async def api_preset_flags(request):
-    return web.json_response(request.app[LIBRARY].flags())
+    return await _json(request, "preset_flags")
 
 
 async def api_sliders(request):
-    return web.json_response({"groups": [list(g) for g in sliders.GROUPS], "sliders": sliders.SLIDERS})
+    return await _json(request, "slider_table")
 
 
 async def api_open(request):
     body = await _json_body(request)
-    path = body.get("path")
-    if not isinstance(path, str) or not path.strip():
-        return _bad("path is required")
-    path = path.strip().strip('"')
-    if not os.path.isfile(path):
-        return _bad(f"photo not found: {path}", 404)
-    if os.path.splitext(path)[1].lower() not in engine_mod.PHOTO_EXT:
-        return _bad("unsupported photo format (JPEG/PNG/TIFF/HEIC)")
-    try:
-        info = await _run(request, request.app[ENGINE].open, path)
-    except (OSError, ValueError) as e:
-        return _bad(OPEN_ERROR.format(file_name=os.path.basename(path), reason=str(e)))   # reason is single-line at the source (CONTRACT-heic H13)
-    return web.json_response(info)
+    return await _json(request, "open_photo", body.get("path"))
 
 
 async def api_preview(request):
     body = await _json_body(request)
-    eng, lib = request.app[ENGINE], request.app[LIBRARY]
-    image_id = body.get("image_id")
-    if not isinstance(image_id, str) or image_id not in eng.images:
-        return _bad("unknown image_id", 404)
-    pid = body.get("preset_id")
-    params = None
-    if pid is not None:
-        if not isinstance(pid, str) or pid not in lib.params:
-            return _bad(f"unknown or unsupported preset {pid}", 404)
-        params = lib.get(pid)
     try:
-        strength = preview.validate_strength(body.get("strength", 100))
-        overrides = preview.validate_overrides(body.get("overrides"))
-    except ValueError as e:
-        return _bad(str(e))
-    final = preview.effective_params(params, strength, overrides)
-    try:
-        data, ms = await _run(request, eng.preview, image_id, final)
-    except KeyError:
-        return _bad("unknown image_id", 404)
-    return web.Response(body=data, content_type="image/jpeg",
-                        headers={"X-Render-Ms": f"{ms:.2f}", "Cache-Control": "no-store",
+        res = await _call(request, "preview", body.get("image_id"), body.get("preset_id"),
+                          body.get("strength", 100), body.get("overrides"))
+    except DarkroomError as e:
+        return _error(e)
+    return web.Response(body=res.jpeg, content_type="image/jpeg",
+                        headers={"X-Render-Ms": f"{res.render_ms:.2f}", "Cache-Control": "no-store",
                                  "Access-Control-Expose-Headers": "X-Render-Ms"})
 
 
-def folder_listing(path):
-    folder = os.path.dirname(os.path.abspath(path))
-    names = [n for n in os.listdir(folder)
-             if os.path.splitext(n)[1].lower() in engine_mod.PHOTO_EXT and os.path.isfile(os.path.join(folder, n))]
-    names.sort(key=lambda n: (n.casefold(), n))
-    files = [{"name": n, "path": os.path.join(folder, n)} for n in names]
-    base = os.path.normcase(os.path.basename(path))
-    index = next((i for i, n in enumerate(names) if os.path.normcase(n) == base), -1)
-    return {"folder": folder, "files": files, "index": index}
-
-
 async def api_folder(request):
-    eng = request.app[ENGINE]
-    image_id = request.query.get("image_id", "")
-    if image_id not in eng.images:
-        return _bad("unknown image_id", 404)
-    return web.json_response(folder_listing(eng.get(image_id)["path"]))
+    return await _json(request, "list_folder", request.query.get("image_id", ""))
 
 
 async def _on_cleanup(app):
@@ -140,6 +110,7 @@ def make_app(preset_dir, engine=None):
     app = web.Application(client_max_size=1 << 20)
     app[LIBRARY] = Library(preset_dir)
     app[ENGINE] = engine or engine_mod.Engine()
+    app[FACADE] = build_facade(library=app[LIBRARY], engine=app[ENGINE])
     app.router.add_get("/", index)
     app.router.add_get("/api/health", health)
     app.router.add_get("/api/presets", api_presets)
