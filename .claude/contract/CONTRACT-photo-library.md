@@ -1,4 +1,5 @@
 # CONTRACT — darkroom 照片庫（最小版：縮圖格、自動存編輯、複製／貼上編輯、匯出所選）
+> STATUS: sealed（2026-10-09）— PL1～PL18＋PLP1～PLP17 符合；2 次派遣：第 1 次 11 項 findings（F1 data_dir 上層不存在不是 unavailable、F3 keepalive、F4 沿用狀態存成 preset、F6 toast 句不在 logic.js、F7／F5 未釘、F8／F9 常數與條文、F10 鎖內寫索引、F11 bench）全修並各附釘死測試；複驗 3 支既有探針＋7 支新判官全紅、逐位元組還原；N1（PL12 本文與測試鏡像的舊式常數）記錄不修
 <!-- 此處採預設：合約未經人工確認即釘死（2026-10-09 工作流程派工；決定由主 session 做完，不問使用者） -->
 
 ## 目標
@@ -165,3 +166,7 @@ PLP12：四條路徑 GET 以 allow_head=False 登記 ｜ X-Darkroom 檢查涵蓋
 ```text
 PLP17 常數：無法寫入照片庫的 reason（上層不存在）：上層資料夾不存在：{parent} ｜ 前端：儲存編輯失敗：{reason} ｜ 讀取編輯失敗：{reason} ｜ 讀取資料夾失敗：{reason} ｜ THUMB_WORKERS：max(1, min(4, (os.cpu_count() or 2) // 2)) ｜ sendSave：fetch keepalive true
 ```
+
+## 封緘第 2 次派遣（複驗）處置紀錄（2026-10-09）
+- 第 1 輪 F1～F11 在原引用處回歸皆符合；第 1 輪咬到的 3 支探針（刪 `_generate` 開頭的 `_guard_folder`、`restore()` 拿掉 `{restore: true}`、`Sec-Fetch-Site` 拒絕清單只剩 `cross-site`）重發仍各自讓測試變紅；修正輪 7 支新判官（含 c6b）各自出生證明全紅；全部逐位元組還原，`git status` 空。
+- N1（記錄、不修，低嚴重度、文件／測試鏡像）：PL12 條文本文與 PLP8「排程」段仍寫 `max(1, min(4, os.cpu_count()//2))` 的舊式，`test_thumbs_not_on_gpu_executor` 對 `THUMB_WORKERS` 的斷言也是舊式鏡像（`os.cpu_count()` 回 None 的環境會自己 TypeError 而不是驗 `or 2` 分支）；Verbatim 區與 PLP17 常數（`max(1, min(4, (os.cpu_count() or 2) // 2))`）為準。下一片順手把兩處本文與那行斷言改成 Verbatim 寫法。
