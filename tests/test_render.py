@@ -364,6 +364,50 @@ class TestSpeedAndDevice(unittest.TestCase):  # A17
         self.assertLessEqual(float(np.abs(out - render(img, heavy_params(), device="cuda")).max()), 1e-3)
 
 
+def synth_photo(w=4096, h=2731, seed=0):
+    """A photo-like image with gradients, blobs, hard edges and fine noise (CONTRACT-s1-experience S6)."""
+    import cv2
+    rng = np.random.default_rng(seed)
+    yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+    base = np.stack([0.25 + 0.5 * xx / w, 0.3 + 0.4 * yy / h, 0.5 + 0.3 * np.sin(xx / 97.0) * np.cos(yy / 61.0)], -1)
+    for _ in range(40):
+        x0, y0 = rng.integers(0, w - 400), rng.integers(0, h - 400)
+        base[y0:y0 + rng.integers(50, 400), x0:x0 + rng.integers(50, 400)] *= rng.uniform(0.4, 1.4)
+    blobs = cv2.GaussianBlur(rng.normal(0, 1, (h // 16, w // 16)).astype(np.float32), (0, 0), 3)
+    base += 0.15 * cv2.resize(blobs, (w, h), interpolation=cv2.INTER_CUBIC)[..., None]
+    fine = cv2.GaussianBlur(rng.normal(0, 1, (h, w)).astype(np.float32), (0, 0), 1.2)   # 1-2 px texture: what
+    base += 0.06 * (fine / fine.std())[..., None]                                       # sharpening acts on
+    base += rng.normal(0, 0.01, base.shape).astype(np.float32)
+    return np.clip(base, 0, 1).astype(np.float32)
+
+
+class TestDetailEffectsScale(unittest.TestCase):  # CONTRACT-s1-experience S6 / core patch K4
+    def test_detail_effects_scale_with_size(self):
+        """Grain, sharpening and texture follow the image size: rendering the big image and shrinking it gives
+        what rendering the small image gives (preview = export, pixel for pixel, not only parameter for parameter)."""
+        import cv2
+        from darkroom import _render
+        self.assertEqual(_render.REF_LONG_EDGE, 3000.0)
+        self.assertEqual([_render._texture_bands(L) for L in (1414, 3000, 4243, 6000, 500)],
+                         [(1, 2), (2, 3), (3, 4), (3, 4), (1, 2)])
+        img = synth_photo()
+        H, W = img.shape[:2]
+        small = cv2.resize(img, (W // 4, H // 4), interpolation=cv2.INTER_AREA)
+        down = lambda a: cv2.resize(a, (W // 4, H // 4), interpolation=cv2.INTER_AREA)
+        mad = lambda a, b: float(np.abs(a - b).mean())
+        p = Params(values={"GrainAmount": 60.0, "GrainSize": 25.0})
+        big, sm = render(img, p), render(small, p)
+        ratio = float((sm - small).std() / (down(big) - small).std())
+        self.assertTrue(0.8 <= ratio <= 1.25, ratio)
+        self.assertGreater(float((sm - small).std()), 0.01)                        # the grain is really there
+        for vals, limit in (({"Sharpness": 100.0, "SharpenRadius": 1.5}, 0.008), ({"Texture": 60.0}, 0.006),
+                            ({"Texture": -60.0}, 0.006)):
+            p = Params(values=vals)
+            big, sm = render(img, p), render(small, p)
+            self.assertLessEqual(mad(down(big), sm), limit, vals)
+            self.assertGreater(mad(big, img), 1e-4, vals)                           # the effect is really applied
+
+
 class TestColorSpace(unittest.TestCase):  # A18
     def test_srgb_linear_roundtrip(self):
         from darkroom import _color

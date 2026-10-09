@@ -2,6 +2,7 @@
 import builtins
 import io
 import os
+import re
 import unittest
 from unittest import mock
 
@@ -145,6 +146,49 @@ class TestSkipped(unittest.TestCase):
         pr = load_preset(p)
         self.assertIn("Mask/Paint", pr.skipped)
         self.assertEqual(sum(len(m["shapes"]) for m in pr.masks), 0)
+
+    def test_monochrome_look_renders_gray(self):  # CONTRACT-s1-experience S5 / core patch K3
+        import numpy as np
+        from darkroom import render
+        from darkroom._xmp import LOOK_APPROXIMATED, MONOCHROME_LOOK
+        self.assertEqual(MONOCHROME_LOOK.pattern, r"monochrome|black\s*(?:&|and)\s*white|\bb&w\b")
+        self.assertEqual(LOOK_APPROXIMATED, "Look（{name}，已以黑白近似）")
+        d = _util.tmpdir(self)
+        look = lambda name: f'   <crs:Look>\n    <rdf:Description crs:Name="{name.replace("&", "&amp;")}"/>\n   </crs:Look>\n'
+        rng = np.random.default_rng(1)
+        img = rng.uniform(0, 1, (48, 64, 3)).astype(np.float32)
+        chdiff = lambda o: float(max(np.abs(o[..., 0] - o[..., 1]).max(), np.abs(o[..., 1] - o[..., 2]).max()))
+        for name in ("Adobe Monochrome", "Black & White 03", "Kodak Tri-X b&w look", "Classic Black and White"):
+            p = load_preset(_xmpgen.write(d, "m.xmp", _xmpgen.xmp_text({"Exposure2012": "+0.2"}, extra=look(name))))
+            self.assertIs(p.values.get("ConvertToGrayscale"), True, name)
+            self.assertIn(f"Look（{name}，已以黑白近似）", p.skipped, name)
+            self.assertLessEqual(chdiff(render(img, p)), 1e-4, name)
+        p = load_preset(_xmpgen.write(d, "c.xmp", _xmpgen.xmp_text({"Exposure2012": "+0.2"}, extra=look("Adobe Color"))))
+        self.assertNotIn("ConvertToGrayscale", p.values)
+        self.assertEqual([s for s in p.skipped if s.startswith("Look")], ["Look（Adobe Color）"])
+        self.assertGreater(chdiff(render(img, p)), 0.01)
+        from darkroom_app import skips
+        self.assertEqual(skips.level("Look（Adobe Monochrome，已以黑白近似）"), "minor")
+        self.assertEqual(skips.label("Look（Adobe Monochrome，已以黑白近似）"), "描述檔外觀（Adobe Monochrome，已以黑白近似）")
+        self.assertEqual(skips.level("Look（Adobe Color）"), "major")
+
+    def test_library_monochrome_looks(self):  # S5 on the user's library: exactly the 8 Adobe Monochrome presets
+        from darkroom._xmp import MONOCHROME_LOOK
+        from darkroom_app import skips
+        hits = []
+        for path in _util.preset_files():
+            text = _util.read_text(path)
+            m = re.search(r"<crs:Look>.*?crs:Name=\"([^\"]*)\"", text, re.S)
+            if m and MONOCHROME_LOOK.search(m.group(1)):
+                hits.append((path, m.group(1)))
+        self.assertEqual(len(hits), 8)
+        for path, name in hits:
+            p = load_preset(path)
+            self.assertIs(p.values.get("ConvertToGrayscale"), True, path)
+            item = f"Look（{name}，已以黑白近似）"
+            self.assertIn(item, p.skipped, path)
+            self.assertEqual(skips.level(item), "minor", path)        # the Look itself is a note now, not a warning
+            self.assertNotIn(skips.label(item), skips.summarize(p.skipped)["banner"], path)
 
     def test_supported_masks_parsed(self):  # A14 (parse side)
         p = _util.find_preset(r"Mask/CircularGradient", exclude=r'ProcessVersion="6\.7"')

@@ -193,7 +193,8 @@ class TestPresetDetail(AppCase):
                  "SharpenDetail", "SharpenEdgeMasking", "GrainFrequency", "AutoLateralCA", "LensProfileEnable",
                  "LensProfileVignettingScale", "LensProfileDistortionScale", "DefringePurpleAmount",
                  "DefringeGreenHueLo", "VignetteAmount", "VignetteMidpoint", "PostCropVignetteHighlightContrast",
-                 "PostCropVignetteStyle", "PostCropVignetteRoundness（負值）", "Contrast2012（超出範圍，已夾值）"]
+                 "PostCropVignetteStyle", "PostCropVignetteRoundness（負值）", "Contrast2012（超出範圍，已夾值）",
+                 "Look（Adobe Monochrome，已以黑白近似）"]   # S5: approximated, so a note, not a warning
         for item in major:
             self.assertEqual(skips.level(item), "major", item)
         for item in minor:

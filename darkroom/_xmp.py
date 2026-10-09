@@ -33,6 +33,10 @@ META = frozenset([
     "OverrideLookVignette", "AutoGrayscaleMix", "WhiteBalance", "CameraProfile",
 ])
 NEUTRAL_PROFILES = ("Embedded", "Default Color", "Default Monochrome")
+# A Look whose name says black & white is approximated by the grayscale conversion (CONTRACT-s1-experience S5,
+# core patch K3); the Look's own tone and curves are still not applied, so it stays listed, as "approximated".
+MONOCHROME_LOOK = re.compile(r"monochrome|black\s*(?:&|and)\s*white|\bb&w\b", re.I)   # verbatim (S5)
+LOOK_APPROXIMATED = "Look（{name}，已以黑白近似）"                                     # verbatim (S5)
 CURVE_TAGS = ("ToneCurvePV2012", "ToneCurvePV2012Red", "ToneCurvePV2012Green", "ToneCurvePV2012Blue")
 TEXT_TAGS = ("Name", "ShortName", "SortName", "Group", "Description")
 
@@ -252,7 +256,11 @@ def read_preset(path):
         elif tag == "Look":
             d = ch.find(f"{RDF}Description")
             look = _attrs(d).get("Name", "") if d is not None else ""
-            skipped.add(f"Look（{look}）" if look else "Look")
+            if look and MONOCHROME_LOOK.search(look):          # K3: a black & white Look -> grayscale conversion
+                values["ConvertToGrayscale"] = True
+                skipped.add(LOOK_APPROXIMATED.format(name=look))
+            else:
+                skipped.add(f"Look（{look}）" if look else "Look")
         elif tag == "MaskGroupBasedCorrections":
             masks = _parse_masks(ch, skipped)
         elif tag == "PointColors":

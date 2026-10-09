@@ -44,6 +44,7 @@ VALUE_LABELS = {
 }
 
 CLAMPED = "（超出範圍，已夾值）"
+APPROXIMATED = "，已以黑白近似）"     # a black & white Look rendered as the grayscale conversion (S5): minor
 BANNER = "這個 preset 有 {n} 項會改變觀感的設定無法套用：{items_joined_by_、}"   # verbatim (contract R4)
 NOTE = "另有 {n} 項細節設定未套用：{items_joined_by_、}"                          # verbatim (contract R4)
 
@@ -60,6 +61,8 @@ def _parts(item):
 def level(item):
     key, base, suffix = _parts(item)
     if suffix == CLAMPED or base in MINOR:
+        return "minor"
+    if key == "Look" and suffix.endswith(APPROXIMATED):
         return "minor"
     return "major"
 
