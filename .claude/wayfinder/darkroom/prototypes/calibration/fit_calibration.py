@@ -10,9 +10,9 @@ The search needs renders at constants other than the hard-coded ones, so the fou
 are mirrored here (formulas below, built from darkroom's own guided filter); before fitting, the mirror at the
 current constants is checked against the public render() for every job and the run stops if they disagree.
 
-  python -s tools/fit_calibration.py fit [--lr-dir DIR] [--base-dir DIR] [--input original|lr-baseline] [--stride N]
+  python -s .claude/wayfinder/darkroom/prototypes/calibration/fit_calibration.py fit [--lr-dir DIR] [--base-dir DIR] [--input original|lr-baseline] [--stride N]
                                         [--report F]
-  python -s tools/fit_calibration.py selftest [--noise S] [--keep] [--report F]
+  python -s .claude/wayfinder/darkroom/prototypes/calibration/fit_calibration.py selftest [--noise S] [--keep] [--report F]
 
 fit       LR exports default to <LocalLLMs>/outputs/lr-calibration (file names <date>-<code>_<label>__<image>.tif or
           plan B <date>-<code>__<image>.tif; the newest date wins); the standard images to
@@ -33,7 +33,7 @@ import shutil
 import sys
 import tempfile
 
-REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+REPO = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), *[os.pardir] * 5))  # prototypes/calibration -> repo root
 if REPO not in sys.path:
     sys.path.insert(0, REPO)
 
@@ -368,7 +368,7 @@ def load_jobs(lr_dir, base_dir, input_mode, device):
             mirror_err = max(mirror_err, err)
             if err > MIRROR_TOL:
                 sys.exit(f"tone mirror differs from darkroom.render on {stem}__{img}: max |diff| {err:.2e} > "
-                         f"{MIRROR_TOL} — _render._tone changed; update the mirror in tools/fit_calibration.py")
+                         f"{MIRROR_TOL} — _render._tone changed; update the mirror in .claude/wayfinder/darkroom/prototypes/calibration/fit_calibration.py")
             j.x_full = None          # only the subsampled tensors are kept for the search
             jobs.append(j)
     floor = {}

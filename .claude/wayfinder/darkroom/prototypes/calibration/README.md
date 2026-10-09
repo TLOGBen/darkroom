@@ -21,7 +21,7 @@ $GEN = ".claude/wayfinder/darkroom/prototypes/calibration/make_calibration_set.p
 9. **擬合（電腦自己跑約 3～5 分鐘；先關掉 ComfyUI 這類佔 GPU 的程式）**：
 
    ```powershell
-   & $PY -s tools/fit_calibration.py fit
+   & $PY -s .claude/wayfinder/darkroom/prototypes/calibration/fit_calibration.py fit
    ```
 
    它讀上面那個匯出資料夾，標準圖用 `C:\Users\powde\workspace\LocalLLMs\scratch\lr-calibration\planB_base\`，報告寫到 `D:\Code\darkroom\outputs\calibration\<今天日期>-fit-report.md`。只給建議常數，不會改程式。GPU 記憶體不夠就加 `--stride 3`。
@@ -35,12 +35,12 @@ $GEN = ".claude/wayfinder/darkroom/prototypes/calibration/make_calibration_set.p
 - 日期：2026-10-04
 - 票：`issues/14-calibration-set.md`
 - 產生器：`make_calibration_set.py`（可重跑；用 darkroom 專用 Python，只用它內建的 numpy／PIL／cv2）
-- 擬合工具：darkroom 根目錄的 `tools/fit_calibration.py`（`fit` 擬合、`selftest` 用假 Lightroom 驗證流程）
+- 擬合工具：本資料夾的 `fit_calibration.py`（它要讀核心內部常數，所以放在原型資料夾，不放 `tools/`）（`fit` 擬合、`selftest` 用假 Lightroom 驗證流程）
 - 路徑（2026-10-09 更新）：這個資料夾現在在 darkroom repo 的 `.claude/wayfinder/darkroom/prototypes/calibration/`；大檔與匯出仍放 LocalLLMs（`scratch/lr-calibration/`、`outputs/lr-calibration/`）
 
 ## 目的
 
-darkroom 自己寫的 Lightroom XMP 調色，有幾項 Adobe 沒公開演算法（亮部、陰影、白、黑、清晰度、去朦朧、紋理、PV2012 曝光滾降），只能先用近似法加上猜的初始值（見 `research/03-proprietary-approximations.md` §10）。這份校正集是：**趁 Lightroom 7 天免費試用，一次把「只動一個滑桿」的結果全部渲染出來**。之後就能離線把我們的曲線擬合到 Lightroom 的結果（用 ΔE、亮度曲線差來量；工具是 `tools/fit_calibration.py`），不必再開 Lightroom。
+darkroom 自己寫的 Lightroom XMP 調色，有幾項 Adobe 沒公開演算法（亮部、陰影、白、黑、清晰度、去朦朧、紋理、PV2012 曝光滾降），只能先用近似法加上猜的初始值（見 `research/03-proprietary-approximations.md` §10）。這份校正集是：**趁 Lightroom 7 天免費試用，一次把「只動一個滑桿」的結果全部渲染出來**。之後就能離線把我們的曲線擬合到 Lightroom 的結果（用 ΔE、亮度曲線差來量；工具是 `.claude/wayfinder/darkroom/prototypes/calibration/fit_calibration.py`），不必再開 Lightroom。
 
 ## 總量與時間
 
@@ -154,14 +154,14 @@ $GEN = ".claude/wayfinder/darkroom/prototypes/calibration/make_calibration_set.p
 
 1. 匯出的檔案直接放在 `C:\Users\powde\workspace\LocalLLMs\outputs\lr-calibration\`（不開子資料夾、不開日期資料夾；`outputs/` 不進 git），檔名是 `<渲染日期>-<原本的檔名>.tif`。另外在同一個資料夾放 `<渲染日期>-lr-version.txt`，內容寫 Lightroom Classic 的版本號（說明 → 系統資訊，第一行）跟 Camera Raw 版本。日期前綴後面的部分不要改，後面的分析靠它找設定。
 2. 確認 `check` 說「缺 0」、也跑完第 7 步擬合以後（報告有問題還能趁試用補渲染），**到 Adobe 帳號頁面取消試用**（account.adobe.com → 方案 → 取消方案），確認收到取消信。
-3. 想清空間的話，`<LocalLLMs>/scratch/lr-calibration/planA/` 可以刪（之後可以重產）；**`planB_base/` 先留著**，`tools/fit_calibration.py` 拿它當 darkroom 那一側的輸入。
+3. 想清空間的話，`<LocalLLMs>/scratch/lr-calibration/planA/` 可以刪（之後可以重產）；**`planB_base/` 先留著**，`.claude/wayfinder/darkroom/prototypes/calibration/fit_calibration.py` 拿它當 darkroom 那一側的輸入。
 
-### 7. 擬合（`tools/fit_calibration.py`）
+### 7. 擬合（`.claude/wayfinder/darkroom/prototypes/calibration/fit_calibration.py`）
 
 ```powershell
-& $PY -s tools/fit_calibration.py fit                     # 預設讀 <LocalLLMs>/outputs/lr-calibration
-& $PY -s tools/fit_calibration.py fit --input lr-baseline # darkroom 改用 Lightroom 的 A00 全歸零輸出當輸入
-& $PY -s tools/fit_calibration.py selftest                # 假 Lightroom：用已知常數渲染，確認擬合找得回來
+& $PY -s .claude/wayfinder/darkroom/prototypes/calibration/fit_calibration.py fit                     # 預設讀 <LocalLLMs>/outputs/lr-calibration
+& $PY -s .claude/wayfinder/darkroom/prototypes/calibration/fit_calibration.py fit --input lr-baseline # darkroom 改用 Lightroom 的 A00 全歸零輸出當輸入
+& $PY -s .claude/wayfinder/darkroom/prototypes/calibration/fit_calibration.py selftest                # 假 Lightroom：用已知常數渲染，確認擬合找得回來
 ```
 
 - 對亮部、陰影、白、黑（A02～A05）各算擬合前的平均 ΔE2000 與亮度曲線差，再對 `_render.py` 的常數（0.30、0.35、0.18、0.12／0.10）做一維最小平方搜尋，輸出擬合前後的表與建議常數。
