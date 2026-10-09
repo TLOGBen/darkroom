@@ -367,6 +367,17 @@ class TestPageStructure(unittest.TestCase):
         self.assertIn("const {path, req} = job;", send)
         self.assertIn("if (req.method === 'PASTE') {", send)        # S2: the remembered snapshot goes through paste
         self.assertIn("api('POST', '/api/edit/paste', req.body, {keepalive: true})", send)
+        paste = send[send.index("if (req.method === 'PASTE') {"):send.index("} else {")]
+        # seal F5: after the paste the page re-reads the edit, so st.edit is the saved edit (no carry hint)
+        self.assertIn("res = await (await api('GET', '/api/edit?path=' + encodeURIComponent(path))).json();", paste)
+        self.assertNotRegex(paste, r"res\s*=\s*r\b")
+        # seal F4 / S13 (g): a failed save is dirty again at once and kept for unload during its back-off
+        self.assertIn("save.retry = Object.assign({}, job, {retried: true}); save.dirty = true;", send)
+        unload = js[js.index("function unloadSave"):js.index("function applyEditInfo")]
+        self.assertIn("const job = save.pending || save.retry;", unload)
+        flush = js[js.index("async function flushSave"):js.index("function unloadSave")]
+        self.assertIn("if (save.retry) save.dirty = true;", flush)
+        self.assertIn("if (save.retry && save.retry.path === path) save.retry = null;", sched)
         self.assertIn("if (st.image && st.image.path === path) applyEditInfo(res);", send)
         opened = js[js.index("async function openPhoto"):js.index("function openFailed")]
         self.assertLess(opened.index("await flushSave();"), opened.index("st.loading = token;"))
@@ -566,6 +577,14 @@ class TestPageStructure(unittest.TestCase):
     def test_toasts_go_through_explain(self):  # S14: every toast shows the explained sentence
         js = read("app.js")
         self.assertIn("t.textContent = L.explain(msg); t.title = original || msg;", js[js.index("function toast"):js.index("function setStatus")])
+        # seal patch S14a: the status line explains its error too; no error text reaches the screen another way
+        self.assertIn("setStatus(L.explain('預覽失敗：' + e.message), 'err', e.message);", js)
+        for m in re.finditer(r"setStatus\(([^;]*)\);", js):
+            if "e.message" in m.group(1):
+                self.assertTrue(m.group(1).startswith("L.explain("), m.group(0))
+        for m in re.finditer(r"\.(?:textContent|innerHTML)\s*=\s*([^;]*)", js):
+            if "e.message" in m.group(1) or "reason" in m.group(1):
+                self.assertIn("L.explain(", m.group(1), m.group(0))
 
     def test_restore_uses_snapshot_values(self):  # CONTRACT-s1-experience S3
         js = read("app.js")

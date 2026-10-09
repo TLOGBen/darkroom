@@ -263,6 +263,11 @@ async def api_folder_thumbnails(request):
     return await _json(request, "folder_thumbnails", q.get("folder"), offset, limit)
 
 
+def x_edit(summary):
+    """S8: encodeURIComponent(JSON.stringify(summary)) byte for byte - encodeURIComponent keeps !'()* as they are."""
+    return quote(json.dumps(summary, ensure_ascii=False, separators=(",", ":")), safe="!'()*")
+
+
 async def api_thumbnail(request):
     try:
         res = await _call(request, "thumbnail", request.query.get("path"))
@@ -270,7 +275,7 @@ async def api_thumbnail(request):
         return _error(e)
     headers = {"X-Fingerprint": res.fingerprint, "X-Edited": "1" if res.edited else "0", "Cache-Control": "no-store"}
     if res.edit is not None:            # S8: the grid's badge text, percent-encoded JSON (header values are ASCII)
-        headers["X-Edit"] = quote(json.dumps(res.edit, ensure_ascii=False, separators=(",", ":")), safe="")
+        headers["X-Edit"] = x_edit(res.edit)
     return web.Response(body=res.jpeg, content_type="image/jpeg", headers=headers)
 
 

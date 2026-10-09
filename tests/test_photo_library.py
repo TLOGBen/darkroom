@@ -364,6 +364,44 @@ class TestEdits(PhotoLibCase):
         self.assertEqual(sorted(os.listdir(self.photos)), ["a.jpg", "b.jpg"])
         self.assertEqual(first["edit"]["preset"]["id"], "p-expo")
 
+    def test_restore_never_over_another_edit(self):  # seal patch S4a: the current edit has no copy anywhere
+        a = self.photo()
+        fp = sha(a)
+        self.f.set_edit(a, "p-expo", 130)
+        self.f.clear_edit(a)                                                # previous = p-expo 130
+        self.f.set_edit(a, "p-strong", 70, {"Contrast2012": 5})             # edited again, autosaved
+        with open(self.edit_file(fp), "rb") as f:
+            now = f.read()
+        self.assertEqual(self.err(self.f.restore_edit, a),
+                         ("conflict", "這張照片已經有別的編輯，取回上一份會蓋掉它；要取回請先還原成原圖：a.jpg"))
+        with open(self.edit_file(fp), "rb") as f:
+            self.assertEqual(f.read(), now)                                 # untouched, byte for byte
+        self.assertEqual(self.f.get_edit(a)["edit"]["preset"]["id"], "p-strong")
+        # the documented way: reset to original (the current edit becomes the previous one), then restore
+        self.f.clear_edit(a)
+        self.assertEqual(self.f.restore_edit(a)["edit"]["preset"]["id"], "p-strong")
+        self.assertEqual(self.f.restore_edit(a)["edit"]["strength"], 70)    # the same edit again: a no-op success
+
+    def test_previous_is_written_before_the_edit_is_removed(self):  # seal F2 / S4: no window without a copy
+        a = self.photo()
+        fp = sha(a)
+        self.f.set_edit(a, "p-expo", 130)
+        lib = self.f._photo_library
+        real = lib._write_json
+
+        def failing(target, *args, **kwargs):
+            if target.endswith(".prev.json"):
+                raise DarkroomError("unavailable", "injected: cannot write the previous edit")
+            return real(target, *args, **kwargs)
+        lib._write_json = failing
+        try:
+            for clear in (lambda: self.f.clear_edit(a), lambda: self.f.set_edit(a)):
+                self.assertEqual(self.err(clear), ("unavailable", "injected: cannot write the previous edit"))
+                self.assertTrue(os.path.exists(self.edit_file(fp)))          # the edit is still there
+                self.assertEqual(self.f.get_edit(a)["edit"]["preset"]["id"], "p-expo")
+        finally:
+            lib._write_json = real
+
     def test_snapshot_survives_preset_change(self):  # PL4
         a = self.photo()
         before = self.lib.library.get("p-expo").to_dict()
@@ -1124,7 +1162,10 @@ class TestPhotoLibraryHttp(AioHTTPTestCase):
         await self.client.put("/api/edit", json={"path": a, "preset_id": "p-expo", "strength": 130})
         r = await self.client.get("/api/thumbnail", params={"path": a})
         self.assertEqual(r.headers["X-Edited"], "1")
-        self.assertRegex(r.headers["X-Edit"], r"^[A-Za-z0-9%._~-]+$")          # ASCII only (percent-encoded)
+        self.assertRegex(r.headers["X-Edit"], r"^[A-Za-z0-9%._~!'()*-]+$")     # ASCII only (percent-encoded)
+        from darkroom_app.server import x_edit                                 # seal F6: encodeURIComponent exactly
+        self.assertEqual(x_edit({"preset": "A (2)!*'", "strength": 100, "status": "current"}),
+                         "%7B%22preset%22%3A%22A%20(2)!*'%22%2C%22strength%22%3A100%2C%22status%22%3A%22current%22%7D")
         self.assertEqual(json.loads(unquote(r.headers["X-Edit"])),
                          {"preset": "曝光一", "strength": 130, "status": "current"})   # Chinese name survives
         _xmpgen.write(self.presets, "p-expo.xmp", _xmpgen.xmp_text({"Exposure2012": "+2.50"}, name="變了", group="風景 - 海邊"))

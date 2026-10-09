@@ -97,3 +97,12 @@ A/B：按鈕文字「對照」 ｜ 標籤「原圖」「編輯後」 ｜ 快捷�
 - CONTRACT-photo-library：PL4 的 App 端行為 → S2；PL6／PL7／PL10 → S4（第 25 個操作、`previous` 鍵、`.prev.json`）；PLP9 還原與清單 → S3、S9、S18；`X-Edit` 標頭（S8）為 HTTP 專用資訊，CLI／MCP 形狀不變。
 - CONTRACT-core-library：補丁 K3（S5）、K4（S6）；A13 的 skipped 規則對黑白 Look 改記近似項。
 - 不在 S1（記錄，不修）：review findings [0] preset 庫根落在照片資料夾、[1] PLP1 祖先規則、[2] CLI thumbnails 背景工作、[3] data_dir 啟動偵測、[11]～[17] 匯出於 preset 資料夾內、相對 --data-dir、壞 config、入口結束碼、rebuild body、註解、paste NaN 驗值。
+
+## 封緘補丁（seal 第 1 輪，2026-10-10；本節生效後以此為準）
+- S4a（修訂 S4、S10，不可逆／資料）：`restore_edit` 時這張照片已有編輯、且與上一份不同 → conflict，常數句「這張照片已經有別的編輯，取回上一份會蓋掉它；要取回請先還原成原圖：{file_name}」，編輯檔一個位元組都不動；與上一份相同 → 視為成功（可重複）。縮圖格的「取回上一份」逐張回報這句（不另加 confirm：不會蓋掉任何東西）。釘死：`test_restore_never_over_another_edit`、parity「restore over another edit」。
+- S4b（釘死 S4 既有順序）：清除前先寫 `.prev.json`，寫不成就不刪編輯檔。釘死：`test_previous_is_written_before_the_edit_is_removed`。
+- S2a（釘死 S2）：PASTE 存檔後一定重讀 `GET /api/edit`。釘死：`test_autosave_targets_the_photo_it_was_scheduled_for`（PASTE 分支斷言）。
+- S8a（修訂 S8 編碼）：`X-Edit` 由 `server.x_edit` 產生，位元組等同 `encodeURIComponent(JSON.stringify(…))`（`!'()*` 不編碼）；`test_thumbnail_edit_header` 的字元集 regex 隨之放寬到含 `!'()*`（只為配合常數，不是放鬆判準）。
+- S13g'（修訂 S13 (g)）：存檔失敗當下就 `save.dirty=true`，失敗那筆存在 `save.retry`；退避期間關頁由 `unloadSave` 送出；同一張的新變更取代它。釘死：`test_autosave_targets_the_photo_it_was_scheduled_for`（retry 斷言）。
+- S14a（修訂 S14）：`L.explain` 對頁面自己的組合句（「{中文前綴}：{service 原句}」）翻譯全形冒號後的 service 句；狀態列的錯誤也經 `L.explain`。釘死：`tests/js`「S14 (seal patch S14a)」、`test_toasts_go_through_explain`（setStatus／textContent 帶錯誤原文時必經 `L.explain`）。
+- Verbatim 追加：`conflict（S4a）：這張照片已經有別的編輯，取回上一份會蓋掉它；要取回請先還原成原圖：{file_name}`

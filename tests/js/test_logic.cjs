@@ -350,6 +350,15 @@ test('S8 / S9 / S10: badge titles, the grid filter, reset / restore sentences an
   assert.equal(L.reduce(e0, {type: 'resetToOriginal'}), e0);                    // nothing to reset: no step
 });
 
+test('S14 (seal patch S14a): composite page sentences explain the service sentence after the colon', () => {
+  assert.equal(L.explain('匯出失敗：a.jpg：photo not found: D:/a.jpg'), '匯出失敗：a.jpg：找不到照片：D:/a.jpg');
+  assert.equal(L.explain('預覽失敗：unknown image_id'), '預覽失敗：照片已不在記憶體裡，請重新開啟');
+  assert.equal(L.explain('讀取 preset 失敗：unknown preset p1'), '讀取 preset 失敗：找不到 preset：p1');
+  assert.equal(L.explain('載入失敗：body must be JSON'), '載入失敗：請求格式錯誤（不是 JSON）');
+  assert.equal(L.explain('匯出失敗：a.jpg：disk full'), '匯出失敗：a.jpg：disk full');            // unknown: unchanged
+  assert.equal(L.explain('找不到照片：D:/a.jpg'), '找不到照片：D:/a.jpg');                         // already Chinese
+});
+
 test('S14: English service sentences are explained in Chinese, unknown ones pass through', () => {
   assert.equal(L.explain('path is required'), '請輸入照片路徑');
   assert.equal(L.explain('photo not found: D:/a.jpg'), '找不到照片：D:/a.jpg');

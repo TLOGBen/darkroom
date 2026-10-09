@@ -684,11 +684,15 @@ class PhotoLibraryService:
         """S4: the edit kept when this photo's edit was last cleared goes back as its edit (the kept copy stays)."""
         path = checked_photo_path(path)
         fp = self._fingerprint(path)
-        self._read_edit(fp, os.path.basename(path))                          # conflict / unavailable first (PL9)
+        current = self._read_edit(fp, os.path.basename(path))                # conflict / unavailable first (PL9)
         prev = self._read_previous(fp)
         if prev is None:
             raise DarkroomError("not_found", M.PL_NO_PREVIOUS.format(file_name=os.path.basename(path)))
         edit = canonical_edit(fp, prev["preset"], prev["strength"], prev["overrides"])
+        # S4a: never over a different edit (it has no copy anywhere); the same edit again is a no-op success
+        if current is not None and canonical_edit(fp, current["preset"], current["strength"],
+                                                  current["overrides"]) != edit:
+            raise DarkroomError("conflict", M.PL_RESTORE_OVER_EDIT.format(file_name=os.path.basename(path)))
         self._write_edit(path, edit)
         return self._answer(fp, edit)
 

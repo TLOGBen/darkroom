@@ -284,10 +284,21 @@
     ['unknown slider key ', (x) => `未知的滑桿：${x}`],
     ['request refused: ', (x) => `伺服器拒絕了這個請求：${x}`],
   ];
-  function explain(msg) {
-    const m = String(msg == null ? '' : msg);
+  function explainOne(m) {               // one service sentence, whole -> Chinese, or null
     if (Object.prototype.hasOwnProperty.call(EXPLAIN_EXACT, m)) return EXPLAIN_EXACT[m];
     for (const [prefix, fn] of EXPLAIN_PREFIX) if (m.startsWith(prefix)) return fn(m.slice(prefix.length));
+    return null;
+  }
+  // S14: the whole message, or - for the page's own composite sentences ("匯出失敗：{file}：{reason}",
+  // "預覽失敗：{reason}") - the service sentence after a full-width colon; everything else unchanged
+  function explain(msg) {
+    const m = String(msg == null ? '' : msg);
+    const whole = explainOne(m);
+    if (whole !== null) return whole;
+    for (let i = m.indexOf('：'); i >= 0; i = m.indexOf('：', i + 1)) {
+      const tail = explainOne(m.slice(i + 1));
+      if (tail !== null) return m.slice(0, i + 1) + tail;
+    }
     return m;
   }
 

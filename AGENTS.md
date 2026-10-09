@@ -88,7 +88,7 @@ pwsh -File tools/start.ps1 -Port 8765 -NoBrowser
 | `edit clear <photo>` | 移除這張的編輯 | `data_dir/edits/` |
 | `edit paste --from <photo> <target>...` | 把一張的編輯原樣貼到 1～500 張（**取代**它們原本的編輯） | `data_dir/edits/` |
 | `edit save-preset <photo> --name N [--group G]` | 把這張的編輯存成自存 preset（`user/` 新檔） | 庫 `user/`＋索引 |
-| `edit restore <photo>` | 取回上一份：`edit clear`（或 `edit set` 什麼都不給）時被清掉的那份編輯會留著，這個指令把它放回去（留著的那份不刪，可重複）；沒有 → not_found | `data_dir/edits/` |
+| `edit restore <photo>` | 取回上一份：`edit clear`（或 `edit set` 什麼都不給）時被清掉的那份編輯會留著，這個指令把它放回去（留著的那份不刪，可重複）；沒有 → not_found；這張現在已經有別的編輯 → conflict（不會蓋掉；要取回先 `edit clear`） | `data_dir/edits/` |
 | `thumbnails <folder> [--offset N] [--limit N]` | 縮圖格清單（背景產縮圖；`fingerprint`／`edited` 產好前是 `null`） | `data_dir/thumbs/`、`index/` |
 | `thumbnail <photo>` | 一張的縮圖（長邊 256）；不加 `--json` 是 JPEG 位元組 | `data_dir/thumbs/` |
 
