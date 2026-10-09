@@ -1,0 +1,458 @@
+"""CONTRACT-write-guard G1-G8, G11: the runtime write guard (tests/_writeguard.py) and darkroom_app/safe_write.py.
+
+Probes run "as the product": their code is compiled with a file name under darkroom_app/ and executed in a fresh
+namespace, so the guard sees a product frame as the initiator. Every blocked probe runs inside
+`_writeguard.expect_violation()`, which requires the block to hit the guard and takes the violations it caused out of
+the table (the hook itself keeps blocking).
+"""
+import ast
+import builtins
+import os
+import re
+import secrets
+import subprocess
+import sys
+import tempfile
+import unittest
+from concurrent.futures import ThreadPoolExecutor
+from unittest import mock
+
+import _util
+import _writeguard
+from darkroom_app import safe_write
+
+TESTS = os.path.join(_util.REPO, "tests")
+PRODUCT_FILE = os.path.join(_util.REPO, "darkroom_app", "_writeguard_probe.py")   # never exists on disk
+VIOLATION_LINE = "寫檔守門：{event} → {target}（測試 {test_id}）"                    # verbatim (G5)
+CHILD_EXIT = 86                                                                    # verbatim (G6)
+
+# (constant name, probe source, first event the guard must block) - the 13 of G11, verbatim names
+PROBES_13 = [
+    ('open(p,"wb")', 'open(p, "wb").close()', "open"),
+    ('m="w"+"b"; open(p,m)', 'm = "w" + "b"\nopen(p, m).close()', "open"),
+    ("os.open(p,O_CREAT|O_WRONLY)", "import os\nos.close(os.open(p, os.O_CREAT | os.O_WRONLY))", "open"),
+    ("Path(p).write_bytes", "from pathlib import Path\nPath(p).write_bytes(b'x')", "open"),
+    ("Path(a).replace(p)", "from pathlib import Path\nPath(a).replace(p)", "os.rename"),
+    ('gzip.open(p,"wb")', 'import gzip\ngzip.open(p, "wb").close()', "open"),
+    ('zipfile.ZipFile(p,"w")', 'import zipfile\nzipfile.ZipFile(p, "w").close()', "open"),
+    ('tarfile.open(p,"w")', 'import tarfile\ntarfile.open(p, "w").close()', "open"),
+    ('lzma.open(p,"wb")', 'import lzma\nlzma.open(p, "wb").close()', "open"),
+    ("shelve.open(p)", "import shelve\nshelve.open(p).close()", "os.utime"),
+    ("sqlite3.connect(p)", "import sqlite3\nc = sqlite3.connect(p)\nc.execute('create table t(x)')\nc.close()",
+     "sqlite3.connect"),
+    ('subprocess.run(["cmd","/c","echo x>"+p])',
+     "import subprocess\nsubprocess.run(['cmd', '/c', 'echo x>' + p], capture_output=True)", "subprocess.Popen"),
+    ('ctypes.WinDLL("kernel32").CreateFileW(p,…)',
+     "import ctypes\nk = ctypes.WinDLL('kernel32')\nh = k.CreateFileW(p, 0x40000000, 0, None, 2, 0x80, None)\n"
+     "k.CloseHandle(h)", "ctypes.dlopen"),
+]
+# the bypasses CONTRACT-layering handed over (AST could not see them) plus the _winapi writes of patch WG2
+PROBES_HANDOFF = [
+    ('open(p, **{"mode":"wb"})', 'open(p, **{"mode": "wb"}).close()', "open"),
+    ('open(*[p,"wb"])', 'open(*[p, "wb"]).close()', "open"),
+    ('o = open; o(p,"wb")', 'o = open\no(p, "wb").close()', "open"),
+    ("def f(p, opener=open)", 'def f(q, opener=open):\n    opener(q, "wb").close()\nf(p)', "open"),
+    ("logging.FileHandler", "import logging\nlogging.FileHandler(p).close()", "open"),
+    ("sqlite3.connect (file: URI)", "import sqlite3, pathlib\nsqlite3.connect(pathlib.Path(p).as_uri(), uri=True)"
+     ".execute('create table t(x)')", "sqlite3.connect"),
+    ("os.utime", "import os\nos.utime(p)", "os.utime"),
+    ('zipfile.ZipFile(p,"w") via a', 'import zipfile\nwith zipfile.ZipFile(p, "w") as z:\n    z.write(a, "a")', "open"),
+    ('gzip.GzipFile(p,"wb")', 'import gzip\ngzip.GzipFile(p, "wb").close()', "open"),
+    ("os.system", "import os\nos.system('echo x>' + p)", "os.system"),
+    ("ctypes (cached windll)", "import ctypes\nctypes.windll.kernel32.CreateFileW", ("ctypes.dlopen", "ctypes.dlsym")),
+    ('dbm.open(p,"c")', 'import dbm\ndbm.open(p, "c").close()', "os.utime"),
+    ("shutil.copy2(a,p)", "import shutil\nshutil.copy2(a, p)", "_winapi.CopyFile2"),
+    ("shutil.copyfile(a,p)", "import shutil\nshutil.copyfile(a, p)", "shutil.copyfile"),
+    ("os.replace(a,p)", "import os\nos.replace(a, p)", "os.rename"),
+    ("os.mkdir(p)", "import os\nos.mkdir(p)", "os.mkdir"),
+    ("_winapi.CreateFile", "import _winapi\nh = _winapi.CreateFile(p, 0x40000000, 0, 0, 2, 0x80, 0)\n"
+     "_winapi.CloseHandle(h)", "_winapi.CreateFile"),
+    ("_winapi.CreateJunction", "import _winapi\n_winapi.CreateJunction(os.path.dirname(a), p)",
+     "_winapi.CreateJunction"),
+]
+# G3: blocked whatever the path (the product may not start processes or load DLLs) - patch WG5
+NOT_PATH_BASED = {"subprocess.Popen", "ctypes.dlopen", "ctypes.dlsym", "os.system"}
+
+
+def run_as_product(src, **names):
+    ns = {"__name__": "darkroom_app._writeguard_probe", "__builtins__": builtins, "os": os, **names}
+    exec(compile(src, PRODUCT_FILE, "exec"), ns)
+
+
+def outside_path(ext=".bin"):
+    """A path in %TEMP% itself (exists, writable, but not a declared root)."""
+    return os.path.join(tempfile.gettempdir(), f"darkroom-probe-{secrets.token_hex(6)}{ext}")
+
+
+class TestWriteGuardProbes(unittest.TestCase):  # G2, G3, G11
+    def test_writeguard_probes(self):
+        root = _util.tmpdir(self)
+        for name, src, event in PROBES_13 + PROBES_HANDOFF:
+            with self.subTest(probe=name):
+                a = os.path.join(root, f"a-{secrets.token_hex(4)}.bin")
+                with open(a, "wb") as f:
+                    f.write(b"a")
+                p = outside_path()
+                with _writeguard.expect_violation() as ev:
+                    run_as_product(src, p=p, a=a)
+                self.assertFalse(os.path.lexists(p), name)
+                self.assertIn(ev.caught[0]["event"], event if isinstance(event, tuple) else (event,), name)
+                self.assertIn(ev.caught[0]["test_id"], self.id())
+
+    def test_probes_inside_root_pass(self):  # G11: same writes into a fixture root are allowed
+        root = _util.tmpdir(self)
+        for name, src, event in PROBES_13 + PROBES_HANDOFF:
+            with self.subTest(probe=name):
+                a = os.path.join(root, f"a-{secrets.token_hex(4)}.bin")
+                with open(a, "wb") as f:
+                    f.write(b"a")
+                p = os.path.join(root, f"p-{secrets.token_hex(4)}.bin")
+                if name == "os.utime":
+                    with open(p, "wb"):
+                        pass
+                events = event if isinstance(event, tuple) else (event,)
+                if set(events) & NOT_PATH_BASED:
+                    with _writeguard.expect_violation() as ev:
+                        run_as_product(src, p=p, a=a)
+                    self.assertIn(ev.caught[0]["event"], events, name)
+                    self.assertFalse(os.path.lexists(p), name)
+                    continue
+                before = len(_writeguard.violations())
+                run_as_product(src, p=p, a=a)
+                self.assertEqual(len(_writeguard.violations()), before, name)
+                self.assertTrue(os.path.lexists(p), name)
+
+    def test_probe_names_are_the_contract_constant(self):
+        self.assertEqual(" ｜ ".join(n for n, _, _ in PROBES_13),
+                         'open(p,"wb") ｜ m="w"+"b"; open(p,m) ｜ os.open(p,O_CREAT|O_WRONLY) ｜ Path(p).write_bytes ｜ '
+                         'Path(a).replace(p) ｜ gzip.open(p,"wb") ｜ zipfile.ZipFile(p,"w") ｜ tarfile.open(p,"w") ｜ '
+                         'lzma.open(p,"wb") ｜ shelve.open(p) ｜ sqlite3.connect(p) ｜ '
+                         'subprocess.run(["cmd","/c","echo x>"+p]) ｜ ctypes.WinDLL("kernel32").CreateFileW(p,…)')
+
+    def test_initiator_rules(self):  # G3
+        root = _util.tmpdir(self)
+        # tests may start node / pwsh / taskkill, and python only through _guardrun.py
+        with _writeguard.expect_violation() as ev:
+            subprocess.run([sys.executable, "-s", "-c", "pass"], capture_output=True)
+        self.assertEqual(ev.caught[0]["event"], "subprocess.Popen")
+        with _writeguard.expect_violation():
+            subprocess.run(["cmd", "/c", "echo", "x"], capture_output=True)
+        with _writeguard.expect_violation():      # the junction exemption (patch WG3) needs both ends in a root
+            subprocess.run(["cmd", "/c", "mklink", "/J", os.path.join(root, "j"), tempfile.gettempdir()],
+                           capture_output=True)
+        r = subprocess.run([*_util.guarded_python(), "-c", "print('ok')"], capture_output=True)
+        self.assertEqual((r.returncode, r.stdout.strip()), (0, b"ok"))
+        # the product may start nvidia-smi from gpucheck only
+        with _writeguard.expect_violation():
+            run_as_product("import subprocess\nsubprocess.run(['nvidia-smi', '-L'], capture_output=True)")
+        self.assertEqual(_writeguard.judge("ctypes.dlopen", ("kernel32",)) is not None, True)   # test frame
+        for ev in ("os.system", "os.startfile", "os.exec", "os.spawn", "os.posix_spawn"):
+            self.assertIsNotNone(_writeguard.judge(ev, ("x",)), ev)
+
+    def test_classification(self):
+        cat = _writeguard._category
+        self.assertEqual(cat(os.path.join(_util.REPO, "darkroom_app", "x.py")), "product")
+        self.assertEqual(cat(os.path.join(_util.REPO, "darkroom", "x.py")), "product")
+        self.assertEqual(cat(os.path.join(TESTS, "x.py")), "test")
+        self.assertEqual(cat(os.path.join(sys.base_prefix, "Lib", "site-packages", "torch", "x.py")), "third-party")
+        self.assertEqual(cat(os.path.join(sys.base_prefix, "python313.zip", "subprocess.pyc")), "stdlib")
+        self.assertEqual(cat("<string>"), "other")
+        self.assertEqual(_writeguard.split_cmdline('"C:\\a b\\python.exe" -s x "y z" "q\\"r"'),
+                         ["C:\\a b\\python.exe", "-s", "x", "y z", 'q"r'])
+
+    def test_memory_sqlite_and_devnull_pass(self):  # G2, G4
+        import sqlite3
+        sqlite3.connect(":memory:").close()
+        sqlite3.connect("file:x?mode=memory", uri=True).close()
+        with open(os.devnull, "w") as f:
+            f.write("x")
+        self.assertIsNone(_writeguard.judge("open", (os.path.join(TESTS, "__pycache__", "x.cpython-313.pyc.123"),
+                                                     None, os.O_CREAT | os.O_WRONLY)))
+        self.assertIsNotNone(_writeguard.judge("open", (os.path.join(TESTS, "__pycache__", "x.pyc"), "wb", 0)))
+        self.assertIsNotNone(_writeguard.judge("open", (os.path.join(TESTS, "x.cpython-313.pyc"), "wb", 0)))
+        self.assertIsNotNone(_writeguard.judge("sqlite3.connect", ("",)))
+        self.assertIsNone(_writeguard.judge("open", (3, "wb", 0)))
+        self.assertIsNone(_writeguard.judge("open", (outside_path(), "rb", os.O_RDONLY)))
+        for m in ("w", "a", "x", "r+"):
+            self.assertIsNotNone(_writeguard.judge("open", (outside_path(), m, 0)), m)
+        for flag in ("O_WRONLY", "O_RDWR", "O_CREAT", "O_TRUNC", "O_APPEND"):
+            self.assertIsNotNone(_writeguard.judge("open", (outside_path(), None, getattr(os, flag))), flag)
+
+
+class TestViolationReporting(unittest.TestCase):  # G5, G6
+    def test_violation_message_format(self):
+        p = outside_path()
+        with _writeguard.expect_violation():
+            try:
+                run_as_product('open(p, "wb")', p=p)
+            except _writeguard.WriteGuardViolation as e:
+                msg = str(e)
+        first, _, stack = msg.partition("\n")
+        self.assertEqual(first, VIOLATION_LINE.format(event="open", target=os.path.normcase(os.path.realpath(p)),
+                                                      test_id=self.id()))
+        self.assertEqual(_writeguard.VIOLATION_LINE, VIOLATION_LINE)
+        self.assertIn("_writeguard_probe.py", stack)
+        self.assertIn("test_writeguard.py", stack)
+        self.assertTrue(issubclass(_writeguard.WriteGuardViolation, BaseException))
+        self.assertFalse(issubclass(_writeguard.WriteGuardViolation, Exception))
+
+    def test_violation_swallowed_still_fails(self):
+        p = outside_path()
+
+        class Inner(unittest.TestCase):
+            def test_swallowed_base_exception(self):
+                run_as_product('try:\n    open(p, "wb")\nexcept BaseException:\n    pass', p=p)
+
+            def test_except_exception_does_not_catch(self):
+                run_as_product('try:\n    open(p, "wb")\nexcept Exception:\n    pass', p=p)
+
+            def test_except_oserror_does_not_catch(self):
+                run_as_product('try:\n    open(p, "wb")\nexcept OSError:\n    pass', p=p)
+
+            def test_on_worker_thread(self):   # like the darkroom-gpu executor or a thumbnail thread
+                with ThreadPoolExecutor(1, thread_name_prefix="darkroom-gpu") as ex:
+                    fut = ex.submit(run_as_product, 'open(p, "wb")', p=p)
+                    fut.exception()          # swallowed: the future just holds it
+
+        names = ["test_swallowed_base_exception", "test_except_exception_does_not_catch",
+                 "test_except_oserror_does_not_catch", "test_on_worker_thread"]
+        for name in names:
+            with self.subTest(name):
+                result = unittest.TestResult()
+                case = Inner(name)
+                with _writeguard.expect_violation():
+                    case.run(result)
+                self.assertFalse(result.wasSuccessful(), name)
+                text = "".join(t for _, t in result.errors + result.failures)
+                self.assertIn(VIOLATION_LINE.format(event="open", target=os.path.normcase(os.path.realpath(p)),
+                                                    test_id=case.id()), text)
+                self.assertFalse(os.path.lexists(p))
+
+    def test_guardrun_child_violation(self):
+        p = outside_path()
+        target = os.path.normcase(os.path.realpath(p))
+        for code in ('open(sys.argv[1], "wb")',
+                     'try:\n    open(sys.argv[1], "wb")\nexcept BaseException:\n    pass\nprint("swallowed")'):
+            with self.subTest(code=code), _writeguard.expect_violation() as ev:
+                r = subprocess.run([*_util.guarded_python(), "-c", "import sys\n" + code, p], capture_output=True,
+                                   timeout=120)
+            self.assertEqual(r.returncode, CHILD_EXIT, r.stderr)
+            self.assertEqual(r.stderr.decode("utf-8").splitlines()[0],
+                             VIOLATION_LINE.format(event="open", target=target, test_id=self.id()))
+            self.assertEqual([v["event"] for v in ev.caught], ["open"])     # the parent saw it too
+            self.assertFalse(os.path.lexists(p))
+
+    def test_child_inherits_roots(self):
+        root = _util.tmpdir(self)
+        p = os.path.join(root, "child.bin")
+        r = subprocess.run([*_util.guarded_python(), "-c", "import sys\nopen(sys.argv[1], 'wb').write(b'k')", p],
+                           capture_output=True, timeout=120)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        with open(p, "rb") as f:
+            self.assertEqual(f.read(), b"k")
+
+
+class TestGuardWiring(unittest.TestCase):  # G1, G4, G7
+    def test_every_module_arms_guard(self):
+        def top_imports(path):
+            with open(path, encoding="utf-8") as f:
+                tree = ast.parse(f.read(), path)
+            return {a.name for n in tree.body if isinstance(n, ast.Import) for a in n.names}
+        mods = sorted(f for f in os.listdir(TESTS) if f.startswith("test_") and f.endswith(".py"))
+        self.assertGreaterEqual(len(mods), 20)
+        for m in mods:
+            self.assertTrue(top_imports(os.path.join(TESTS, m)) & {"_util", "_writeguard"}, m)
+        self.assertIn("_writeguard", top_imports(os.path.join(TESTS, "_util.py")))
+        self.assertTrue(_writeguard.ARMED)
+
+    def test_guard_has_no_pause(self):
+        banned = re.compile(r"pause|disable|disarm|suspend|unarm|bypass|unhook|silence|^off$|^stop", re.I)
+        for f in ("_writeguard.py", "_guardrun.py"):
+            path = os.path.join(TESTS, f)
+            with open(path, encoding="utf-8") as fh:
+                tree = ast.parse(fh.read(), path)
+            for node in ast.walk(tree):
+                name = getattr(node, "name", None) or getattr(node, "id", None) or getattr(node, "attr", None)
+                if isinstance(name, str):
+                    self.assertIsNone(banned.search(name), (f, name))
+                if isinstance(node, ast.Attribute) and node.attr in ("environ", "getenv", "putenv"):
+                    # only the two lookups that resolve the protected folders; nothing that turns the guard off
+                    self.assertEqual(f, "_writeguard.py")
+                if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "get" \
+                        and isinstance(node.func.value, ast.Attribute) and node.func.value.attr == "environ":
+                    self.assertIn(node.args[0].value, ("DARKROOM_PRESET_DIR", "LOCALAPPDATA"))
+            if f == "_writeguard.py":     # the re-entrancy flag is only ever set inside the hook
+                for fn in (n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)):
+                    sets = [n for n in ast.walk(fn) if isinstance(n, ast.Attribute) and n.attr == "busy"
+                            and isinstance(n.ctx, ast.Store)]
+                    self.assertTrue(not sets or fn.name == "_hook", fn.name)
+        for f in os.listdir(TESTS):
+            if f.endswith(".py") and f not in ("_writeguard.py", "test_writeguard.py"):
+                with open(os.path.join(TESTS, f), encoding="utf-8") as fh:
+                    self.assertNotIn("expect_violation", fh.read(), f)
+
+    def test_roots_lifecycle(self):  # G4
+        seen = {}
+
+        class Inner(unittest.TestCase):
+            def test_it(self):
+                d = _util.tmpdir(self)
+                seen["d"] = d
+                seen["registered"] = _writeguard._norm(d) in _writeguard.roots()
+                with open(os.path.join(d, "x"), "wb") as f:
+                    f.write(b"1")
+
+        result = unittest.TestResult()
+        Inner("test_it").run(result)
+        self.assertTrue(result.wasSuccessful(), result.errors)
+        self.assertTrue(seen["registered"])
+        self.assertFalse(os.path.exists(seen["d"]))
+        self.assertNotIn(_writeguard._norm(seen["d"]), _writeguard.roots())
+        with open(os.path.join(TESTS, "_writeguard.py"), encoding="utf-8") as f:
+            src = f.read()
+        body = src[src.index("def new_root"):src.index("def release_root")]
+        self.assertLess(body.index("_roots.append"), body.index("os.mkdir"))      # register, then create
+        body = src[src.index("def release_root"):src.index("def _unregister")]
+        self.assertLess(body.index("rmtree"), body.index("_unregister"))          # delete, then unregister
+        for f in os.listdir(TESTS):
+            if f.endswith(".py") and f != "test_writeguard.py":
+                with open(os.path.join(TESTS, f), encoding="utf-8") as fh:
+                    self.assertNotIn("mkdtemp(", fh.read(), f)
+
+    def test_protected_folders(self):  # G7
+        local = os.environ.get("LOCALAPPDATA")
+        self.assertEqual(_writeguard.protected_folders(),
+                         [_util.PHOTOS, os.path.dirname(os.path.abspath(_util.preset_dir())),
+                          os.path.join(local, "darkroom")])
+        snap = _writeguard.arm_snapshot()
+        lib = snap[os.path.dirname(os.path.abspath(_util.preset_dir()))]
+        self.assertEqual(sum(1 for k in lib if k.lower().endswith(".xmp") and os.path.dirname(k) == "xmp"), 1466)
+        self.assertTrue(snap[_util.PHOTOS])
+
+    def test_protect_fixture(self):  # G7: a fixture-protected synthetic photo folder
+        d = os.path.join(_util.tmpdir(self), "photos")
+        os.makedirs(d)
+        with open(os.path.join(d, "a.jpg"), "wb") as f:
+            f.write(b"jpeg")
+
+        class Inner(unittest.TestCase):
+            def test_touch(self):
+                _writeguard.protect(self, d)
+                with open(os.path.join(d, "a.jpg"), "ab") as f:
+                    f.write(b"!")
+                os.makedirs(os.path.join(d, "new"))
+
+            def test_clean(self):
+                _writeguard.protect(self, d)
+
+        result = unittest.TestResult()
+        Inner("test_touch").run(result)
+        self.assertEqual(len(result.failures), 1)
+        self.assertIn("受保護資料夾內容改變：" + os.path.join(d, "a.jpg") + "、" + os.path.join(d, "new"),
+                      result.failures[0][1])
+        result = unittest.TestResult()
+        Inner("test_clean").run(result)
+        self.assertTrue(result.wasSuccessful())
+        self.assertEqual(_writeguard.snapshot_diff({d: None}, {d: {}}), [d])
+
+
+class TestSafeWrite(unittest.TestCase):  # G8
+    def setUp(self):
+        self.other = _util.tmpdir(self)     # released after root: root holds a junction into it
+        self.root = _util.tmpdir(self)
+
+    def refused(self, sentence, fn, *args):
+        with self.assertRaises(safe_write.SafeWriteRefused) as cm:
+            fn(*args)
+        self.assertEqual(str(cm.exception), sentence)
+
+    def test_public_surface(self):
+        import inspect
+        funcs = sorted(n for n, v in vars(safe_write).items() if inspect.isfunction(v) and not n.startswith("_"))
+        self.assertEqual(funcs, ["create_new", "make_dirs", "open_lock", "remove", "replace_into"])
+        self.assertTrue(issubclass(safe_write.SafeWriteRefused, Exception))
+        self.assertFalse(issubclass(safe_write.SafeWriteRefused, OSError))
+        self.assertEqual(" ｜ ".join([safe_write.REFUSED_OUTSIDE, safe_write.REFUSED_PRESET, safe_write.REFUSED_PROTECTED,
+                                      safe_write.REFUSED_NOT_OURS, safe_write.REFUSED_ROOT]),
+                         "refused: {path} is outside {root} ｜ refused: {path} is inside the preset folder ｜ "
+                         "refused: {path} is a photo or preset file ｜ refused: {tmp} was not created by safe_write ｜ "
+                         "refused: root {root} is not an existing absolute folder")
+
+    def test_safe_write_refusals(self):
+        root = self.root
+        p = os.path.join(self.other, "x.bin")
+        self.refused(f"refused: {p} is outside {root}", safe_write.create_new, p, root, b"x")       # root outside
+        p = os.path.join(root, "..", "x.bin")
+        self.refused(f"refused: {p} is outside {root}", safe_write.create_new, p, root, b"x")       # .. escape
+        import _winapi
+        j = os.path.join(root, "jx")
+        _winapi.CreateJunction(self.other, j)                                    # junction pointing out of root
+        p = os.path.join(j, "x.bin")
+        self.refused(f"refused: {p} is outside {root}", safe_write.create_new, p, root, b"x")
+        jd = os.path.join(j, "d")
+        self.refused(f"refused: {jd} is outside {root}", safe_write.make_dirs, jd, root)
+        self.assertEqual(os.listdir(self.other), [])
+        presets = os.path.join(root, "presets")
+        os.makedirs(presets)
+        with mock.patch.object(safe_write.config, "preset_dir", return_value=presets):
+            p = os.path.join(presets, "new.xmp")
+            self.refused(f"refused: {p} is inside the preset folder", safe_write.create_new, p, root, b"x")
+            p = os.path.join(presets, "sub")
+            self.refused(f"refused: {p} is inside the preset folder", safe_write.make_dirs, p, root)
+        tmp = safe_write.create_new(os.path.join(root, "t1.tmp"), root, b"t")
+        for ext in (".jpg", ".JPEG", ".png", ".tif", ".tiff", ".heic", ".HEIF", ".xmp"):
+            dest = os.path.join(root, "dest" + ext)
+            self.refused(f"refused: {dest} is a photo or preset file", safe_write.replace_into, tmp, dest, root)
+            self.refused(f"refused: {dest} is a photo or preset file", safe_write.remove, dest, root)
+        mine = os.path.join(root, "plain.tmp")
+        with open(mine, "wb") as f:
+            f.write(b"not safe_write")
+        self.refused(f"refused: {mine} was not created by safe_write", safe_write.replace_into, mine,
+                     os.path.join(root, "library.json"), root)
+        for bad in (os.path.join(root, "missing"), "relative", os.path.join(root, "t1.tmp")):
+            self.refused(f"refused: root {bad} is not an existing absolute folder", safe_write.create_new,
+                         os.path.join(root, "y.bin"), bad, b"x")
+        self.refused(f"refused: {os.path.join(root, 'x.lck')} is not a .lock file", safe_write.open_lock,
+                     os.path.join(root, "x.lck"), root)
+        with self.assertRaises(FileExistsError):                                 # already exists
+            safe_write.create_new(tmp, root, b"again")
+        with self.assertRaises(TypeError):
+            safe_write.create_new(os.path.join(root, "f.bin"), root, lambda path: None)
+        self.assertFalse(os.path.exists(os.path.join(root, "f.bin")))
+
+    def test_safe_write_never_overwrites(self):
+        root = self.root
+        p = os.path.join(root, "out.jpg")
+        safe_write.create_new(p, root, b"first")
+        with self.assertRaises(FileExistsError):
+            safe_write.create_new(p, root, b"second")
+        with open(p, "rb") as f:
+            self.assertEqual(f.read(), b"first")
+        half = os.path.join(root, "half.jpg")
+        with mock.patch.object(safe_write.os, "write", side_effect=OSError("disk full")):
+            with self.assertRaises(OSError):
+                safe_write.create_new(half, root, b"data")
+        self.assertFalse(os.path.exists(half))                                   # no half file left behind
+        d = safe_write.make_dirs(os.path.join(root, "a", "b"), root)
+        self.assertTrue(os.path.isdir(d))
+        tmp = safe_write.create_new(os.path.join(d, "library.json.tmp"), root, b'{"v":2}')
+        dest = os.path.join(d, "library.json")
+        with open(dest, "wb") as f:
+            f.write(b'{"v":1}')
+        safe_write.replace_into(tmp, dest, root)
+        with open(dest, "rb") as f:
+            self.assertEqual(f.read(), b'{"v":2}')
+        self.refused(f"refused: {tmp} was not created by safe_write", safe_write.replace_into, tmp, dest, root)
+        lock = os.path.join(root, "library.lock")
+        with open(lock, "wb") as f:
+            f.write(b"held")
+        fd = safe_write.open_lock(lock, root)
+        os.close(fd)
+        with open(lock, "rb") as f:
+            self.assertEqual(f.read(), b"held")                                  # never truncated
+        safe_write.remove(dest, root)
+        self.assertFalse(os.path.exists(dest))
+
+
+if __name__ == "__main__":
+    unittest.main()
