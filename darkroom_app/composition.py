@@ -14,14 +14,17 @@ from .services.photos import PhotoService
 from .services.preset_library import PresetLibraryService
 from .services.presets import PresetService
 from .services.preview import PreviewService
+from .services.semantic_index import SemanticIndexService
 
 
-def build_facade(preset_dir=None, *, library=None, engine=None, library_dir=None, data_dir=None):
+def build_facade(preset_dir=None, *, library=None, engine=None, library_dir=None, data_dir=None, semantic=None):
     """preset_dir defaults to config.preset_dir() (ConfigError if unset); library / engine may be given.
 
     The preset library root (CONTRACT-preset-library K1, KP2): library_dir when given; else, when preset_dir comes
     from the configuration too, config's preset_library_dir; else dirname(preset_dir).
-    data_dir (CONTRACT-photo-library PL1): when None, config.data_dir() on first use."""
+    data_dir (CONTRACT-photo-library PL1): when None, config.data_dir() on first use.
+    semantic (CONTRACT-semantic-index): keyword settings for SemanticIndexService (tests inject fakes); by default
+    the key reference, budget and calibration photos are read from the configuration when first needed."""
     if library is None:
         if preset_dir is None:
             preset_dir = config.preset_dir()
@@ -32,5 +35,7 @@ def build_facade(preset_dir=None, *, library=None, engine=None, library_dir=None
     # the writing services get the preset folder in use, so writes into it are refused (CONTRACT-export XP12)
     presets_lib = PresetLibraryService(library, library.preset_dir)
     photo_lib = PhotoLibraryService(library, library.preset_dir, data_dir, presets_lib)
+    semantic_svc = SemanticIndexService(library, library.preset_dir, ref, **(semantic or {}))
     return DarkroomFacade(PresetService(library), PhotoService(ref), PreviewService(library, ref, photo_lib),
-                          ExportService(library, ref, library.preset_dir, photo_lib), presets_lib, photo_lib)
+                          ExportService(library, ref, library.preset_dir, photo_lib), presets_lib, photo_lib,
+                          semantic_svc)

@@ -10,6 +10,8 @@ MCP_DEFAULT_MAX_PIXELS = 786432
 READ_ONLY_ANNOTATIONS = {"readOnlyHint": True, "openWorldHint": False}                          # L10
 EXPORT_ANNOTATIONS = {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False,   # XP4 (verbatim)
                       "openWorldHint": False}
+SEMANTIC_BUILD_ANNOTATIONS = {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False,
+                              "openWorldHint": True}     # verbatim (CONTRACT-semantic-index SI11): calls Anthropic
 
 
 def _writes(idempotent):
@@ -335,5 +337,37 @@ OPERATIONS = {
         }, ["path", "name"]),
         "mcp_defaults": {},
         "mcp_annotations": _writes(False),
+    },
+    # ---- CONTRACT-semantic-index SI1 / SI11: operations 25, 26
+    "semantic_build": {
+        "http": ("POST", "/api/preset-library/semantic/build"),     # refused over HTTP (SI11): CLI / MCP only
+        "cli": "presets semantic build",
+        "mcp": "darkroom_semantic_build",
+        "description": "Build the preset semantic index with Claude (claude-haiku-5-5, Message Batches): every "
+                       "supported preset not yet indexed is rendered on four public calibration photos (never the "
+                       "user's photos) and described with tags; results go to <library root>/semantic.json keyed by "
+                       "the preset's content hash. Costs money: the estimated cost is checked against the configured "
+                       "budget before anything is sent; dry_run only reports the plan. wait_seconds 0 returns right "
+                       "after submitting (run again later to collect). Needs the anthropic package, a key "
+                       "(config anthropic_api_key_ref or DARKROOM_ANTHROPIC_API_KEY) and the calibration photos; "
+                       "otherwise unavailable with the reason.",
+        "input_schema": _schema({
+            "limit": {"type": "integer", "minimum": 1, "description": "at most this many presets this run"},
+            "dry_run": {"type": "boolean", "default": False, "description": "only count and estimate; send nothing"},
+            "wait_seconds": {"type": "number", "minimum": 0, "default": 0,
+                             "description": "how long to wait for the batch; 0 = return after submitting"},
+        }),
+        "mcp_defaults": {"wait_seconds": 0},
+        "mcp_annotations": SEMANTIC_BUILD_ANNOTATIONS,
+    },
+    "semantic_status": {
+        "http": ("GET", "/api/preset-library/semantic"),
+        "cli": "presets semantic status",
+        "mcp": "darkroom_semantic_status",
+        "description": "The preset semantic index: whether building is available (and the reason when not), how "
+                       "many supported presets are indexed / pending, batches still processing, the budget and the "
+                       "last recorded usage. Reads only; needs no key.",
+        "input_schema": _schema({}),
+        "mcp_defaults": {},
     },
 }

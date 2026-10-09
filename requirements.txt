@@ -9,3 +9,6 @@ pillow==12.3.0
 tifffile==2026.9.20
 # optional: HEIC / HEIF (iPhone photos). Without it HEIC files are refused with a clear message.
 pillow-heif==1.8.0
+# optional: the preset semantic index (`presets semantic build`: Claude writes style tags for your presets).
+# Without it the feature stays off and `presets semantic status` says why; searching still works.
+anthropic==1.13.0

@@ -209,7 +209,7 @@ function presetEl(p, depth, showPath) {
     '<button class="row-menu" tabindex="-1" title="動作：改名、搬到…、新群組" aria-haspopup="menu">⋯</button>';
   el.querySelector('.nm').textContent = p.name;
   if (showPath) el.querySelector('.path').textContent = p.group;
-  el.title = p.group ? p.group + ' / ' + p.name : p.name;
+  el.title = L.presetTitle(p);
   el.querySelector('.fav').onclick = (e) => { e.stopPropagation(); toggleFavorite(p); };
   el.querySelector('.row-menu').onclick = (e) => { e.stopPropagation(); presetMenu(p, e.currentTarget); };
   if (p.supported) el.onclick = () => { st.focusKey = 'p:' + p.id; selectPreset(p.id); };

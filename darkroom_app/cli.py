@@ -12,6 +12,7 @@
     presets list ... [--favorites] | groups | rename <id> <name> | move <id> <group> | favorite <id> on|off
     presets import <path>... [--group G] | save --name N [--group G] [--preset ID] [--strength S] [--override K=V]...
     presets rebuild
+    presets semantic build [--limit N] [--dry-run] [--wait-seconds S] | semantic status   (CONTRACT-semantic-index)
     groups create <group> | rename <group> <new>          (CONTRACT-preset-library K16)
     edit get <photo> | set <photo> [--preset ID] [--strength S] [--override KEY=VALUE]... | clear <photo>
     edit paste --from <photo> <target>... | save-preset <photo> --name N [--group G]
@@ -68,7 +69,14 @@ def _lenient_int(text):
     try:
         return int(text)
     except ValueError:
-        return text                # the service reports it (JPEG quality)
+        return text                # the service reports it (JPEG quality, semantic limit)
+
+
+def _lenient_float(text):
+    try:
+        return float(text)
+    except ValueError:
+        return text                # the service reports it (semantic wait_seconds)
 
 
 def _parser():
@@ -116,6 +124,15 @@ def _parser():
     p.add_argument("--override", type=_override, action="append", default=None, metavar="KEY=VALUE",
                    help="slider difference added after strength (repeatable)")
     leaf(psub, "rebuild", "rebuild the library index from the preset folders")
+    # CONTRACT-semantic-index SI11
+    semantic = psub.add_parser("semantic", help="the semantic index (Claude-written style tags)")
+    ssub = semantic.add_subparsers(dest="semantic_command", required=True, metavar="SUBCOMMAND")
+    p = leaf(ssub, "build", "send the presets not yet indexed to Claude (costs money; checked against the budget)")
+    p.add_argument("--limit", type=_lenient_int, default=None, help="at most this many presets this run")
+    p.add_argument("--dry-run", action="store_true", help="only count and estimate the cost; send nothing")
+    p.add_argument("--wait-seconds", type=_lenient_float, default=None,
+                   help="how long to wait for the batch (default 3600; 0 = return after submitting)")
+    leaf(ssub, "status", "how much of the library is indexed, and whether building is available")
     groups = sub.add_parser("groups", help="preset groups")
     gsub = groups.add_subparsers(dest="groups_command", required=True, metavar="SUBCOMMAND")
     p = leaf(gsub, "create", "create an empty group")
@@ -196,6 +213,10 @@ def _run(a, facade):
             return facade.save_user_preset(a.name, a.group, a.preset, a.strength, overrides)
         if sc == "rebuild":
             return facade.rebuild_library()
+        if sc == "semantic":          # CONTRACT-semantic-index SI11
+            if a.semantic_command == "build":
+                return facade.semantic_build(a.limit, a.dry_run, a.wait_seconds)
+            return facade.semantic_status()
         return facade.preset_flags()
     if cmd == "groups":
         if a.groups_command == "create":
@@ -261,6 +282,7 @@ def _human(a, result):
         return "\n".join(PASTED.format(target=r["target"]) if r["ok"] else r["error"] for r in result["results"])
     if a.command == "presets" and a.presets_command == "list":
         lines = [f"{r['id']}\t{r['group']}\t{r['name']}" + ("" if r["supported"] else "\t(unsupported)")
+                 + ("\t" + "、".join(r["tags"]) if r.get("tags") else "")
                  for r in result["items"]]
         more = "" if result["next_offset"] is None else f"; next --offset {result['next_offset']}"
         lines.append(f"# {len(result['items'])} of {result['total']}{more}")

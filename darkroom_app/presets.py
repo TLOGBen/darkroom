@@ -32,7 +32,15 @@ INDEX_NAME = "library.json"                     # K1
 IMPORT_DIR, USER_DIR = "import", "user"          # K1
 IMPORT_PREFIX, USER_PREFIX = "import:", "user:"  # verbatim (K4)
 GROUP_SEP = " - "                               # verbatim (K7)
-ROW_KEYS = ("id", "group", "name", "supported", "skipped", "favorite")   # B3 as patched by K9
+ROW_KEYS = ("id", "group", "name", "supported", "skipped", "favorite", "tags")   # B3, K9, + tags (SI10)
+SEMANTIC_NAME = "semantic.json"                          # CONTRACT-semantic-index SI6
+SEMANTIC_SCHEMA = "darkroom-semantic-index/1"            # verbatim (SI6)
+SEMANTIC_MODEL = "claude-haiku-5-5"                      # verbatim (SI5)
+SEMANTIC_FIELDS = ("look_zh", "look_en", "tags_zh", "tags_en", "tone", "contrast", "saturation", "temperature",
+                   "good_for", "confidence")             # verbatim (SI5 SCHEMA), in order
+SEMANTIC_ENUMS = {"tone": ("dark", "balanced", "bright"), "contrast": ("low", "medium", "high"),
+                  "saturation": ("muted", "natural", "vivid", "monochrome"), "temperature": ("cool", "neutral", "warm")}
+SEMANTIC_SEARCH_FIELDS = ("tags_zh", "tags_en", "good_for", "look_zh", "look_en")   # SI10: what a query matches
 READ_RETRIES, READ_RETRY_S = 10, 0.1            # K15 / KP8: a reader can meet a replace in progress
 _XML_BAD = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f￾￿\ud800-\udfff]")   # KP6
 _HEX64 = re.compile(r"^[0-9a-f]{64}$")
@@ -126,6 +134,58 @@ def valid_index(obj):
     return True
 
 
+def valid_entry(obj):
+    """None when obj is a well-formed semantic entry (SI5: the 10 fields, legal enums, non-empty string arrays,
+    confidence in 0..1), else the reason (one phrase)."""
+    if not isinstance(obj, dict):
+        return "not an object"
+    if set(obj) - set(SEMANTIC_FIELDS) - {"at"} or any(k not in obj for k in SEMANTIC_FIELDS):
+        return "fields must be exactly " + ", ".join(SEMANTIC_FIELDS)
+    for k in ("look_zh", "look_en"):
+        if not isinstance(obj[k], str) or not obj[k].strip():
+            return f"{k} must be a non-empty string"
+    for k in ("tags_zh", "tags_en", "good_for"):
+        if not isinstance(obj[k], list) or not all(isinstance(t, str) and t.strip() for t in obj[k]):
+            return f"{k} must be an array of non-empty strings"
+    for k, allowed in SEMANTIC_ENUMS.items():
+        if obj[k] not in allowed:
+            return f"{k} must be one of " + "|".join(allowed)
+    c = obj["confidence"]
+    if isinstance(c, bool) or not isinstance(c, (int, float)) or not 0 <= c <= 1:
+        return "confidence must be a number in 0..1"
+    return None
+
+
+def valid_semantic(obj):
+    """True when obj is exactly the SI6 semantic index schema (entries keyed by sha256)."""
+    if not isinstance(obj, dict) or list(obj) != ["schema", "model", "entries", "batches", "usage"]:
+        return False
+    if obj["schema"] != SEMANTIC_SCHEMA or not isinstance(obj["model"], str):
+        return False
+    if not isinstance(obj["entries"], dict) or not isinstance(obj["batches"], dict) or not isinstance(obj["usage"], list):
+        return False
+    for sha, e in obj["entries"].items():
+        if not _HEX64.match(sha) or valid_entry(e) is not None or not isinstance(e.get("at"), (int, float)):
+            return False
+    for bid, b in obj["batches"].items():
+        if not isinstance(bid, str) or not isinstance(b, dict) or not isinstance(b.get("items"), dict):
+            return False
+        if not all(_HEX64.match(k) and isinstance(v, str) for k, v in b["items"].items()):
+            return False
+    return True
+
+
+def empty_semantic():
+    return {"schema": SEMANTIC_SCHEMA, "model": SEMANTIC_MODEL, "entries": {}, "batches": {}, "usage": []}
+
+
+def semantic_tags(entry):
+    """The row's 7th column (SI10): tags_zh + tags_en, de-duplicated, order kept; [] without an entry."""
+    if entry is None:
+        return []
+    return list(dict.fromkeys([*entry["tags_zh"], *entry["tags_en"]]))
+
+
 def _stem_of(pid):
     """(prefix, stem) of a well-formed id, else None (no separators, no "." / ".." stems)."""
     if not isinstance(pid, str):
@@ -176,10 +236,65 @@ class Library:
         self.index_path = os.path.join(self.root, INDEX_NAME)
         self.import_dir = os.path.join(self.root, IMPORT_DIR)
         self.user_dir = os.path.join(self.root, USER_DIR)
+        self.semantic_path = os.path.join(self.root, SEMANTIC_NAME)
         self._lock = threading.RLock()
         self._cache = {}          # normcase(path) -> PresetFile
         self._stamp = None        # stat key of library.json behind the current view (None: missing)
+        self._semantic = (None, empty_semantic(), "missing")   # (stamp, index, state) of semantic.json (SI6)
         self._load()
+
+    # ---------------------------------------------------------------- the semantic index (read only, SI6)
+    def _stat_key(self, path):
+        try:
+            st = os.stat(path)
+        except FileNotFoundError:
+            return None
+        return (st.st_ino, st.st_mtime_ns, st.st_size)
+
+    def read_semantic(self):
+        """(index, state): the semantic index on disk, or the empty one; state missing | ok | bad. A bad or
+        unparsable file is left alone (never renamed or deleted)."""
+        for attempt in range(READ_RETRIES):
+            try:
+                with open(self.semantic_path, "rb") as f:
+                    raw = f.read()
+                break
+            except FileNotFoundError:
+                return empty_semantic(), "missing"
+            except PermissionError:           # a replace in progress
+                if attempt == READ_RETRIES - 1:
+                    raise
+                time.sleep(READ_RETRY_S)
+        try:
+            obj = json.loads(raw.decode("utf-8-sig"))
+        except (UnicodeDecodeError, ValueError):
+            return empty_semantic(), "bad"
+        return (obj, "ok") if valid_semantic(obj) else (empty_semantic(), "bad")
+
+    def semantic(self):
+        """The semantic index, re-read when semantic.json changed (stat key, like library.json)."""
+        stamp = self._stat_key(self.semantic_path)
+        with self._lock:
+            if stamp != self._semantic[0]:
+                try:
+                    index, state = self.read_semantic()
+                except PermissionError:
+                    return self._semantic[1]
+                self._semantic = (stamp, index, state)
+            return self._semantic[1]
+
+    def semantic_state(self):
+        self.semantic()
+        return self._semantic[2]
+
+    def sha_of(self, pid):
+        """The content sha256 of a preset in the view (None when unknown)."""
+        f = self.files().get(pid)
+        return None if f is None else f.sha256
+
+    def semantic_entry(self, pid):
+        sha = self.sha_of(pid)
+        return None if sha is None else self.semantic()["entries"].get(sha)
 
     # ---------------------------------------------------------------- reading files
     def stem_name(self, pid):
@@ -336,7 +451,10 @@ class Library:
         return self.params[pid]
 
     def row(self, pid):
-        return {k: (list(v) if k == "skipped" else v) for k, v in self.by_id[pid].items()}
+        """The 7-column row (B3, K9, SI10): the view's 6 columns plus tags from the semantic index."""
+        e = self.by_id[pid]
+        return {**{k: (list(v) if k == "skipped" else v) for k, v in e.items()},
+                "tags": semantic_tags(self.semantic_entry(pid))}
 
     def detail(self, pid):
         e = self.by_id[pid]

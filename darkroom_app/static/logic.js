@@ -174,10 +174,17 @@
   }
 
   // ---------------------------------------------------------------- R6 search
+  // R6 + CONTRACT-semantic-index SI10: name, group and the semantic tags (zh + en) are searched
   function matchPreset(p, query) {
     const terms = String(query || '').toLowerCase().split(/\s+/).filter(Boolean);
-    const hay = (p.name + ' ' + (p.group || '')).toLowerCase();
+    const hay = (p.name + ' ' + (p.group || '') + ' ' + (p.tags || []).join(' ')).toLowerCase();
     return terms.every((t) => hay.includes(t));
+  }
+
+  // SI10: the row's tooltip - "{group} / {name}｜{tags joined by 、}"
+  function presetTitle(p) {
+    const base = p.group ? p.group + ' / ' + p.name : p.name;
+    return p.tags && p.tags.length ? base + '｜' + p.tags.join('、') : base;
   }
 
   // ---------------------------------------------------------------- R6 typed values
@@ -310,7 +317,7 @@
     return {items, failed};
   }
 
-  return {sliderView, tweakFor, sliderTooltip, clampNote, fmtNum, History, treeKey, matchPreset,
+  return {sliderView, tweakFor, sliderTooltip, clampNote, fmtNum, History, treeKey, matchPreset, presetTitle,
           HISTORY_LIMIT, initialEditor, reduce, strengthEnabled, strengthInEffect, canUndo, canRedo, carryHintVisible,
           parseValueInput, curveAtStrength, curvePath,
           EXPORT_BUSY, EXPORT_DEFAULT_QUALITY, baseName, exportDone, exportFailed, exportBody, exportMessage,

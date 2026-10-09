@@ -45,6 +45,7 @@ CONTENT_TYPE_REFUSED = "request refused: POST body must be application/json"    
 DEST_DIR_REFUSED = "dest_dir is not accepted over HTTP (use the CLI or MCP)"           # verbatim (XP16), 400
 PATHS_REFUSED = "paths is not accepted over HTTP (upload the files)"                   # verbatim (KP4), 400
 DATA_DIR_REFUSED = "data_dir is not accepted over HTTP (it is configured)"             # verbatim (PLP2), 400
+SEMANTIC_BUILD_REFUSED = "semantic build is not accepted over HTTP (use the CLI or MCP)"   # verbatim (SI11), 400
 FETCH_SITE_REFUSED = "request refused: cross-site request (Sec-Fetch-Site {value})"     # verbatim (PLP11), 403
 DARKROOM_HEADER_REFUSED = "request refused: X-Darkroom header required"                # verbatim (PLP11), 403
 PATH_READING_GETS = frozenset(("/api/folder", "/api/edit", "/api/folder/thumbnails", "/api/thumbnail"))   # PLP11
@@ -207,6 +208,15 @@ async def api_library_rebuild(request):
     return await _json(request, "rebuild_library")
 
 
+async def api_semantic_build(request):
+    """An interface rule (CONTRACT-semantic-index SI11): building costs money, so the page never triggers it."""
+    return web.json_response({"error": SEMANTIC_BUILD_REFUSED}, status=400)
+
+
+async def api_semantic_status(request):
+    return await _json(request, "semantic_status")
+
+
 async def api_folder(request):
     return await _json(request, "list_folder", request.query.get("image_id", ""))
 
@@ -289,6 +299,8 @@ def make_app(preset_dir, engine=None, library_dir=None, data_dir=None):
     app.router.add_post("/api/preset-library/import", api_library_import)
     app.router.add_post("/api/preset-library/save", api_library_save)
     app.router.add_post("/api/preset-library/rebuild", api_library_rebuild)
+    app.router.add_post("/api/preset-library/semantic/build", api_semantic_build)   # SI11: always refused
+    app.router.add_get("/api/preset-library/semantic", api_semantic_status)
     app.router.add_get("/api/edit", api_edit_get, allow_head=False)
     app.router.add_put("/api/edit", api_edit_set)
     app.router.add_delete("/api/edit", api_edit_clear)

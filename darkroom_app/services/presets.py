@@ -5,11 +5,21 @@ from .. import messages as M
 from .. import sliders
 from ..errors import DarkroomError
 
-from ..presets import ROW_KEYS    # B3 as patched by K9: id, group, name, supported, skipped, favorite
+from ..presets import ROW_KEYS, SEMANTIC_SEARCH_FIELDS, semantic_tags   # B3, K9, + tags (SI10)
 
 
 def _is_int(v):
     return isinstance(v, int) and not isinstance(v, bool)
+
+
+def _haystack(e, entry):
+    """SI10: name, group and the semantic entry's tags_zh, tags_en, good_for, look_zh, look_en (casefold)."""
+    parts = [e["name"], e["group"]]
+    if entry is not None:
+        for k in SEMANTIC_SEARCH_FIELDS:
+            v = entry[k]
+            parts += v if isinstance(v, list) else [v]
+    return "\n".join(parts).casefold()
 
 
 class PresetService:
@@ -23,15 +33,23 @@ class PresetService:
             raise DarkroomError("invalid", M.LIMIT_INVALID)
         if not isinstance(favorites, bool):
             raise DarkroomError("invalid", M.LIB_FAVORITE_INVALID)
-        entries = self.library.entries
+        lib = self.library
+        entries = lib.entries
         if favorites:
             entries = [e for e in entries if e["favorite"]]
+        semantic = lib.semantic()["entries"]
+        files = lib.files()
+
+        def entry_of(e):
+            f = files.get(e["id"])
+            return None if f is None else semantic.get(f.sha256)
         if query is not None and query != "":
             q = str(query).casefold()
-            entries = [e for e in entries if q in e["name"].casefold() or q in e["group"].casefold()]
+            entries = [e for e in entries if q in _haystack(e, entry_of(e))]
         total = len(entries)
         end = total if limit is None else offset + limit
-        items = [{k: (list(e[k]) if k == "skipped" else e[k]) for k in ROW_KEYS} for e in entries[offset:end]]
+        items = [{**{k: (list(e[k]) if k == "skipped" else e[k]) for k in ROW_KEYS if k != "tags"},
+                  "tags": semantic_tags(entry_of(e))} for e in entries[offset:end]]
         nxt = offset + len(items)
         return {"items": items, "total": total, "next_offset": nxt if nxt < total else None}
 

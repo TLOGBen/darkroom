@@ -56,15 +56,20 @@ class Facade(Protocol):
 
     def save_edit_as_preset(self, path, name, group=None): ...
 
+    def semantic_build(self, limit=None, dry_run=False, wait_seconds=None): ...
+
+    def semantic_status(self): ...
+
 
 class DarkroomFacade:
-    def __init__(self, presets, photos, previews, exports, library, photo_library):
+    def __init__(self, presets, photos, previews, exports, library, photo_library, semantic):
         self._presets = presets
         self._photos = photos
         self._previews = previews
         self._exports = exports
         self._library = library
         self._photo_library = photo_library
+        self._semantic = semantic
 
     def list_presets(self, query=None, offset=0, limit=None, favorites=False):
         return self._presets.list_presets(query, offset, limit, favorites)
@@ -138,3 +143,10 @@ class DarkroomFacade:
 
     def save_edit_as_preset(self, path, name, group=None):
         return self._photo_library.save_edit_as_preset(path, name, group)
+
+    # CONTRACT-semantic-index SI1: operations 25, 26
+    def semantic_build(self, limit=None, dry_run=False, wait_seconds=None):
+        return self._semantic.semantic_build(limit, dry_run, wait_seconds)
+
+    def semantic_status(self):
+        return self._semantic.semantic_status()

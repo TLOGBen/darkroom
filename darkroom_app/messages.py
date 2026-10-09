@@ -70,3 +70,21 @@ PL_EDIT_SCHEMA = "schema is {schema!r}, not darkroom-edit/1"
 PL_EDIT_PRESET = "preset must be null or {id, name, group, params}"
 PL_EDIT_PARAMS = "params: {reason}"
 PL_PARENT_MISSING = "上層資料夾不存在：{parent}"      # the reason inside PL_CANNOT_WRITE (PLP17, seal F1)
+
+# CONTRACT-semantic-index (verbatim constants; SI2, SI3, SI7-SI9)
+SEM_NEED_PACKAGE = "需要 anthropic 套件：python -s -m pip install anthropic==1.13.0"
+SEM_NEED_KEY = ("需要在 config.local.json 設定 anthropic_api_key_ref（1Password 參照，例如 op://<vault>/<item>/credential），"
+                "或設定環境變數 DARKROOM_ANTHROPIC_API_KEY")
+SEM_NEED_SOURCES = "需要標準圖：{dir} 裡要有 real-portrait.jpg、real-landscape.jpg、real-night.jpg、real-fog.jpg"
+SEM_KEY_FAILED = "無法取得 Anthropic 金鑰：{reason}"
+SEM_KEY_NO_OP = "找不到 op（1Password CLI）"
+SEM_KEY_OP_EXIT = "op read 結束碼 {code}"
+SEM_KEY_OP_TIMEOUT = "op read 逾時"
+SEM_KEY_OP_EMPTY = "op read 回傳空值"
+SEM_API_ERROR = "Anthropic API 錯誤：{detail}"
+SEM_INDEX_UNAVAILABLE = "無法寫入語意索引：{reason}"
+SEM_LIMIT_INVALID = "limit 必須是 1 以上的整數"
+SEM_WAIT_INVALID = "wait_seconds 必須是 0 以上的數"
+SEM_OVER_BUDGET = "預估費用 {usd:.4f} 美元超過上限 {budget:.2f} 美元（設定鍵 semantic_index_budget_usd）"
+SEM_BAD_RESPONSE = "回應不合格式：{reason}"
+SEM_BATCH_RESULT = "批次結果：{result_type}"
