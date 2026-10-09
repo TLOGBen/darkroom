@@ -125,3 +125,7 @@ Sec-Fetch-Site 錯（403）：{"error": "request refused: cross-site request (Se
 需要 X-Darkroom 的 GET：/api/folder ｜ /api/edit ｜ /api/folder/thumbnails ｜ /api/thumbnail
 檢查順序：Host → Sec-Fetch-Site → Origin → Content-Type → X-Darkroom → 路由
 ```
+- [ ] PLP12（PLP11 的兩個繞過點，主 session 裁決：commit 安全審查在 7d60c6c 報的 authorization-bypass；修訂 PLP11）：(1) aiohttp 的 `add_get` 預設也登記 HEAD，`HEAD /api/thumbnail?path=…` 不是 GET 就跳過 X-Darkroom 檢查、照樣產生縮圖寫進 data_dir。修法：四條會讀照片路徑的路由以 `allow_head=False` 登記（HEAD → 405），而且 middleware 的 X-Darkroom 檢查對 `GET` 與 `HEAD` 都做（兩道都要，缺一不可）。(2) 路徑比對不用原始字串：以路由解析後的 `request.match_info.route.resource.canonical` 比對常數清單，所以大小寫、尾端斜線、`%2F`、重複斜線等寫法要嘛對不到路由（404），要嘛解析到同一個 canonical 而照樣被查；沒有對到路由的請求不做 X-Darkroom 判斷（它本來就是 404）。釘死：`tests/test_http_security.py`——`HEAD` 四條路由不帶標頭 403、帶標頭 405，facade 沒被呼叫；`/API/thumbnail`、`/api/thumbnail/`、`/api//thumbnail`、`/api/thumbnail%2F`、`/api/%74humbnail` 不帶標頭一律不是 200、facade 沒被呼叫；`/api/thumbnail?path=…` 帶標頭仍 200。
+```text
+PLP12：四條路徑 GET 以 allow_head=False 登記 ｜ X-Darkroom 檢查涵蓋 GET 與 HEAD ｜ 比對 request.match_info.route.resource.canonical
+```
