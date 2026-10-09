@@ -12,7 +12,7 @@
 |---|---|---|
 | Web App | 使用者 | `python -s -m darkroom_app`，瀏覽器開 `http://127.0.0.1:8765/` |
 | CLI | 你（代理） | `python -s -m darkroom_app.cli <指令> --json` |
-| MCP | 你（代理，已註冊時） | stdio server `python -s -m darkroom_app.mcp_server`，24 個 `darkroom_*` 工具 |
+| MCP | 你（代理，已註冊時） | stdio server `python -s -m darkroom_app.mcp_server`，26 個 `darkroom_*` 工具 |
 
 本文裡的 `python` 一律指 **這個 repo 用的 Python**：一般使用者是 `.\.venv\Scripts\python.exe`（見 `docs/agent-install.md`）；作者環境是 `config.local.json` 的 `localllms_root` 底下的專用 Python。一律加 `-s`，在 repo 根目錄執行。用詞定義見 `CONTEXT.md`。
 
@@ -66,7 +66,7 @@ pwsh -File tools/start.ps1 -Port 8765 -NoBrowser
 
 | 指令 | 用途 | 寫檔？ |
 |---|---|---|
-| `presets list [--query Q] [--offset N] [--limit N] [--favorites]` | 列 preset（id、群組、名稱、是否完整支援、略過的設定、最愛）；`--query` 比對名稱或群組的子字串（不分大小寫）；沒 `--limit` 會全列 | 否 |
+| `presets list [--query Q] [--offset N] [--limit N] [--favorites]` | 列 preset（id、群組、名稱、是否完整支援、略過的設定、最愛、語意標籤 `tags`）；`--query` 比對名稱、群組**與語意標籤／描述**（中英文都可以，不分大小寫的子字串）；沒 `--limit` 會全列 | 否 |
 | `presets show <id>` | 一個 preset 的細節：100% 時每個滑桿的值、曲線、無法套用的設定（`level`：`minor`／`major`，`note` 是給人看的說明） | 否 |
 | `presets flags` | `{id: "major"|"minor"}`：哪些 preset 有略過的設定 | 否 |
 | `presets groups` | 群組樹（第一個 ` - ` 分上下層）與每組數量 | 否 |
@@ -76,6 +76,8 @@ pwsh -File tools/start.ps1 -Port 8765 -NoBrowser
 | `presets import <path>... [--group G]` | 把 `.xmp`（檔案，或資料夾第一層）**複製**進庫的 `import/`；內容相同的不重複匯入；來源不動 | 庫 `import/`＋索引 |
 | `presets save --name N [--group G] [--preset ID] [--strength S] [--override K=V]...` | 把「preset×強度＋微調」存成新的自存 preset（`user/` 新檔，永不覆蓋；群組預設 `自存 preset`） | 庫 `user/`＋索引 |
 | `presets rebuild` | 從 preset 資料夾重掃索引（還在的檔保留名稱／群組／最愛）；回 `{added, removed, kept}` | 索引 |
+| `presets semantic status` | 語意索引狀態：`available`（能不能建）、`reason`（不能時的固定原因）、`indexed`／`total`／`pending`、還在跑的 batch、預算、上次用量。不需要金鑰、不連網 | 否 |
+| `presets semantic build [--limit N] [--dry-run] [--wait-seconds S]` | **會花錢**：把還沒索引的 preset（只送 4 張公開標準圖的渲染結果，絕不送使用者照片）交給 Claude（`claude-haiku-5-5`，Batches 5 折）寫風格標籤，存進 `<庫根>/semantic.json`（以 preset 內容雜湊為 key，改名搬移不重跑）。送出前先印預估費用，超過 `semantic_index_budget_usd`（預設 5 美元）就拒絕；`--dry-run` 只估不送；預設等 3600 秒，`--wait-seconds 0` 送出就回，之後再跑一次 build 收回結果。**先跟使用者確認再跑** | `semantic.json` |
 | `groups create <group>` | 建空群組（已存在 → conflict） | 索引 |
 | `groups rename <group> <new>` | 群組連同子群組改名（`new` 是完整新路徑；已存在 → conflict，不合併） | 索引 |
 | `sliders` | 所有滑桿（Lightroom crs 鍵名、範圍、預設、步進、中文標籤）；`--override` 只接受這些鍵 | 否 |
@@ -96,7 +98,7 @@ pwsh -File tools/start.ps1 -Port 8765 -NoBrowser
 
 ## MCP 工具總表
 
-註冊方式見 `docs/agent-install.md` 第 7 步。工具順序、名稱、參數都來自 `darkroom_app/operations.py`（共 24 個）；參數名跟 CLI 對應（`preset_id`、`strength`、`overrides`、`max_pixels`、`dest_dir`…）。回傳 `structuredContent` 是結構化結果，錯誤時 `isError: true` 且文字就是那句錯誤訊息。
+註冊方式見 `docs/agent-install.md` 第 7 步。工具順序、名稱、參數都來自 `darkroom_app/operations.py`（共 26 個）；參數名跟 CLI 對應（`preset_id`、`strength`、`overrides`、`max_pixels`、`dest_dir`…）。回傳 `structuredContent` 是結構化結果，錯誤時 `isError: true` 且文字就是那句錯誤訊息。
 
 | 工具 | 用途 | 寫檔？ |
 |---|---|---|
@@ -124,6 +126,8 @@ pwsh -File tools/start.ps1 -Port 8765 -NoBrowser
 | `darkroom_folder_thumbnails` | 縮圖格清單（`folder`、`offset`、`limit`） | `data_dir/thumbs/`、`index/` |
 | `darkroom_thumbnail` | 一張縮圖（`path`）；回傳 `image/jpeg` | `data_dir/thumbs/` |
 | `darkroom_edit_save_preset` | 把一張的編輯存成自存 preset（`path`、`name`、`group`） | 庫 `user/`＋索引 |
+| `darkroom_semantic_build` | 建立語意索引（`limit`、`dry_run`、`wait_seconds` 預設 0＝送出就回）；**會花錢、會連 Anthropic**（`openWorldHint: true`），先確認再呼叫；先用 `dry_run: true` 看預估費用 | `semantic.json` |
+| `darkroom_semantic_status` | 語意索引狀態（能不能建、原因、進度、預算、上次用量） | 否 |
 
 每個工具都帶 MCP annotations：唯讀的 `readOnlyHint: true`；`darkroom_edit_set`／`clear`／`paste` 標 `destructiveHint: true`（會取代舊編輯）。傳了 schema 以外的參數會直接被拒（`Unknown argument for …`）。
 
@@ -151,7 +155,7 @@ python -s -m darkroom_app.cli export <folder>/a.jpg <folder>/b.jpg <folder>/c.jp
 
 ### 2. 「找跟『底片』有關的 preset」
 
-`--query` 只比對名稱或群組的**子字串**，不會做同義詞；一個詞查不到就換幾個：中文（底片、膠捲、膠卷、菲林）、英文（film、kodak、fuji、portra、35mm）、品牌名。先看群組樹通常更快：
+`--query` 比對名稱、群組與**語意標籤**（`presets semantic build` 建好後，每個 preset 有 Claude 看圖寫的中英文風格標籤，例如 底片、電影感、暖調、film、matte）的子字串，不做同義詞；沒建語意索引時只比對名稱與群組，一個詞查不到就換幾個：中文（底片、膠捲、膠卷、菲林）、英文（film、kodak、fuji、portra、35mm）、品牌名。先 `presets semantic status` 看索引建了多少；先看群組樹通常也很快：
 
 ```powershell
 python -s -m darkroom_app.cli presets groups --json

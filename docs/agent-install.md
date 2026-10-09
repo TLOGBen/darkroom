@@ -77,6 +77,9 @@ Optional keys — only set them if the person asks:
 |---|---|---|
 | `preset_library_dir` | where the preset library index, imported and self-saved presets live | the parent of `preset_dir` |
 | `data_dir` | the photo library: per-photo edits and thumbnail cache | `%LOCALAPPDATA%\darkroom` |
+| `anthropic_api_key_ref` | a 1Password reference (`op://<vault>/<item>/credential`) to an Anthropic API key, read with `op read` only when `presets semantic build` runs. Never put the key itself in this file; `DARKROOM_ANTHROPIC_API_KEY` in the environment is the alternative | unset: the semantic index stays off |
+| `semantic_index_budget_usd` | the most one `presets semantic build` may cost (estimated before anything is sent) | `5` |
+| `calibration_sources_dir` | the four public calibration photos the semantic index renders presets on | `<localllms_root>/scratch/lr-calibration/sources` |
 
 `preset_library_dir` and `data_dir` must **not** be inside a photo folder or inside `preset_dir`.
 
@@ -123,7 +126,7 @@ claude mcp add darkroom -- "<absolute path to repo>\.venv\Scripts\python.exe" -s
 (Other MCP clients: a stdio server, command = the venv's `python.exe`, args =
 `-s -m darkroom_app.mcp_server`, working directory = the repository root.)
 
-**Check:** the client lists 24 tools named `darkroom_*`; calling `darkroom_presets_list` with
+**Check:** the client lists 26 tools named `darkroom_*`; calling `darkroom_presets_list` with
 `{"limit": 3}` returns presets.
 
 ## 8. Tell the person what you did

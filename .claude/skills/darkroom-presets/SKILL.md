@@ -28,7 +28,7 @@ description: 管理 darkroom 的 preset 庫：搜尋 preset、看群組樹、最
 ## 指令（`python` ＝ repo 的 Python，一律加 `-s` 與 `--json`）
 
 ```powershell
-# 搜尋：--query 比對名稱或群組的子字串（不分大小寫），不做同義詞；沒 --limit 會全列（可能上千行）
+# 搜尋：--query 比對名稱、群組與語意標籤／描述（中英文，不分大小寫的子字串），不做同義詞；沒 --limit 會全列（可能上千行）
 python -s -m darkroom_app.cli presets list --query film --limit 50 --json
 python -s -m darkroom_app.cli presets list --query 膠捲 --limit 50 --json
 python -s -m darkroom_app.cli presets list --favorites --json
@@ -53,14 +53,22 @@ python -s -m darkroom_app.cli edit save-preset <photo> --name "人像暖調 80" 
 
 # 重建索引：手動加減過 import/、user/ 的檔、或索引壞掉時；回 {added, removed, kept}
 python -s -m darkroom_app.cli presets rebuild --json
+
+# 語意索引（Claude 看每個 preset 套在 4 張公開標準圖上的效果，寫中英風格標籤；之後 --query 搜得到「底片」「film」「暖調」）
+python -s -m darkroom_app.cli presets semantic status --json                       # 不花錢：available／reason／indexed／pending／預算
+python -s -m darkroom_app.cli presets semantic build --dry-run --json              # 不花錢：只算要送幾個、預估費用
+python -s -m darkroom_app.cli presets semantic build --limit 3 --json              # 會花錢（Haiku 5.5 Batches，整庫 1466 個約 1 美元以內）；先跟使用者確認
+python -s -m darkroom_app.cli presets semantic build --wait-seconds 0 --json       # 送出就回；之後再跑一次 build 收回結果
 ```
 
-MCP 對應：`darkroom_presets_list`、`darkroom_preset_show`、`darkroom_preset_flags`、`darkroom_preset_groups`、`darkroom_preset_rename{preset_id,name}`、`darkroom_preset_move{preset_id,group}`、`darkroom_preset_favorite{preset_id,favorite}`、`darkroom_group_create{group}`、`darkroom_group_rename{group,new_name}`、`darkroom_presets_import{paths|files,group}`、`darkroom_preset_save{name,group,preset_id,strength,overrides}`、`darkroom_presets_rebuild`、`darkroom_edit_save_preset{path,name,group}`。
+語意索引的規則：只送 4 張公開標準圖的渲染結果，**絕不送使用者的照片**；金鑰只從 `config.local.json` 的 `anthropic_api_key_ref`（1Password 參照）或環境變數 `DARKROOM_ANTHROPIC_API_KEY` 取，只放記憶體；缺套件／金鑰／標準圖時 `status` 的 `reason` 會說缺哪一個，照它說的補就好，不要自己猜；預估費用超過 `semantic_index_budget_usd`（預設 5 美元）會被拒。結果存 `<庫根>/semantic.json`（key 是 preset 內容雜湊，改名搬移不必重跑）。
+
+MCP 對應：`darkroom_semantic_status`、`darkroom_semantic_build{limit,dry_run,wait_seconds}`（會花錢、先確認）、`darkroom_presets_list`、`darkroom_preset_show`、`darkroom_preset_flags`、`darkroom_preset_groups`、`darkroom_preset_rename{preset_id,name}`、`darkroom_preset_move{preset_id,group}`、`darkroom_preset_favorite{preset_id,favorite}`、`darkroom_group_create{group}`、`darkroom_group_rename{group,new_name}`、`darkroom_presets_import{paths|files,group}`、`darkroom_preset_save{name,group,preset_id,strength,overrides}`、`darkroom_presets_rebuild`、`darkroom_edit_save_preset{path,name,group}`。
 
 ## 怎麼找得準
 
 1. 先 `presets groups` 看群組樹——買來的 preset 通常依主題分組（人物、器材、地區、復古……），使用者說的「底片」很可能在「器材 - 膠捲 - …」底下。
-2. `--query` 多試幾個詞：中文（底片、膠捲、膠卷、菲林）、英文（film、kodak、fuji、portra、35mm）、品牌／型號。
+2. `--query` 多試幾個詞：中文（底片、膠捲、膠卷、菲林）、英文（film、kodak、fuji、portra、35mm）、品牌／型號。語意索引建好後（`presets semantic status` 的 `indexed`），這些詞會比對到 Claude 寫的風格標籤，不只名稱。
 3. 回報列 `id`、`group`、`name`；`skipped` 非空的註明「有部分設定套不上」（`presets show` 的 `note` 有中文說明；`level` 是 `major` 要講）。
 4. 使用者要挑時，用 `darkroom-edit` 預覽幾個候選。
 
