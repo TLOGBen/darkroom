@@ -116,3 +116,12 @@ CLI thumbnail --json result：{fingerprint, edited, width, height, jpeg_base64} 
 前端句（PLP9）：已選 {n}／{total} 張 ｜ 縮圖格 ｜ 複製編輯 ｜ 貼上編輯 ｜ 匯出所選
 入口選項：CLI／MCP 全域 --data-dir D ｜ python -m darkroom_app --data-dir D ｜ build_facade(..., data_dir=None) ｜ make_app(..., data_dir=None) ｜ start(..., data_dir=None)
 ```
+
+## 條文補丁第 2 批（2026-10-09，主 session 裁決：commit 安全審查在 09d1235 抓到的跨站 GET 問題，本片必修，封緘一併驗）
+- [ ] PLP11（跨站 GET 與資訊外洩，修訂 PLP2；App 外殼補丁 R11）：威脅＝使用者瀏覽器裡的任何網頁。R10 只擋得住帶 Origin 的 fetch 與帶 body 的 POST／PUT：`<img src="http://127.0.0.1:{port}/api/thumbnail?path=C:\…">`、`<script src=…>`、`<link>` 這類 GET 的 Host 正確、不帶 Origin、沒有 body，R10 全部放行，於是外站頁面能讓 App 讀任意路徑的照片、把縮圖與索引寫進 data_dir（GET 有副作用）、用 `onload`／`onerror` 推測硬碟上有哪些檔案、甚至把縮圖顯示在攻擊者頁面上；既有的 `GET /api/folder?image_id=` 同屬此類。修法（兩道，都在 middleware、對所有路由，順序 Host → Sec-Fetch-Site → Origin → Content-Type → X-Darkroom → 路由）：(1) 請求帶 `Sec-Fetch-Site` 標頭時，值為 `cross-site` 或 `same-site` → 403＋常數句；只放行 `same-origin`、`none` 與沒帶這個標頭的請求（CLI 測試、curl、舊瀏覽器——這些本來就受 Host 檢查保護）。(2) 四條會讀照片路徑的 GET——`/api/folder`、`/api/edit`、`/api/folder/thumbnails`、`/api/thumbnail`——必須帶自訂標頭 `X-Darkroom: 1`，否則 403＋常數句：跨站的 img／script／link 加不了自訂標頭；跨站 fetch 加了就一定 preflight，伺服器不回任何 CORS 標頭，瀏覽器就擋下。前端 `api()` 對每一個請求一律帶 `X-Darkroom: 1`；縮圖不用 `<img src>` 載入，一律 `fetch`（經 `api()`）取位元組再以 blob URL 顯示。釘死：`tests/test_http_security.py`——`Sec-Fetch-Site: cross-site`／`same-site` 的 GET（含 `/`、靜態檔、四條路徑 GET）被 403；四條路徑 GET 不帶 `X-Darkroom` 被 403，帶了照常 200；`same-origin`／`none`／不帶 Sec-Fetch-Site 照常；被拒的請求 facade 沒被呼叫、data_dir 不出現任何檔；`test_front_end_posts_json` 擴為 `api()` 一律帶 `X-Darkroom: 1`、頁面沒有 `<img src="/api/…">`。既有測試的 HTTP client 對這四條 GET 加上 `X-Darkroom: 1`（fixture 層，`test_http_golden` 既有斷言一條不改）。
+```text
+Sec-Fetch-Site 錯（403）：{"error": "request refused: cross-site request (Sec-Fetch-Site {value})"}
+缺 X-Darkroom（403）：{"error": "request refused: X-Darkroom header required"}
+需要 X-Darkroom 的 GET：/api/folder ｜ /api/edit ｜ /api/folder/thumbnails ｜ /api/thumbnail
+檢查順序：Host → Sec-Fetch-Site → Origin → Content-Type → X-Darkroom → 路由
+```
