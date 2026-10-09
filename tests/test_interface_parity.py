@@ -728,6 +728,384 @@ class TestPresetLibraryParity(unittest.IsolatedAsyncioTestCase):  # CONTRACT-pre
                          dict.fromkeys(got, Outcome(False, "conflict", "preset 庫正被其他程式修改，請稍後再試")))
 
 
+class TestPhotoLibraryParity(unittest.IsolatedAsyncioTestCase):  # CONTRACT-photo-library PL17, PLP4, PLP6
+    """Each scenario runs on its own copy of the photos, its own data_dir and preset library, once per interface."""
+
+    async def asyncSetUp(self):
+        from darkroom_app.server import FACADE, make_app
+        from test_layering import _NoEngine
+        self.tmp = _util.tmpdir(self)
+        seed = os.path.join(self.tmp, "seed")
+        os.makedirs(seed)
+        make_presets(seed)
+        self.switch = _Switch()
+        app = make_app(seed, engine=_NoEngine())
+        app[FACADE] = self.switch
+        self.client = TestClient(TestServer(app))
+        await self.client.start_server()
+        self.n = 0
+        self.libs = []
+
+    async def asyncTearDown(self):
+        for lib in self.libs:
+            lib.wait_thumbnails(60)
+        await self.client.close()
+
+    def fresh(self):
+        """(photos folder, data_dir): a photo folder copy, an empty data_dir and a fresh facade in the switch."""
+        from darkroom_app.composition import build_facade
+        self.n += 1
+        root = os.path.join(self.tmp, f"case{self.n}")
+        pd = os.path.join(root, "lib", "xmp")
+        os.makedirs(pd)
+        make_presets(pd)
+        photos = os.path.join(root, "photos")
+        os.makedirs(photos)
+        write_photo(os.path.join(photos, "a.jpg"), 400, 300)
+        write_photo(os.path.join(photos, "b.jpg"), 400, 300, seed=1)
+        write_photo(os.path.join(photos, "c.png"), 200, 150, seed=2)
+        with open(os.path.join(photos, "notes.txt"), "w") as fh:
+            fh.write("x")
+        with open(os.path.join(photos, "broken.jpg"), "wb") as fh:
+            fh.write(b"\xff\xd8not a jpeg")
+        data = os.path.join(root, "data")
+        self.switch.target = build_facade(pd, data_dir=data)
+        self.libs.append(self.switch.target._photo_library)
+        return photos, data
+
+    # ---------------------------------------------------------------- the three drivers
+    async def http(self, method, path, body=None, params=None):
+        if method == "GET":
+            r = await self.client.get(path, params=params)
+        elif method == "DELETE":
+            r = await self.client.delete(path, params=params)
+        elif method == "PUT":
+            r = await self.client.put(path, json=body)
+        else:
+            r = await self.client.post(path, json=body)
+        if r.status == 200 and r.headers["Content-Type"] == "image/jpeg":
+            data = await r.read()
+            w, h = jpeg_size(data)
+            return OK, {"fingerprint": r.headers["X-Fingerprint"], "edited": r.headers["X-Edited"] == "1",
+                        "width": w, "height": h}
+        data = await r.json()
+        if r.status == 200:
+            return OK, data
+        kind = {v: k for k, v in LIB_HTTP_STATUS.items()}[r.status]
+        self.assertEqual(list(data), ["error"])
+        return Outcome(False, kind, data["error"]), None
+
+    def cli(self, argv):
+        from darkroom_app import cli
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            rc = cli.main(argv + ["--json"], facade=self.switch)
+        self.assertEqual(err.getvalue(), "", argv)
+        self.assertEqual(out.getvalue().count("\n"), 1, argv)
+        env = json.loads(out.getvalue())
+        if env["ok"]:
+            res = env["result"]
+            partial = isinstance(res, dict) and "results" in res and not all(x["ok"] for x in res["results"])
+            self.assertEqual(rc, 6 if partial else 0, argv)                     # PLP4
+            if argv[0] == "thumbnail":
+                w, h = jpeg_size(base64.b64decode(res.pop("jpeg_base64")))
+                self.assertEqual((w, h), (res["width"], res["height"]))
+            return OK, res
+        self.assertEqual(rc, LIB_CLI_EXIT[env["error"]["kind"]], argv)
+        return Outcome(False, env["error"]["kind"], env["error"]["message"]), None
+
+    def mcp(self, tool, arguments):
+        from darkroom_app.mcp_server import serve
+        line = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                           "params": {"name": tool, "arguments": arguments}}).encode("utf-8") + b"\n"
+        out = io.BytesIO()
+        serve(io.BytesIO(line), out, facade=self.switch)
+        res = json.loads(out.getvalue())["result"]
+        sc = res["structuredContent"]
+        if res.get("isError"):
+            return Outcome(False, sc["kind"], sc["message"]), None
+        self.assertNotIn("isError", res)
+        if tool == "darkroom_edit_paste":                                         # PLP4
+            self.assertEqual(sc["failed"], sum(1 for x in sc["results"] if not x["ok"]))
+            sc = {"results": sc["results"]}
+        if tool == "darkroom_thumbnail":
+            w, h = jpeg_size(base64.b64decode(res["content"][0]["data"]))
+            self.assertEqual((w, h), (sc["width"], sc["height"]))
+        return OK, sc
+
+    async def run_three(self, http, cli, mcp, setup=None):
+        got, folders = {}, {}
+        for name, call in (("http", http), ("cli", cli), ("mcp", mcp)):
+            if call is None:
+                continue
+            photos, data = self.fresh()
+            if setup:
+                setup(photos, data)
+            before = snapshot(photos)
+            names = sorted(os.listdir(photos))
+            if name == "http":
+                got[name] = await self.http(*call(photos, data))
+            elif name == "cli":
+                got[name] = self.cli(call(photos, data))
+            else:
+                got[name] = self.mcp(*call(photos, data))
+            self.switch.target._photo_library.wait_thumbnails(60)
+            self.assertEqual(snapshot(photos), before, name)                     # PL14: the photo folder is read only
+            self.assertEqual(sorted(os.listdir(photos)), names, name)
+            folders[name] = photos
+        return got
+
+    @staticmethod
+    def seed_edit(photos, data, name="a.jpg"):
+        from darkroom_app.composition import build_facade
+        pd = os.path.join(os.path.dirname(photos), "lib", "xmp")
+        f = build_facade(pd, data_dir=data)
+        return f.set_edit(os.path.join(photos, name), "p-expo", 130, {"Exposure2012": 0.2})
+
+    @staticmethod
+    def write_edit_file(photos, data, raw):
+        import hashlib
+        with open(os.path.join(photos, "a.jpg"), "rb") as fh:
+            fp = hashlib.sha256(fh.read()).hexdigest()
+        folder = os.path.join(data, "edits", fp[:2])
+        os.makedirs(folder)
+        with open(os.path.join(folder, fp + ".json"), "wb") as fh:
+            fh.write(raw)
+        return os.path.join(folder, fp + ".json")
+
+    async def test_photo_library_parity(self):
+        p = lambda photos, n: os.path.join(photos, n)
+        E = "/api/edit"
+        cases = [
+            ("get, missing file", (lambda ph, d: ("GET", E, None, {"path": p(ph, "gone.jpg")})),
+             (lambda ph, d: ["edit", "get", p(ph, "gone.jpg")]),
+             (lambda ph, d: ("darkroom_edit_get", {"path": p(ph, "gone.jpg")})),
+             lambda ph: Outcome(False, "not_found", f"photo not found: {p(ph, 'gone.jpg')}"), None),
+            ("get, .txt", (lambda ph, d: ("GET", E, None, {"path": p(ph, "notes.txt")})),
+             (lambda ph, d: ["edit", "get", p(ph, "notes.txt")]),
+             (lambda ph, d: ("darkroom_edit_get", {"path": p(ph, "notes.txt")})),
+             lambda ph: Outcome(False, "invalid", "unsupported photo format (JPEG/PNG/TIFF/HEIC)"), None),
+            ("get, no edit", (lambda ph, d: ("GET", E, None, {"path": p(ph, "a.jpg")})),
+             (lambda ph, d: ["edit", "get", p(ph, "a.jpg")]),
+             (lambda ph, d: ("darkroom_edit_get", {"path": p(ph, "a.jpg")})), lambda ph: OK, None),
+            ("set, strength 250",
+             (lambda ph, d: ("PUT", E, {"path": p(ph, "a.jpg"), "preset_id": "p-expo", "strength": 250})),
+             (lambda ph, d: ["edit", "set", p(ph, "a.jpg"), "--preset", "p-expo", "--strength", "250"]),
+             (lambda ph, d: ("darkroom_edit_set", {"path": p(ph, "a.jpg"), "preset_id": "p-expo", "strength": 250})),
+             lambda ph: Outcome(False, "invalid", "strength must be within 0..200, got 250"), None),
+            ("set, unknown slider key",
+             (lambda ph, d: ("PUT", E, {"path": p(ph, "a.jpg"), "overrides": {"Bogus": 1}})),
+             (lambda ph, d: ["edit", "set", p(ph, "a.jpg"), "--override", "Bogus=1"]),
+             (lambda ph, d: ("darkroom_edit_set", {"path": p(ph, "a.jpg"), "overrides": {"Bogus": 1}})),
+             lambda ph: Outcome(False, "invalid", "unknown slider key 'Bogus'"), None),
+            ("set, unknown preset",
+             (lambda ph, d: ("PUT", E, {"path": p(ph, "a.jpg"), "preset_id": "nope"})),
+             (lambda ph, d: ["edit", "set", p(ph, "a.jpg"), "--preset", "nope"]),
+             (lambda ph, d: ("darkroom_edit_set", {"path": p(ph, "a.jpg"), "preset_id": "nope"})),
+             lambda ph: Outcome(False, "not_found", "unknown or unsupported preset nope"), None),
+            ("set success",
+             (lambda ph, d: ("PUT", E, {"path": p(ph, "a.jpg"), "preset_id": "p-expo", "strength": 150,
+                                        "overrides": {"Exposure2012": 0.25}})),
+             (lambda ph, d: ["edit", "set", p(ph, "a.jpg"), "--preset", "p-expo", "--strength", "150",
+                             "--override", "Exposure2012=0.25"]),
+             (lambda ph, d: ("darkroom_edit_set", {"path": p(ph, "a.jpg"), "preset_id": "p-expo", "strength": 150,
+                                                   "overrides": {"Exposure2012": 0.25}})), lambda ph: OK, None),
+            ("set, empty edit becomes null",
+             (lambda ph, d: ("PUT", E, {"path": p(ph, "a.jpg"), "preset_id": None, "overrides": {}})),
+             (lambda ph, d: ["edit", "set", p(ph, "a.jpg")]),
+             (lambda ph, d: ("darkroom_edit_set", {"path": p(ph, "a.jpg")})), lambda ph: OK, self.seed_edit),
+            ("clear (idempotent)", (lambda ph, d: ("DELETE", E, None, {"path": p(ph, "a.jpg")})),
+             (lambda ph, d: ["edit", "clear", p(ph, "a.jpg")]),
+             (lambda ph, d: ("darkroom_edit_clear", {"path": p(ph, "a.jpg")})), lambda ph: OK, None),
+            ("paste, source and edit",
+             (lambda ph, d: ("POST", E + "/paste", {"targets": [p(ph, "b.jpg")], "source": p(ph, "a.jpg"), "edit": {}})),
+             None,
+             (lambda ph, d: ("darkroom_edit_paste", {"targets": [p(ph, "b.jpg")], "source": p(ph, "a.jpg"), "edit": {}})),
+             lambda ph: Outcome(False, "invalid", "source 與 edit 要恰好給一個"), None),
+            ("paste, source has no edit",
+             (lambda ph, d: ("POST", E + "/paste", {"targets": [p(ph, "b.jpg")], "source": p(ph, "a.jpg")})),
+             (lambda ph, d: ["edit", "paste", "--from", p(ph, "a.jpg"), p(ph, "b.jpg")]),
+             (lambda ph, d: ("darkroom_edit_paste", {"targets": [p(ph, "b.jpg")], "source": p(ph, "a.jpg")})),
+             lambda ph: Outcome(False, "not_found", "這張照片沒有編輯：a.jpg"), None),
+            ("paste, targets empty",
+             (lambda ph, d: ("POST", E + "/paste", {"targets": [], "source": p(ph, "a.jpg")})),
+             (lambda ph, d: ["edit", "paste", "--from", p(ph, "a.jpg")]),
+             (lambda ph, d: ("darkroom_edit_paste", {"targets": [], "source": p(ph, "a.jpg")})),
+             lambda ph: Outcome(False, "invalid", "targets 要是 1～500 個照片路徑"), self.seed_edit),
+            ("paste, one good one bad",
+             (lambda ph, d: ("POST", E + "/paste", {"targets": [p(ph, "b.jpg"), p(ph, "gone.jpg")], "source": p(ph, "a.jpg")})),
+             (lambda ph, d: ["edit", "paste", "--from", p(ph, "a.jpg"), p(ph, "b.jpg"), p(ph, "gone.jpg")]),
+             (lambda ph, d: ("darkroom_edit_paste", {"targets": [p(ph, "b.jpg"), p(ph, "gone.jpg")], "source": p(ph, "a.jpg")})),
+             lambda ph: OK, self.seed_edit),
+            ("edit file darkroom-edit/9", (lambda ph, d: ("GET", E, None, {"path": p(ph, "a.jpg")})),
+             (lambda ph, d: ["edit", "get", p(ph, "a.jpg")]),
+             (lambda ph, d: ("darkroom_edit_get", {"path": p(ph, "a.jpg")})),
+             lambda ph: Outcome(False, "conflict", "編輯檔版本不支援：darkroom-edit/9（a.jpg）"),
+             lambda ph, d: self.write_edit_file(ph, d, b'{"schema": "darkroom-edit/9"}')),
+            ("edit file broken", (lambda ph, d: ("PUT", E, {"path": p(ph, "a.jpg"), "preset_id": "p-expo"})),
+             (lambda ph, d: ["edit", "set", p(ph, "a.jpg"), "--preset", "p-expo"]),
+             (lambda ph, d: ("darkroom_edit_set", {"path": p(ph, "a.jpg"), "preset_id": "p-expo"})),
+             lambda ph: Outcome(False, "unavailable", "照片庫的編輯檔損壞：" + os.path.join(
+                 os.path.dirname(ph), "data", "edits", "{fp2}", "{fp}.json")),
+             lambda ph, d: self.write_edit_file(ph, d, b"{broken")),
+            ("thumbnails, folder missing",
+             (lambda ph, d: ("GET", "/api/folder/thumbnails", None, {"folder": p(ph, "nope")})),
+             (lambda ph, d: ["thumbnails", p(ph, "nope")]),
+             (lambda ph, d: ("darkroom_folder_thumbnails", {"folder": p(ph, "nope")})),
+             lambda ph: Outcome(False, "not_found", f"找不到照片資料夾：{p(ph, 'nope')}"), None),
+            ("thumbnails, limit 0",
+             (lambda ph, d: ("GET", "/api/folder/thumbnails", None, {"folder": ph, "limit": "0"})),
+             (lambda ph, d: ["thumbnails", ph, "--limit", "0"]),
+             (lambda ph, d: ("darkroom_folder_thumbnails", {"folder": ph, "limit": 0})),
+             lambda ph: Outcome(False, "invalid", "limit must be an integer in 1..200"), None),
+            ("thumbnails success",
+             (lambda ph, d: ("GET", "/api/folder/thumbnails", None, {"folder": ph})),
+             (lambda ph, d: ["thumbnails", ph]),
+             (lambda ph, d: ("darkroom_folder_thumbnails", {"folder": ph})), lambda ph: OK, self.seed_edit),
+            ("thumbnail, broken JPEG",
+             (lambda ph, d: ("GET", "/api/thumbnail", None, {"path": p(ph, "broken.jpg")})),
+             (lambda ph, d: ["thumbnail", p(ph, "broken.jpg")]),
+             (lambda ph, d: ("darkroom_thumbnail", {"path": p(ph, "broken.jpg")})),
+             lambda ph: ("invalid", "縮圖產生失敗：broken.jpg："), None),
+            ("thumbnail success",
+             (lambda ph, d: ("GET", "/api/thumbnail", None, {"path": p(ph, "a.jpg")})),
+             (lambda ph, d: ["thumbnail", p(ph, "a.jpg")]),
+             (lambda ph, d: ("darkroom_thumbnail", {"path": p(ph, "a.jpg")})), lambda ph: OK, self.seed_edit),
+            ("save-preset, no edit",
+             (lambda ph, d: ("POST", E + "/save-preset", {"path": p(ph, "b.jpg"), "name": "x"})),
+             (lambda ph, d: ["edit", "save-preset", p(ph, "b.jpg"), "--name", "x"]),
+             (lambda ph, d: ("darkroom_edit_save_preset", {"path": p(ph, "b.jpg"), "name": "x"})),
+             lambda ph: Outcome(False, "not_found", "這張照片沒有編輯：b.jpg"), None),
+            ("save-preset success",
+             (lambda ph, d: ("POST", E + "/save-preset", {"path": p(ph, "a.jpg"), "name": "快照", "group": "A - B"})),
+             (lambda ph, d: ["edit", "save-preset", p(ph, "a.jpg"), "--name", "快照", "--group", "A - B"]),
+             (lambda ph, d: ("darkroom_edit_save_preset", {"path": p(ph, "a.jpg"), "name": "快照", "group": "A - B"})),
+             lambda ph: OK, self.seed_edit),
+        ]
+        import hashlib
+        for name, http, cli, mcp, want, setup in cases:
+            photos_of = {}
+            orig_fresh = self.fresh
+
+            def fresh_recording():
+                r = orig_fresh()
+                photos_of[len(photos_of)] = r[0]
+                return r
+            self.fresh = fresh_recording
+            got = await self.run_three(http, cli, mcp, setup)
+            self.fresh = orig_fresh
+            drivers = {"http", "cli", "mcp"} - ({"cli"} if cli is None else set())
+            self.assertEqual(set(got), drivers, name)
+            for i, (dname, (o, res)) in enumerate(got.items()):
+                ph = photos_of[i]
+                w = want(ph)
+                if isinstance(w, tuple) and not isinstance(w, Outcome):          # a prefix (the reason varies)
+                    self.assertEqual((o.ok, o.kind), (False, w[0]), (name, dname))
+                    self.assertTrue(o.message.startswith(w[1]), (name, dname, o.message))
+                elif "{fp}" in (w.message or ""):
+                    with open(os.path.join(ph, "a.jpg"), "rb") as fh:
+                        fp = hashlib.sha256(fh.read()).hexdigest()
+                    self.assertEqual(o, w._replace(message=w.message.replace("{fp2}", fp[:2]).replace("{fp}", fp)),
+                                     (name, dname))
+                else:
+                    self.assertEqual(o, w, (name, dname))
+            results = {k: self.normalized(v[1], photos_of[i]) for i, (k, v) in enumerate(got.items())
+                       if v[1] is not None}
+            self.assertEqual(len({json.dumps(v, sort_keys=True, ensure_ascii=False) for v in results.values()}),
+                             1 if results else 0, (name, results))
+            if name == "set success":
+                e = results["http"]["edit"]
+                self.assertEqual((e["preset"]["id"], e["strength"], e["overrides"], results["http"]["preset_status"]),
+                                 ("p-expo", 150, {"Exposure2012": 0.25}, "current"))
+            if name == "set, empty edit becomes null":
+                self.assertEqual((results["http"]["edit"], results["http"]["preset_status"]), (None, None))
+            if name == "paste, one good one bad":
+                self.assertEqual([(r["ok"], r["target"]) for r in results["http"]["results"]],
+                                 [(True, "b.jpg"), (False, "gone.jpg")])
+            if name == "thumbnails success":
+                self.assertEqual([(i["name"], i["fingerprint"], i["edited"], i["cached"]) for i in results["http"]["items"]],
+                                 [(n, None, None, False) for n in ("a.jpg", "b.jpg", "broken.jpg", "c.png")])  # no index yet
+            if name == "thumbnail success":
+                self.assertEqual((results["http"]["edited"], results["http"]["width"], results["http"]["height"]),
+                                 (True, 256, 192))
+            if name == "save-preset success":
+                self.assertEqual(results["http"], {"id": "user:快照", "name": "快照", "group": "A - B", "file": "user/快照.xmp"})
+
+    @staticmethod
+    def normalized(res, photos):
+        """Driver-independent view: every copy has its own photo folder, so that path becomes <photos>."""
+        if isinstance(res, dict) and "items" in res:
+            res = {"items": [{k: v for k, v in i.items() if k != "path"} for i in res["items"]],
+                   "total": res["total"], "next_offset": res["next_offset"]}
+        text = json.dumps(res, ensure_ascii=False).replace(json.dumps(photos)[1:-1], "<photos>")
+        return json.loads(text)
+
+    async def test_edit_set_then_get_matches_everywhere(self):  # PL17: set through each interface, get agrees
+        for name in ("http", "cli", "mcp"):
+            photos, data = self.fresh()
+            a = os.path.join(photos, "a.jpg")
+            if name == "http":
+                o, res = await self.http("PUT", "/api/edit", {"path": a, "preset_id": "p-skip", "strength": 80})
+            elif name == "cli":
+                o, res = self.cli(["edit", "set", a, "--preset", "p-skip", "--strength", "80"])
+            else:
+                o, res = self.mcp("darkroom_edit_set", {"path": a, "preset_id": "p-skip", "strength": 80})
+            self.assertEqual(o, OK, name)
+            o2, got = await self.http("GET", "/api/edit", None, {"path": a})
+            self.assertEqual((o2, got), (OK, res), name)
+            self.assertEqual(self.cli(["edit", "get", a])[1], res, name)
+            self.assertEqual(self.mcp("darkroom_edit_get", {"path": a})[1], res, name)
+
+
+class TestPhotoLibrarySubprocessSmoke(unittest.TestCase):  # PL17: real processes, CLI edit set -> edit get, MCP edit get
+    def setUp(self):
+        self.tmp = _util.tmpdir(self)
+        self.presets = os.path.join(self.tmp, "presets")
+        os.makedirs(self.presets)
+        make_presets(self.presets)
+        self.photos = os.path.join(self.tmp, "photos")
+        os.makedirs(self.photos)
+        self.photo = write_photo(os.path.join(self.photos, "a.jpg"), 320, 240)
+        self.data = os.path.join(self.tmp, "data")
+        self.env = {k: v for k, v in os.environ.items() if k not in ("PYTHONPATH", "PYTHONHOME")}
+
+    def run_cli(self, *argv):
+        return subprocess.run([*_util.guarded_python(), "-m", "darkroom_app.cli", "--preset-dir", self.presets,
+                               "--data-dir", self.data, *argv, "--json"], cwd=_util.REPO, capture_output=True,
+                              env=self.env, timeout=120)
+
+    def test_cli_edit_set_then_get(self):
+        r = self.run_cli("edit", "set", self.photo, "--preset", "p-expo", "--strength", "140", "--override", "Contrast2012=5")
+        self.assertEqual((r.returncode, r.stderr), (0, b""), r.stderr)
+        env = json.loads(r.stdout.decode("utf-8"))
+        self.assertTrue(env["ok"])
+        r2 = self.run_cli("edit", "get", self.photo)
+        self.assertEqual((r2.returncode, r2.stderr), (0, b""))
+        self.assertEqual(json.loads(r2.stdout.decode("utf-8")), env)
+        self.assertEqual(env["result"]["edit"]["strength"], 140)
+        r3 = self.run_cli("edit", "paste", "--from", self.photo, self.photo, os.path.join(self.photos, "gone.jpg"))
+        self.assertEqual((r3.returncode, r3.stderr), (6, b""))                   # PLP4: one target failed
+        self.assertEqual([x["ok"] for x in json.loads(r3.stdout)["result"]["results"]], [True, False])
+        self.assertEqual(sorted(os.listdir(self.photos)), ["a.jpg"])
+
+    def test_mcp_edit_get(self):
+        msgs = [{"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                 "params": {"name": "darkroom_edit_set", "arguments": {"path": self.photo, "preset_id": "p-expo"}}},
+                {"jsonrpc": "2.0", "id": 2, "method": "tools/call",
+                 "params": {"name": "darkroom_edit_get", "arguments": {"path": self.photo}}}]
+        data = b"".join(json.dumps(m).encode() + b"\n" for m in msgs)
+        r = subprocess.run([*_util.guarded_python(), "-m", "darkroom_app.mcp_server", "--preset-dir", self.presets,
+                            "--data-dir", self.data], cwd=_util.REPO, input=data, capture_output=True, env=self.env,
+                           timeout=120)
+        self.assertEqual(r.returncode, 0, r.stderr.decode("utf-8", "replace"))
+        res = [json.loads(x) for x in r.stdout.decode("utf-8").split("\n") if x]
+        self.assertEqual([x["id"] for x in res], [1, 2])
+        self.assertEqual(res[0]["result"]["structuredContent"], res[1]["result"]["structuredContent"])
+        self.assertEqual(res[1]["result"]["structuredContent"]["edit"]["preset"]["id"], "p-expo")
+        self.assertNotIn("isError", res[1]["result"])
+        self.assertTrue(os.path.isdir(os.path.join(self.data, "edits")))
+
+
 class TestSubprocessSmoke(unittest.TestCase):  # L11: one real-process run per interface
     def setUp(self):
         self.tmp = _util.tmpdir(self)
