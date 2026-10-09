@@ -139,6 +139,35 @@ class TestWriteGuardProbes(unittest.TestCase):  # G2, G3, G11
                 if name not in ("_winapi.CreateFile DELETE_ON_CLOSE", "os.open(p,O_RDONLY|O_TEMPORARY)"):
                     self.assertTrue(os.path.lexists(p), name)     # (those two delete it: allowed in a root)
 
+    def test_read_only_delete_on_close_probe(self):  # CONTRACT-export XP14 (WG10 (c) 4): no DELETE bit at all
+        """GENERIC_READ + FILE_FLAG_DELETE_ON_CLOSE on an existing file outside every root: blocked, file kept.
+
+        The existing outside file is made inside a fresh fixture root, which is then unregistered for the probe
+        (the writable area only shrinks; the guard is never paused) and registered again before it is released.
+        """
+        import hashlib
+        root = _writeguard.new_root("darkroom-test-")
+        n = _writeguard._norm(root)
+        p = os.path.join(root, "existing.jpg")
+        body = b"keep me " * 64
+        with open(p, "wb") as f:
+            f.write(body)
+        src = ("import _winapi\nh = _winapi.CreateFile(p, 0x80000000, 7, 0, 3, 0x04000000, 0)\n"
+               "_winapi.CloseHandle(h)")
+        _writeguard._unregister(n)
+        try:
+            self.assertIsNotNone(_writeguard._outside(p))          # really outside every root now
+            with _writeguard.expect_violation() as ev:
+                run_as_product(src, p=p)
+            self.assertEqual(ev.caught[0]["event"], "_winapi.CreateFile")
+            self.assertTrue(os.path.isfile(p))
+            with open(p, "rb") as f:
+                self.assertEqual(hashlib.sha256(f.read()).hexdigest(), hashlib.sha256(body).hexdigest())
+        finally:
+            with _writeguard._lock:
+                _writeguard._roots.append(n)
+            _writeguard.release_root(root)
+
     def test_probe_names_are_the_contract_constant(self):
         self.assertEqual(" ｜ ".join(n for n, _, _ in PROBES_13),
                          'open(p,"wb") ｜ m="w"+"b"; open(p,m) ｜ os.open(p,O_CREAT|O_WRONLY) ｜ Path(p).write_bytes ｜ '
@@ -502,15 +531,19 @@ class TestSafeWrite(unittest.TestCase):  # G8
         self.other = _util.tmpdir(self)     # released after root: root holds a junction into it
         self.root = _util.tmpdir(self)
 
-    def refused(self, sentence, fn, *args):
+    def refused(self, sentence, fn, *args, **kw):
         with self.assertRaises(safe_write.SafeWriteRefused) as cm:
-            fn(*args)
+            fn(*args, **kw)
         self.assertEqual(str(cm.exception), sentence)
 
     def test_public_surface(self):
         import inspect
         funcs = sorted(n for n, v in vars(safe_write).items() if inspect.isfunction(v) and not n.startswith("_"))
         self.assertEqual(funcs, ["create_new", "make_dirs", "open_lock", "remove", "replace_into"])
+        self.assertEqual(safe_write.REFUSED_NO_PRESET, "refused: no preset folder is known, cannot protect it")  # XP12
+        for n in funcs:      # CONTRACT-export XP12: every function takes the preset folder in use, keyword only
+            self.assertIs(inspect.signature(getattr(safe_write, n)).parameters["preset_dir"].kind,
+                          inspect.Parameter.KEYWORD_ONLY, n)
         self.assertTrue(issubclass(safe_write.SafeWriteRefused, Exception))
         self.assertFalse(issubclass(safe_write.SafeWriteRefused, OSError))
         self.assertEqual(" ｜ ".join([safe_write.REFUSED_OUTSIDE, safe_write.REFUSED_PRESET, safe_write.REFUSED_PROTECTED,
@@ -540,7 +573,32 @@ class TestSafeWrite(unittest.TestCase):  # G8
             self.refused(f"refused: {p} is inside the preset folder", safe_write.create_new, p, root, b"x")
             p = os.path.join(presets, "sub")
             self.refused(f"refused: {p} is inside the preset folder", safe_write.make_dirs, p, root)
-        tmp = safe_write.create_new(os.path.join(root, "t1.tmp"), root, b"t")
+        # CONTRACT-export XP12 (WG10 (b)): the preset folder in use is passed in while config points elsewhere
+        in_use = os.path.join(root, "in-use-presets")
+        os.makedirs(in_use)
+        with mock.patch.object(safe_write.config, "preset_dir", return_value=presets):
+            for fn, args in ((safe_write.create_new, (b"x",)), (safe_write.make_dirs, ())):
+                p = os.path.join(in_use, "new.bin")
+                self.refused(f"refused: {p} is inside the preset folder", fn, p, root, *args, preset_dir=in_use)
+                p = os.path.join(presets, "new.bin")            # the configured one stays protected as well
+                self.refused(f"refused: {p} is inside the preset folder", fn, p, root, *args, preset_dir=in_use)
+            p = os.path.join(in_use, "x.lock")
+            self.refused(f"refused: {p} is inside the preset folder", safe_write.open_lock, p, root, preset_dir=in_use)
+        self.assertEqual(os.listdir(in_use), [])
+        # nothing passed and no configuration -> SafeWriteRefused, not ConfigError
+        with mock.patch.object(safe_write.config, "preset_dir", side_effect=safe_write.config.ConfigError("unset")):
+            self.refused("refused: no preset folder is known, cannot protect it", safe_write.create_new,
+                         os.path.join(root, "z.bin"), root, b"x")
+            self.refused("refused: no preset folder is known, cannot protect it", safe_write.make_dirs,
+                         os.path.join(root, "zd"), root)
+            p = os.path.join(in_use, "y.bin")
+            self.refused(f"refused: {p} is inside the preset folder", safe_write.create_new, p, root, b"x",
+                         preset_dir=in_use)
+            made = safe_write.create_new(os.path.join(root, "z.bin"), root, b"x", preset_dir=in_use)
+            self.assertTrue(os.path.isfile(made))
+        self.assertFalse(os.path.exists(os.path.join(root, "zd")))
+        self.assertEqual(os.listdir(in_use), [])
+        tmp =safe_write.create_new(os.path.join(root, "t1.tmp"), root, b"t")
         for ext in (".jpg", ".JPEG", ".png", ".tif", ".tiff", ".heic", ".HEIF", ".xmp"):
             dest = os.path.join(root, "dest" + ext)
             self.refused(f"refused: {dest} is a photo or preset file", safe_write.replace_into, tmp, dest, root)
