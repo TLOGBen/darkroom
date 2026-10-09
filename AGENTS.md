@@ -36,6 +36,7 @@
 5. （可選）照片庫的編輯與縮圖快取想放預設位置 `%LOCALAPPDATA%\darkroom`，還是另外指定 `data_dir`？
 
 設定結果落在 repo 根目錄的 `config.local.json`（不進 git）：`preset_dir`（必要）、`preset_library_dir`（可選，預設 `preset_dir` 的上一層）、`data_dir`（可選）。這兩個可選資料夾都不可以在照片資料夾或 `preset_dir` 裡面。
+語意索引（可選，沒設就整個功能安靜關閉、搜尋照常）：`anthropic_api_key_ref`（**只放 1Password 參照** `op://<vault>/<item>/credential`，執行 `presets semantic build` 時才 `op read`；**絕不把金鑰本身寫進這個檔**；替代方案是環境變數 `DARKROOM_ANTHROPIC_API_KEY`）、`semantic_index_budget_usd`（一次 build 的費用上限，預設 5）、`calibration_sources_dir`（4 張公開標準圖所在資料夾，預設 `<localllms_root>/scratch/lr-calibration/sources`；只會讀固定的 4 個檔名，放別的照片進去也不會被送出）。
 
 ## 啟動、停止、健康檢查
 

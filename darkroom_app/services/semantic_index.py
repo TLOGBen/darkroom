@@ -23,6 +23,7 @@ import json
 import math
 import msvcrt
 import os
+import re
 import secrets
 import subprocess
 import threading
@@ -52,6 +53,7 @@ IMAGE_TOKEN_DIVISOR = 750                           # verbatim (SI8): ceil(w*h/7
 TEXT_CHARS_PER_TOKEN = 3                            # verbatim (SI8): ceil(len/3)
 SOURCE_NAMES = ("real-portrait.jpg", "real-landscape.jpg", "real-night.jpg", "real-fog.jpg")   # verbatim (SI2/SI4)
 SOURCE_LABELS = ("人像（portrait）", "風景（landscape）", "夜景（night）", "霧景（fog）")
+LABEL_SUFFIX = "：左原圖、右套 preset"
 SCHEMA = {  # verbatim (SI5)
     "type": "object",
     "properties": {
@@ -95,8 +97,13 @@ def image_tokens(width, height):
     return math.ceil(width * height / IMAGE_TOKEN_DIVISOR)
 
 
+def prompt_text():
+    """Every text block of one request: the system prompt, the 4 image labels and the closing instruction."""
+    return SYSTEM_PROMPT + "".join(label + LABEL_SUFFIX for label in SOURCE_LABELS) + USER_TEXT
+
+
 def text_tokens():
-    return math.ceil(len(SYSTEM_PROMPT + USER_TEXT) / TEXT_CHARS_PER_TOKEN)
+    return math.ceil(len(prompt_text()) / TEXT_CHARS_PER_TOKEN)
 
 
 def estimate_usd(sizes, count):
@@ -111,10 +118,14 @@ def cost_usd(input_tokens, output_tokens):
 
 
 def request_params(jpegs):
-    """The Messages params of one batch request (SI5): 4 labelled composites, the system prompt, JSON schema."""
+    """The Messages params of one batch request (SI5): exactly the 4 labelled composites (one per constant source,
+    in order), the system prompt and the JSON schema. Any other number of images is refused before a request is
+    built (SIP6): a request never carries a photo that is not one of the four."""
+    if len(jpegs) != len(SOURCE_NAMES):
+        raise ValueError(f"expected {len(SOURCE_NAMES)} composites, got {len(jpegs)}")
     content = []
     for label, data in zip(SOURCE_LABELS, jpegs):
-        content.append({"type": "text", "text": label + "：左原圖、右套 preset"})
+        content.append({"type": "text", "text": label + LABEL_SUFFIX})
         content.append({"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": data}})
     content.append({"type": "text", "text": USER_TEXT})
     return {"model": MODEL, "max_tokens": MAX_TOKENS, "system": SYSTEM_PROMPT,
@@ -124,6 +135,16 @@ def request_params(jpegs):
 
 def _one_line(e):
     return " ".join(str(e).split()) or type(e).__name__
+
+
+_KEY_SHAPE = re.compile(r"sk-ant-[A-Za-z0-9_-]*")       # SIP8: anything that looks like an Anthropic key
+
+
+def redact(text, secret):
+    """SIP8: the key in use and any sk-ant-... token become *** before a sentence leaves this module."""
+    if secret:
+        text = text.replace(secret, "***")
+    return _KEY_SHAPE.sub("***", text)
 
 
 class _KeyUnavailable(Exception):
@@ -230,7 +251,7 @@ class SemanticIndexService:
 
     def _env_key(self):
         v = os.environ.get(config.ENV_API_KEY) if self.env_key is _CONFIG else self.env_key
-        return v if isinstance(v, str) and v.strip() else None
+        return v.strip() if isinstance(v, str) and v.strip() else None
 
     def _sources_dir(self):
         return config.calibration_sources_dir() if self.sources_dir is _CONFIG else self.sources_dir
@@ -306,15 +327,40 @@ class SemanticIndexService:
             if os.path.exists(tmp):
                 self._sw(safe_write.remove, tmp, self.root)
 
+    def _keep_bad(self):
+        """SIP7: before a bad semantic.json is replaced, keep a byte copy semantic.json.bad-{unix seconds}
+        (-{n} when that second is taken) - the user paid for those tags; nothing of theirs is overwritten silently."""
+        try:
+            with open(self.library.semantic_path, "rb") as fh:
+                raw = fh.read()
+        except FileNotFoundError:
+            return None
+        base = os.path.join(self.root, f"{SEMANTIC_NAME}.bad-{int(self.clock())}")
+        for n in range(1, 10000):
+            path = base if n == 1 else f"{base}-{n}"
+            try:
+                self._sw(safe_write.create_new, path, self.root, raw)
+                return path
+            except FileExistsError:
+                continue
+            except OSError as e:
+                raise DarkroomError("unavailable", M.SEM_INDEX_UNAVAILABLE.format(reason=_one_line(e))) from None
+        raise DarkroomError("unavailable", M.SEM_INDEX_UNAVAILABLE.format(reason="no free .bad name"))
+
     def _mutate(self, change):
-        """Lock -> the index on disk -> change(index) -> atomic write (only when change returns True)."""
+        """Lock -> the index on disk -> change(index) -> atomic write (only when change returns True).
+
+        `change` runs while the lock is held, so a batch is created at the API only once the index could be read
+        and the lock is ours (SI9 as tightened by SIP6): no money is spent on a batch that cannot be registered."""
         with self._tlock:
             fd = self._acquire()
             try:
                 try:
-                    index, _ = self.library.read_semantic()
+                    index, state = self.library.read_semantic()
                 except PermissionError as e:
                     raise DarkroomError("unavailable", M.SEM_INDEX_UNAVAILABLE.format(reason=_one_line(e))) from None
+                if state == "bad":                    # SIP7: the copy is made before anything can overwrite it
+                    self._keep_bad()
                 if change(index):
                     self._write(index)
                 return index
@@ -373,7 +419,8 @@ class SemanticIndexService:
             return result
         if estimated > budget:
             raise DarkroomError("invalid", M.SEM_OVER_BUDGET.format(usd=estimated, budget=budget))
-        client = self.client_factory(self._secret())        # the key goes to the SDK and nowhere else (SI3)
+        secret = self._secret()
+        client = self.client_factory(secret)                 # the key goes to the SDK and nowhere else (SI3)
         errors = _api_errors()
         try:
             self._collect(client, result)                    # batches that ended since the last run
@@ -381,7 +428,8 @@ class SemanticIndexService:
                 self._submit(client, sources, planned, result)
                 self._wait(client, wait, result)
         except errors as e:
-            raise DarkroomError("unavailable", M.SEM_API_ERROR.format(detail=_one_line(e))) from None
+            raise DarkroomError("unavailable",
+                                M.SEM_API_ERROR.format(detail=redact(_one_line(e), secret))) from None
         index = self.library.semantic()
         total, indexed, pending = self._counts(index)
         result.update(indexed=indexed, total=total, pending=len(pending))
@@ -406,15 +454,19 @@ class SemanticIndexService:
         jpegs = self.renderer(sources, self.engine_ref, jobs)
         for start in range(0, len(planned), BATCH_MAX):
             chunk = planned[start:start + BATCH_MAX]
+            # SIP6: exactly the 4 constant composites per preset, or nothing is sent
             requests = [{"custom_id": sha, "params": request_params(jpegs[sha])} for _, sha in chunk]
-            batch = client.messages.batches.create(requests=requests)
-            created = {"created": int(self.clock()), "items": {sha: pid for pid, sha in chunk}}
 
-            def change(index, bid=batch.id, created=created):
-                index["batches"][bid] = created
+            def change(index, requests=requests, chunk=chunk):
+                # SI9 / SIP6: the batch is created only while the semantic.json lock is held, the index was read
+                # and the index proved writable (a pre-flight write), so a batch that could not be registered is
+                # never paid for
+                self._write(index)
+                batch = client.messages.batches.create(requests=requests)
+                index["batches"][batch.id] = {"created": int(self.clock()), "items": {sha: pid for pid, sha in chunk}}
+                result["batch_ids"].append(batch.id)
                 return True
             self._mutate(change)
-            result["batch_ids"].append(batch.id)
 
     def _wait(self, client, wait, result):
         deadline = self.monotonic() + wait
@@ -453,7 +505,7 @@ class SemanticIndexService:
             except (StopIteration, ValueError, AttributeError) as e:
                 errors.append((sha, M.SEM_BAD_RESPONSE.format(reason=_one_line(e))))
                 continue
-            bad = valid_entry(entry)
+            bad = valid_entry(entry, stored=False)
             if bad is not None:
                 errors.append((sha, M.SEM_BAD_RESPONSE.format(reason=bad)))
                 continue

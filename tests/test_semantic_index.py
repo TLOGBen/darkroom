@@ -1,6 +1,7 @@
 """CONTRACT-semantic-index SI1-SI12: the preset semantic index, with a fake Anthropic client, a fake key reader,
 a fake renderer and a fake clock. No test talks to the API, starts `op`, or touches the GPU; the write guard is
 armed throughout (every library lives in a fixture root)."""
+import base64
 import contextlib
 import hashlib
 import io
@@ -211,7 +212,9 @@ class TestEstimate(unittest.TestCase):  # SI8
         self.assertEqual(S.composite_size(300, 100), (600, 100))                  # never upscaled
         sizes = [(1024, 341), (1024, 262), (1024, 341), (1024, 341)]
         img = sum(-(-w * h // 750) for w, h in sizes)
-        text = -(-len(S.SYSTEM_PROMPT + S.USER_TEXT) // 3)
+        text = -(-len(S.prompt_text()) // 3)                                      # SIP6 (e): labels counted too
+        self.assertEqual(S.prompt_text(), S.SYSTEM_PROMPT + "".join(l + "：左原圖、右套 preset" for l in S.SOURCE_LABELS)
+                         + S.USER_TEXT)
         per = ((img + text) * 0.10 + 2048 * 0.50) / 1e6 * 0.5
         self.assertAlmostEqual(S.estimate_usd(sizes, 1466), per * 1466)
         self.assertLess(S.estimate_usd(sizes, 1466), 5.0)                         # the whole library fits the default
@@ -233,6 +236,9 @@ class TestEstimate(unittest.TestCase):  # SI8
         self.assertEqual(S.SCHEMA["required"], ["look_zh", "look_en", "tags_zh", "tags_en", "tone", "contrast",
                                                 "saturation", "temperature", "good_for", "confidence"])
         self.assertIs(S.SCHEMA["additionalProperties"], False)
+        for n in (0, 3, 5):                                                          # SIP6 (a): exactly four, or nothing
+            with self.assertRaises(ValueError):
+                S.request_params(["AAAA"] * n)
 
     def test_over_budget_refused(self):
         h = Harness(self, budget=0.00001)
@@ -294,7 +300,7 @@ class TestBuild(unittest.TestCase):  # SI3, SI6, SI7, SI9, SI10
         # the results come back in a random order with one malformed answer and one errored request
         shas = [h.sha(p) for p in h.supported()[:3]]
         items = [result_item(shas[0], ENTRY, usage=(1100, 210)),
-                 result_item(shas[1], text='{"look_zh": "x"}', usage=(900, 50)),
+                 result_item(shas[1], {**ENTRY, "at": 5}, usage=(900, 50)),          # SIP6 (d): `at` is ours, not the model's
                  result_item(shas[2], kind="errored")]
         random.Random(7).shuffle(items)
         h.batches.finish(bid, items)
@@ -439,6 +445,141 @@ class TestBuild(unittest.TestCase):  # SI3, SI6, SI7, SI9, SI10
         h.f._semantic.env_key = "sk-ant-ENVSECRET"
         h.f.semantic_build(wait_seconds=0)
         self.assertEqual(h.clients[0].api_key, "sk-ant-ENVSECRET")                 # env var when there is no ref
+        h.f._semantic.env_key = " sk-ant-ENVSECRET\n"
+        h.batches.finish("msgbatch_001", [])
+        h.f.semantic_build(wait_seconds=0)
+        self.assertEqual(h.clients[-1].api_key, "sk-ant-ENVSECRET")                # SIP6 (c): stripped
+
+    def test_lock_held_means_no_batch(self):  # SIP6 (b): no lock, no money
+        import msvcrt
+        from unittest import mock
+        h = Harness(self)
+        fd = os.open(os.path.join(h.tmp, "semantic.json.lock"), os.O_RDWR | os.O_CREAT | os.O_BINARY)
+        try:
+            msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+            with mock.patch.object(S, "LOCK_WAIT_S", 0.2):
+                with self.assertRaises(DarkroomError) as cm:
+                    h.f.semantic_build(wait_seconds=0)
+        finally:
+            os.lseek(fd, 0, os.SEEK_SET)
+            msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+            os.close(fd)
+        self.assertEqual((cm.exception.kind, cm.exception.message),
+                         ("conflict", "preset 庫正被其他程式修改，請稍後再試"))
+        self.assertEqual(h.batches.created, [])                                      # nothing was sent
+        self.assertFalse(os.path.exists(h.semantic_path))
+        h.f.semantic_build(wait_seconds=0)                                           # lock released: works
+        self.assertEqual(len(h.batches.created), 1)
+
+    def test_index_write_failure_sentence(self):  # SIP7: the unavailable sentence, and still no batch
+        from unittest import mock
+        from darkroom_app import safe_write
+        h = Harness(self)
+
+        def refuse(path, root, data, *, preset_dir=None):
+            raise OSError("disk full")
+        with mock.patch.object(safe_write, "create_new", refuse):
+            with self.assertRaises(DarkroomError) as cm:
+                h.f.semantic_build(wait_seconds=0)
+        self.assertEqual((cm.exception.kind, cm.exception.message), ("unavailable", "無法寫入語意索引：disk full"))
+        self.assertEqual(h.batches.created, [])
+        self.assertEqual([n for n in os.listdir(h.tmp) if n.startswith("semantic.json") and n != "semantic.json.lock"], [])
+
+    def test_bad_index_is_kept_before_overwrite(self):  # SIP7
+        h = Harness(self)
+        bad = b"{not json: the user paid for what was in here}"
+        with open(h.semantic_path, "wb") as fh:
+            fh.write(bad)
+        self.assertEqual(h.f.semantic_status()["index_state"], "bad")
+        h.f.semantic_build(wait_seconds=0)
+        kept = [n for n in os.listdir(h.tmp) if n.startswith("semantic.json.bad-")]
+        self.assertEqual(kept, [f"semantic.json.bad-{int(1700000000 + h.now[0])}"])
+        with open(os.path.join(h.tmp, kept[0]), "rb") as fh:
+            self.assertEqual(fh.read(), bad)
+        self.assertEqual(h.f.semantic_status()["index_state"], "ok")
+        with open(h.semantic_path, "wb") as fh:                                      # the same second again: -2
+            fh.write(b"<<broken again>>")
+        h.batches.finish("msgbatch_001", [])
+        h.f.semantic_build(wait_seconds=0)
+        kept2 = sorted(n for n in os.listdir(h.tmp) if n.startswith("semantic.json.bad-"))
+        self.assertEqual(kept2, [kept[0], kept[0] + "-2"])
+        with open(os.path.join(h.tmp, kept2[1]), "rb") as fh:
+            self.assertEqual(fh.read(), b"<<broken again>>")
+
+    def test_api_error_sentence_never_carries_a_key(self):  # SIP8: str(APIError) is redacted before it is shown
+        import anthropic
+        import httpx2
+        h = Harness(self)
+        orig = FakeBatches.create
+
+        def boom(self_, requests):
+            raise anthropic.APIConnectionError(message=f"denied for {SECRET} and sk-ant-another_1 too",
+                                               request=httpx2.Request("POST", "https://api.anthropic.com/v1/x"))
+        FakeBatches.create = boom
+        self.addCleanup(setattr, FakeBatches, "create", orig)
+        with self.assertRaises(DarkroomError) as cm:
+            h.f.semantic_build(wait_seconds=0)
+        self.assertEqual((cm.exception.kind, cm.exception.message),
+                         ("unavailable", "Anthropic API 錯誤：denied for *** and *** too"))
+        self.assertNotIn(SECRET[7:20], cm.exception.message)
+        self.assertEqual(S.redact("x sk-ant- y", None), "x *** y")
+        self.assertEqual(S.redact("plain", "zz"), "plain")
+        self.assertEqual(S.redact("the zz key", "zz"), "the *** key")
+
+    def test_query_matches_semantic_tags(self):  # SI10: a stored index found by zh / en tags and the look sentence
+        h = Harness(self)
+        pid = h.supported()[1]
+        index = {"schema": "darkroom-semantic-index/1", "model": "claude-haiku-5-5",
+                 "entries": {h.sha(pid): {**ENTRY, "at": 1}}, "batches": {}, "usage": []}
+        with open(h.semantic_path, "wb") as fh:
+            fh.write(json.dumps(index, ensure_ascii=False).encode("utf-8"))
+        for q in ("底片", "film", "FILM", "暖調", "warm", "褪色黑", "matte", "日常", "低對比", "faded film look"):
+            self.assertEqual([x["id"] for x in h.f.list_presets(q)["items"]], [pid], q)
+        self.assertEqual(h.f.list_presets("黑白")["total"], 0)
+        self.assertEqual(h.f.list_presets("測試")["total"], 3)                       # group matching unchanged
+        row = next(x for x in h.f.list_presets()["items"] if x["id"] == pid)
+        self.assertEqual(row["tags"], ["底片", "暖調", "低對比", "褪色黑", "film", "warm", "faded", "matte"])
+
+    def test_cli_list_human_shows_tags(self):  # SIP7: human-readable `presets list` appends the tags
+        from darkroom_app import cli
+        h = Harness(self)
+        pid = h.supported()[1]
+        index = {"schema": "darkroom-semantic-index/1", "model": "claude-haiku-5-5",
+                 "entries": {h.sha(pid): {**ENTRY, "at": 1}}, "batches": {}, "usage": []}
+        with open(h.semantic_path, "wb") as fh:
+            fh.write(json.dumps(index, ensure_ascii=False).encode("utf-8"))
+        row = next(x for x in h.f.list_presets()["items"] if x["id"] == pid)
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            self.assertEqual(cli.main(["presets", "list", "--query", "底片"], facade=h.f), 0)
+        self.assertEqual(out.getvalue(),
+                         f"{pid}\t{row['group']}\t{row['name']}\t底片、暖調、低對比、褪色黑、film、warm、faded、matte\n"
+                         "# 1 of 1\n")
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            cli.main(["presets", "list", "--query", "很亮"], facade=h.f)
+        self.assertEqual(out.getvalue().split("\n")[0].count("\t"), 2)                 # no tags: no fourth column
+
+    def test_build_never_writes_photos(self):  # SI4 / SI12: a full build touches nothing but semantic.json (+ lock)
+        h = Harness(self)
+        with open(os.path.join(h.tmp, "sources", "secret-user-photo.jpg"), "wb") as fh:
+            fh.write(b"\xff\xd8 not sent, not touched \xff\xd9")
+
+        def tree(d):
+            out = {}
+            for root, _, files in os.walk(d):
+                for f in files:
+                    p = os.path.join(root, f)
+                    out[os.path.relpath(p, d)] = sha_of(p)
+            return out
+        before = tree(h.tmp)
+        h.f.semantic_build(wait_seconds=0)
+        h.batches.finish("msgbatch_001", [result_item(h.sha(p), ENTRY) for p in h.supported()])
+        h.f.semantic_build(wait_seconds=0)
+        after = tree(h.tmp)
+        self.assertEqual(set(after) - set(before), {"semantic.json", "semantic.json.lock"})
+        self.assertEqual({k: after[k] for k in before}, before)                      # every photo and preset untouched
+        self.assertEqual(h.rendered[0][0], h.src)                                    # rendered from the sources folder only
 
     def test_op_read_shape_and_errors(self):  # SI3 / WG15: the subprocess call is exactly op read <ref>
         import subprocess
@@ -485,7 +626,8 @@ class TestBuild(unittest.TestCase):  # SI3, SI6, SI7, SI9, SI10
         self.assertEqual(cm.exception.kind, "unavailable")
         self.assertEqual(cm.exception.message, "Anthropic API 錯誤：Connection error.")
         self.assertNotIn(SECRET, cm.exception.message)
-        self.assertFalse(os.path.exists(h.semantic_path))                          # nothing registered
+        idx = h.index()                                                              # the pre-flight write only:
+        self.assertEqual((idx["entries"], idx["batches"], idx["usage"]), ({}, {}, []))   # nothing registered
 
     def test_index_atomic_and_safe_write(self):  # SI6
         from darkroom_app import safe_write
@@ -533,11 +675,27 @@ class TestRenderer(unittest.TestCase):  # SI4: in-memory composites from the fou
         ref = SimpleNamespace(get=lambda: eng)
         jobs = [("a" * 64, load_preset(os.path.join(pd, "p-expo.xmp"))), ("b" * 64, load_preset(os.path.join(pd, "p-strong.xmp")))]
         before = sorted(os.listdir(tmp)), sorted(os.listdir(src))
-        out = S.render_composites(src, ref, jobs)
+        import darkroom
+        from unittest import mock
+        read_paths = []
+        real_read = darkroom.read_image
+
+        def spy(path):
+            read_paths.append(os.path.normcase(os.path.abspath(path)))
+            return real_read(path)
+        with mock.patch.object(darkroom, "read_image", spy):
+            out = S.render_composites(src, ref, jobs)
+        # SIP6 (a): exactly the four constant files are read - the stray photo in the same folder never is
+        self.assertEqual(read_paths, [os.path.normcase(os.path.abspath(os.path.join(src, n))) for n in S.SOURCE_NAMES])
+        stray = base64.b64encode(portrait).decode("ascii")
+        for sha in out:
+            params = S.request_params(out[sha])
+            images = [c["source"]["data"] for c in params["messages"][0]["content"] if c["type"] == "image"]
+            self.assertEqual(len(images), 4)
+            self.assertNotIn(stray, images)
         self.assertEqual((sorted(os.listdir(tmp)), sorted(os.listdir(src))), before)     # nothing written
         self.assertEqual(sorted(out), ["a" * 64, "b" * 64])
         self.assertEqual([len(v) for v in out.values()], [4, 4])
-        import base64
         sizes = []
         for data in out["a" * 64]:
             arr = cv2.imdecode(np.frombuffer(base64.b64decode(data), np.uint8), cv2.IMREAD_COLOR)

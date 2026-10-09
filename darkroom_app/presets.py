@@ -134,12 +134,14 @@ def valid_index(obj):
     return True
 
 
-def valid_entry(obj):
-    """None when obj is a well-formed semantic entry (SI5: the 10 fields, legal enums, non-empty string arrays,
-    confidence in 0..1), else the reason (one phrase)."""
+def valid_entry(obj, stored=True):
+    """None when obj is a well-formed semantic entry (SI5: exactly the 10 fields, legal enums, non-empty string
+    arrays, confidence in 0..1), else the reason (one phrase). A stored entry (semantic.json) also carries `at`;
+    a model answer (stored=False) must not."""
     if not isinstance(obj, dict):
         return "not an object"
-    if set(obj) - set(SEMANTIC_FIELDS) - {"at"} or any(k not in obj for k in SEMANTIC_FIELDS):
+    extra = set(obj) - set(SEMANTIC_FIELDS) - ({"at"} if stored else set())
+    if extra or any(k not in obj for k in SEMANTIC_FIELDS):
         return "fields must be exactly " + ", ".join(SEMANTIC_FIELDS)
     for k in ("look_zh", "look_en"):
         if not isinstance(obj[k], str) or not obj[k].strip():
