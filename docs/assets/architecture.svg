@@ -1,0 +1,178 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 690" width="1280" height="690" role="img" aria-labelledby="t d">
+  <title id="t">darkroom architecture: Web App, CLI and MCP share one facade over services and a core library</title>
+  <desc id="d">Three interfaces (Web App, CLI, MCP) call one facade. Below it, six services: Presets, Photos, Preview, Export, Preset Library, Photo Library. Below them the core library: XMP parse, Params, GPU render. On disk, app data is written only through safe_write; photo originals and XMP presets are read-only.</desc>
+  <defs>
+    <marker id="aAmber" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M0 0 L10 5 L0 10 Z" fill="#d89b4a"/>
+    </marker>
+    <marker id="aRed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M0 0 L10 5 L0 10 Z" fill="#e74c3c"/>
+    </marker>
+    <marker id="aGrey" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M0 0 L10 5 L0 10 Z" fill="#8c8378"/>
+    </marker>
+    <radialGradient id="glow" cx="0" cy="0" r="560" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#e74c3c" stop-opacity="0.18"/>
+      <stop offset="1" stop-color="#141414" stop-opacity="0"/>
+    </radialGradient>
+    <symbol id="lock" viewBox="0 0 20 20">
+      <rect x="3" y="9" width="14" height="10" rx="2" fill="#d89b4a"/>
+      <path d="M6 9 V6 A4 4 0 0 1 14 6 V9" fill="none" stroke="#d89b4a" stroke-width="2.4"/>
+    </symbol>
+    <symbol id="pen" viewBox="0 0 20 20">
+      <path d="M3 17 L4.5 12 L13.5 3 L17 6.5 L8 15.5 Z" fill="#e74c3c"/>
+      <path d="M12 4.5 L15.5 8" stroke="#141414" stroke-width="1.5"/>
+    </symbol>
+  </defs>
+
+  <rect width="1280" height="690" rx="16" fill="#141414"/>
+  <rect width="1280" height="690" rx="16" fill="url(#glow)"/>
+  <rect x="0.5" y="0.5" width="1279" height="689" rx="16" fill="none" stroke="#2a2a2a"/>
+
+  <!-- header -->
+  <circle cx="40" cy="36" r="5" fill="#e74c3c"/>
+  <text x="54" y="41" font-family="ui-monospace, Consolas, 'Courier New', monospace" font-size="13" fill="#8c8378" letter-spacing="1">DARKROOM · ARCHITECTURE</text>
+
+  <g font-family="'Segoe UI', system-ui, -apple-system, Helvetica, Arial, sans-serif">
+    <!-- row labels -->
+    <g font-family="ui-monospace, Consolas, 'Courier New', monospace" font-size="11" fill="#8c8378" letter-spacing="1">
+      <text x="80" y="74">INTERFACES · parse arguments, call the facade, format the result</text>
+      <text x="80" y="290">SERVICES · validation, clamping, read-only rules</text>
+      <text x="80" y="402">CORE LIBRARY · sealed, versioned params</text>
+      <text x="80" y="556">DISK</text>
+    </g>
+
+    <!-- interfaces -->
+    <g>
+      <rect x="80" y="82" width="230" height="64" rx="10" fill="#1f1f1f" stroke="#3a3a3a" stroke-width="2"/>
+      <rect x="100" y="100" width="30" height="24" rx="3" fill="none" stroke="#f3ede2" stroke-width="2"/>
+      <line x1="100" y1="107" x2="130" y2="107" stroke="#f3ede2" stroke-width="2"/>
+      <circle cx="105" cy="103.5" r="1.5" fill="#e74c3c"/>
+      <text x="146" y="110" font-size="18" font-weight="700" fill="#f3ede2">Web App</text>
+      <text x="146" y="130" font-size="12" fill="#8c8378">browser UI on 127.0.0.1</text>
+
+      <rect x="375" y="82" width="230" height="64" rx="10" fill="#1f1f1f" stroke="#3a3a3a" stroke-width="2"/>
+      <text x="398" y="121" font-family="ui-monospace, Consolas, 'Courier New', monospace" font-size="20" font-weight="700" fill="#f3ede2">&gt;_</text>
+      <text x="441" y="110" font-size="18" font-weight="700" fill="#f3ede2">CLI</text>
+      <text x="441" y="130" font-size="12" fill="#8c8378">scripts and batch work</text>
+
+      <rect x="670" y="82" width="230" height="64" rx="10" fill="#1f1f1f" stroke="#3a3a3a" stroke-width="2"/>
+      <g fill="#f3ede2">
+        <circle cx="697" cy="104" r="4"/><circle cx="717" cy="104" r="4"/><circle cx="707" cy="122" r="4"/>
+        <g stroke="#f3ede2" stroke-width="1.6"><line x1="697" y1="104" x2="717" y2="104"/><line x1="697" y1="104" x2="707" y2="122"/><line x1="717" y1="104" x2="707" y2="122"/></g>
+      </g>
+      <text x="736" y="110" font-size="18" font-weight="700" fill="#f3ede2">MCP</text>
+      <text x="736" y="130" font-size="12" fill="#8c8378">for AI agents, same rules</text>
+    </g>
+
+    <!-- interfaces -> facade -->
+    <g stroke="#d89b4a" stroke-width="2" marker-end="url(#aAmber)">
+      <line x1="195" y1="146" x2="195" y2="194"/>
+      <line x1="490" y1="146" x2="490" y2="194"/>
+      <line x1="785" y1="146" x2="785" y2="194"/>
+    </g>
+
+    <!-- facade -->
+    <rect x="80" y="196" width="820" height="56" rx="10" fill="#1f1f1f" stroke="#d89b4a" stroke-width="2.5"/>
+    <text x="104" y="231" font-size="20" font-weight="700" fill="#d89b4a">Facade</text>
+    <text x="196" y="230" font-family="ui-monospace, Consolas, 'Courier New', monospace" font-size="13" fill="#f3ede2">one entry point for every interface · same results, same error messages</text>
+
+    <!-- facade -> services -->
+    <line x1="490" y1="252" x2="490" y2="298" stroke="#d89b4a" stroke-width="2" marker-end="url(#aAmber)"/>
+
+    <!-- services -->
+    <g font-size="14" font-weight="700" fill="#f3ede2" text-anchor="middle">
+      <rect x="80" y="300" width="125" height="56" rx="8" fill="#1f1f1f" stroke="#3a3a3a" stroke-width="2"/>
+      <text x="142.5" y="333">Presets</text>
+      <rect x="219" y="300" width="125" height="56" rx="8" fill="#1f1f1f" stroke="#3a3a3a" stroke-width="2"/>
+      <text x="281.5" y="333">Photos</text>
+      <rect x="358" y="300" width="125" height="56" rx="8" fill="#1f1f1f" stroke="#3a3a3a" stroke-width="2"/>
+      <text x="420.5" y="333">Preview</text>
+      <rect x="497" y="300" width="125" height="56" rx="8" fill="#1f1f1f" stroke="#3a3a3a" stroke-width="2"/>
+      <text x="559.5" y="333">Export</text>
+      <rect x="636" y="300" width="125" height="56" rx="8" fill="#1f1f1f" stroke="#3a3a3a" stroke-width="2"/>
+      <text x="698.5" y="333">Preset Library</text>
+      <rect x="775" y="300" width="125" height="56" rx="8" fill="#1f1f1f" stroke="#3a3a3a" stroke-width="2"/>
+      <text x="837.5" y="333">Photo Library</text>
+    </g>
+
+    <!-- services -> core -->
+    <line x1="420" y1="356" x2="420" y2="408" stroke="#d89b4a" stroke-width="2" marker-end="url(#aAmber)"/>
+
+    <!-- core library -->
+    <rect x="80" y="410" width="820" height="112" rx="12" fill="#181818" stroke="#d89b4a" stroke-width="1.5" stroke-dasharray="7 5"/>
+    <g font-size="17" font-weight="700" fill="#f3ede2" text-anchor="middle">
+      <rect x="130" y="432" width="200" height="68" rx="8" fill="#1f1f1f" stroke="#3a3a3a" stroke-width="2"/>
+      <text x="230" y="461">XMP parse</text>
+      <text x="230" y="483" font-family="ui-monospace, Consolas, 'Courier New', monospace" font-size="11" font-weight="400" fill="#8c8378">crs:* settings</text>
+      <rect x="390" y="432" width="200" height="68" rx="8" fill="#1f1f1f" stroke="#3a3a3a" stroke-width="2"/>
+      <text x="490" y="461">Params</text>
+      <text x="490" y="483" font-family="ui-monospace, Consolas, 'Courier New', monospace" font-size="11" font-weight="400" fill="#8c8378">× strength + overrides, clamped</text>
+      <rect x="650" y="432" width="200" height="68" rx="8" fill="#1f1f1f" stroke="#3a3a3a" stroke-width="2"/>
+      <text x="750" y="461">GPU render</text>
+      <text x="750" y="483" font-family="ui-monospace, Consolas, 'Courier New', monospace" font-size="11" font-weight="400" fill="#8c8378">torch, float32 pipeline</text>
+    </g>
+    <g stroke="#d89b4a" stroke-width="2" marker-end="url(#aAmber)">
+      <line x1="330" y1="466" x2="388" y2="466"/>
+      <line x1="590" y1="466" x2="648" y2="466"/>
+    </g>
+
+    <!-- core -> disk reads -->
+    <g fill="none" stroke="#8c8378" stroke-width="1.6" stroke-dasharray="4 4" marker-end="url(#aGrey)">
+      <path d="M230 522 V544 H490 V566"/>
+      <path d="M750 522 V544 H775 V566"/>
+    </g>
+    <g font-family="ui-monospace, Consolas, 'Courier New', monospace" font-size="10" fill="#8c8378">
+      <text x="236" y="540">read</text>
+      <text x="756" y="540">read</text>
+    </g>
+
+    <!-- disk row -->
+    <g>
+      <rect x="80" y="568" width="250" height="56" rx="8" fill="#1f1f1f" stroke="#e74c3c" stroke-width="2"/>
+      <use href="#pen" x="98" y="586" width="20" height="20"/>
+      <text x="128" y="590" font-size="15" font-weight="700" fill="#f3ede2">App data</text>
+      <text x="128" y="609" font-size="11.5" fill="#8c8378">edits · thumbnails · your saved presets</text>
+
+      <rect x="365" y="568" width="250" height="56" rx="8" fill="#1f1f1f" stroke="#3a3a3a" stroke-width="2"/>
+      <use href="#lock" x="383" y="586" width="20" height="20"/>
+      <text x="413" y="590" font-size="15" font-weight="700" fill="#f3ede2">XMP presets</text>
+      <text x="413" y="609" font-size="11.5" fill="#8c8378">your purchased files, read only</text>
+
+      <rect x="650" y="568" width="250" height="56" rx="8" fill="#1f1f1f" stroke="#3a3a3a" stroke-width="2"/>
+      <use href="#lock" x="668" y="586" width="20" height="20"/>
+      <text x="698" y="590" font-size="15" font-weight="700" fill="#f3ede2">Photo originals</text>
+      <text x="698" y="609" font-size="11.5" fill="#8c8378">JPEG · PNG · TIFF · HEIC, read only</text>
+    </g>
+
+    <!-- safe_write route: Export, Preset Library, Photo Library -> safe_write -> App data -->
+    <g fill="none" stroke="#e74c3c" stroke-width="2">
+      <path d="M559.5 356 V372 H960 M698.5 356 V372 M837.5 356 V372"/>
+      <path d="M960 372 V654 H205 V632" marker-end="url(#aRed)"/>
+      <line x1="960" y1="372" x2="978" y2="372"/>
+    </g>
+
+    <!-- side note: safe_write -->
+    <g>
+      <rect x="980" y="318" width="260" height="108" rx="10" fill="#1b1b1b" stroke="#e74c3c" stroke-width="2"/>
+      <text x="1000" y="346" font-family="ui-monospace, Consolas, 'Courier New', monospace" font-size="16" font-weight="700" fill="#e74c3c">safe_write</text>
+      <text x="1000" y="368" font-size="13" font-weight="700" fill="#f3ede2">the only write exit</text>
+      <g font-size="12" fill="#8c8378">
+        <text x="1000" y="389">creates new files only, inside app folders;</text>
+        <text x="1000" y="406">never replaces a photo or an .xmp</text>
+      </g>
+    </g>
+
+    <!-- side note: originals -->
+    <g>
+      <rect x="980" y="548" width="260" height="96" rx="10" fill="#1b1b1b" stroke="#d89b4a" stroke-width="2"/>
+      <use href="#lock" x="1000" y="566" width="22" height="22"/>
+      <text x="1030" y="583" font-size="15" font-weight="700" fill="#d89b4a">Originals are read-only</text>
+      <g font-size="12" fill="#8c8378">
+        <text x="1000" y="608">photos and presets are only ever opened</text>
+        <text x="1000" y="625">for reading, by people and agents alike</text>
+      </g>
+      <line x1="900" y1="596" x2="978" y2="596" stroke="#d89b4a" stroke-width="1.6" stroke-dasharray="4 4"/>
+    </g>
+  </g>
+</svg>

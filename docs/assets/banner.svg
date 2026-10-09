@@ -1,0 +1,106 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 320" width="1280" height="320" role="img" aria-labelledby="t d">
+  <title id="t">darkroom — Your Lightroom presets, on your own machine</title>
+  <desc id="d">A darkroom scene: a red safelight glows over the title, a film strip runs along the bottom, and on the right a photograph is emerging in a developing tray.</desc>
+  <defs>
+    <radialGradient id="glow" cx="110" cy="10" r="620" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#e74c3c" stop-opacity="0.42"/>
+      <stop offset="0.45" stop-color="#c0392b" stop-opacity="0.10"/>
+      <stop offset="1" stop-color="#141414" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="cone" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#e74c3c" stop-opacity="0.30"/>
+      <stop offset="1" stop-color="#e74c3c" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2b1d16"/>
+      <stop offset="0.55" stop-color="#9a5f2e"/>
+      <stop offset="1" stop-color="#d89b4a"/>
+    </linearGradient>
+    <linearGradient id="emerge" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff" stop-opacity="1"/>
+      <stop offset="0.55" stop-color="#fff" stop-opacity="0.75"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0.12"/>
+    </linearGradient>
+    <mask id="emergeMask">
+      <rect x="840" y="40" width="400" height="220" fill="url(#emerge)"/>
+    </mask>
+    <linearGradient id="liquid" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1e262a" stop-opacity="0.15"/>
+      <stop offset="1" stop-color="#1e262a" stop-opacity="0.70"/>
+    </linearGradient>
+    <linearGradient id="frameGrad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#1c140f"/>
+      <stop offset="1" stop-color="#d89b4a"/>
+    </linearGradient>
+    <pattern id="sprockets" width="24" height="64" patternUnits="userSpaceOnUse">
+      <rect x="8" y="6" width="9" height="7" rx="1.5" fill="#141414"/>
+      <rect x="8" y="51" width="9" height="7" rx="1.5" fill="#141414"/>
+    </pattern>
+    <pattern id="frames" width="112" height="64" patternUnits="userSpaceOnUse">
+      <rect x="6" y="17" width="100" height="30" rx="2" fill="#0a0a0a"/>
+      <rect x="6" y="17" width="100" height="30" rx="2" fill="url(#frameGrad)" fill-opacity="0.9"/>
+      <circle cx="80" cy="27" r="4" fill="#f3ede2" fill-opacity="0.55"/>
+      <path d="M6 47 L36 31 L52 41 L72 29 L106 47 Z" fill="#1c140f" fill-opacity="0.8"/>
+    </pattern>
+    <linearGradient id="stripFade" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#141414" stop-opacity="0.85"/>
+      <stop offset="0.35" stop-color="#141414" stop-opacity="0.35"/>
+      <stop offset="0.7" stop-color="#141414" stop-opacity="0.6"/>
+      <stop offset="1" stop-color="#141414" stop-opacity="0.95"/>
+    </linearGradient>
+  </defs>
+
+  <!-- backdrop -->
+  <rect width="1280" height="320" fill="#141414"/>
+  <rect width="1280" height="320" fill="url(#glow)"/>
+
+  <!-- film strip along the bottom -->
+  <g transform="translate(0,256)">
+    <rect width="1280" height="64" fill="#0d0d0d"/>
+    <rect width="1280" height="64" fill="url(#frames)"/>
+    <rect width="1280" height="64" fill="url(#sprockets)"/>
+    <rect width="1280" height="64" fill="url(#stripFade)"/>
+    <line x1="0" y1="0.5" x2="1280" y2="0.5" stroke="#2a2a2a"/>
+  </g>
+
+  <!-- safelight -->
+  <polygon points="92,30 -80,300 420,300" fill="url(#cone)"/>
+  <rect x="56" y="-6" width="72" height="30" rx="10" fill="#262626" stroke="#3a3a3a" stroke-width="2"/>
+  <rect x="68" y="24" width="48" height="8" rx="2" fill="#1a1a1a"/>
+  <ellipse cx="92" cy="31" rx="20" ry="5" fill="#e74c3c"/>
+  <ellipse cx="92" cy="31" rx="38" ry="12" fill="#e74c3c" fill-opacity="0.25"/>
+
+  <!-- title -->
+  <text x="76" y="166" font-family="'Segoe UI', system-ui, -apple-system, Helvetica, Arial, sans-serif" font-size="92" font-weight="600" letter-spacing="2" fill="#f3ede2">darkroom</text>
+  <text x="80" y="212" font-family="'Segoe UI', system-ui, -apple-system, Helvetica, Arial, sans-serif" font-size="24" fill="#d89b4a">Your Lightroom presets, on your own machine</text>
+  <g font-family="ui-monospace, Consolas, 'Courier New', monospace" font-size="13" fill="#8c8378">
+    <text x="82" y="242">xmp preset  ·  strength 0–200 %  ·  live GPU preview  ·  originals read-only</text>
+  </g>
+
+  <!-- developing tray -->
+  <g>
+    <rect x="828" y="44" width="412" height="212" rx="14" fill="#232323" stroke="#3d3d3d" stroke-width="3"/>
+    <rect x="842" y="58" width="384" height="184" rx="8" fill="#1b2226"/>
+    <!-- print emerging in the developer -->
+    <g mask="url(#emergeMask)" transform="rotate(-4 1034 150)">
+      <rect x="882" y="78" width="304" height="146" rx="2" fill="#f3ede2"/>
+      <rect x="894" y="90" width="280" height="122" fill="url(#sky)"/>
+      <circle cx="1118" cy="134" r="20" fill="#f3ede2" fill-opacity="0.85"/>
+      <path d="M894 212 L950 160 L992 190 L1040 148 L1082 184 L1120 166 L1174 212 Z" fill="#2b1d16" fill-opacity="0.9"/>
+      <path d="M894 212 L930 196 L968 208 L1010 194 L1060 210 L1100 198 L1174 212 Z" fill="#1c140f"/>
+    </g>
+    <!-- developer liquid and ripples -->
+    <rect x="842" y="58" width="384" height="184" rx="8" fill="url(#liquid)"/>
+    <g fill="none" stroke="#8fa4ad" stroke-opacity="0.35" stroke-width="1.5">
+      <ellipse cx="1120" cy="200" rx="42" ry="9"/>
+      <ellipse cx="1120" cy="200" rx="70" ry="16"/>
+      <ellipse cx="900" cy="100" rx="26" ry="6"/>
+    </g>
+    <!-- tongs resting on the tray edge -->
+    <g stroke="#d89b4a" stroke-width="5" stroke-linecap="round" fill="none">
+      <path d="M1256 96 L1176 150"/>
+      <path d="M1256 96 L1182 164"/>
+    </g>
+    <text x="846" y="36" font-family="ui-monospace, Consolas, 'Courier New', monospace" font-size="12" fill="#8c8378" letter-spacing="1">DEVELOPER</text>
+  </g>
+</svg>

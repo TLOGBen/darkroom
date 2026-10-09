@@ -1,0 +1,118 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 300" width="1280" height="300" role="img" aria-labelledby="t d">
+  <title id="t">darkroom editing flow: Preset, Strength, Adjust, Preview, Export</title>
+  <desc id="d">Five steps left to right: pick an XMP preset, set its strength from 0 to 200 percent, fine-tune individual sliders, watch a live GPU preview, export a new file. Originals stay read-only.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 Z" fill="#d89b4a"/>
+    </marker>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3a2a1f"/>
+      <stop offset="1" stop-color="#d89b4a"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0" cy="0" r="520" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#e74c3c" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="#141414" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="1280" height="300" rx="16" fill="#141414"/>
+  <rect width="1280" height="300" rx="16" fill="url(#glow)"/>
+  <rect x="0.5" y="0.5" width="1279" height="299" rx="16" fill="none" stroke="#2a2a2a"/>
+
+  <!-- header -->
+  <circle cx="40" cy="36" r="5" fill="#e74c3c"/>
+  <text x="54" y="41" font-family="ui-monospace, Consolas, 'Courier New', monospace" font-size="13" fill="#8c8378" letter-spacing="1">DARKROOM · EDITING FLOW</text>
+
+  <!-- connectors -->
+  <g stroke="#d89b4a" stroke-width="2" stroke-dasharray="6 6" marker-end="url(#arrow)">
+    <line x1="218" y1="140" x2="340" y2="140"/>
+    <line x1="458" y1="140" x2="580" y2="140"/>
+    <line x1="698" y1="140" x2="820" y2="140"/>
+    <line x1="938" y1="140" x2="1060" y2="140"/>
+  </g>
+
+  <!-- step tiles -->
+  <g font-family="'Segoe UI', system-ui, -apple-system, Helvetica, Arial, sans-serif" text-anchor="middle">
+    <!-- 1 Preset -->
+    <g transform="translate(160,140)">
+      <circle r="48" fill="#1f1f1f" stroke="#3a3a3a" stroke-width="2"/>
+      <circle cx="-36" cy="-36" r="12" fill="#e74c3c"/>
+      <text x="-36" y="-31.5" font-size="13" font-weight="700" fill="#f3ede2">1</text>
+      <g transform="translate(0,2)">
+        <path d="M-18 -26 H8 L20 -14 V26 H-18 Z" fill="#f3ede2"/>
+        <path d="M8 -26 V-14 H20 Z" fill="#c9c1b4"/>
+        <rect x="-11" y="-6" width="8" height="8" fill="#e74c3c"/>
+        <rect x="-3" y="-6" width="8" height="8" fill="#d89b4a"/>
+        <rect x="5" y="-6" width="8" height="8" fill="#3a2a1f"/>
+        <text x="1" y="18" font-family="ui-monospace, Consolas, 'Courier New', monospace" font-size="10" font-weight="700" fill="#141414">XMP</text>
+      </g>
+      <text y="78" font-size="21" font-weight="700" fill="#f3ede2">Preset</text>
+      <text y="100" font-size="13" fill="#8c8378">pick one of your XMP presets</text>
+    </g>
+    <!-- 2 Strength -->
+    <g transform="translate(400,140)">
+      <circle r="48" fill="#1f1f1f" stroke="#3a3a3a" stroke-width="2"/>
+      <circle cx="-36" cy="-36" r="12" fill="#e74c3c"/>
+      <text x="-36" y="-31.5" font-size="13" font-weight="700" fill="#f3ede2">2</text>
+      <g transform="translate(0,2)" fill="none" stroke-linecap="round">
+        <path d="M-17 21 A24 24 0 1 1 17 21" stroke="#3a3a3a" stroke-width="6"/>
+        <path d="M-17 21 A24 24 0 1 1 22.2 -5.2" stroke="#d89b4a" stroke-width="6"/>
+        <line x1="0" y1="4" x2="22.2" y2="-5.2" stroke="#f3ede2" stroke-width="2.5"/>
+        <circle cx="0" cy="4" r="3.5" fill="#f3ede2" stroke="none"/>
+      </g>
+      <text y="32" font-family="ui-monospace, Consolas, 'Courier New', monospace" font-size="10" fill="#f3ede2">150 %</text>
+      <text y="78" font-size="21" font-weight="700" fill="#f3ede2">Strength</text>
+      <text y="100" font-size="13" fill="#8c8378">scale the preset 0–200 %</text>
+    </g>
+    <!-- 3 Adjust -->
+    <g transform="translate(640,140)">
+      <circle r="48" fill="#1f1f1f" stroke="#3a3a3a" stroke-width="2"/>
+      <circle cx="-36" cy="-36" r="12" fill="#e74c3c"/>
+      <text x="-36" y="-31.5" font-size="13" font-weight="700" fill="#f3ede2">3</text>
+      <g stroke-linecap="round">
+        <line x1="-24" y1="-14" x2="24" y2="-14" stroke="#3a3a3a" stroke-width="4"/>
+        <line x1="-24" y1="-14" x2="-4" y2="-14" stroke="#d89b4a" stroke-width="4"/>
+        <circle cx="-4" cy="-14" r="5.5" fill="#f3ede2"/>
+        <line x1="-24" y1="2" x2="24" y2="2" stroke="#3a3a3a" stroke-width="4"/>
+        <line x1="-24" y1="2" x2="14" y2="2" stroke="#d89b4a" stroke-width="4"/>
+        <circle cx="14" cy="2" r="5.5" fill="#f3ede2"/>
+        <line x1="-24" y1="18" x2="24" y2="18" stroke="#3a3a3a" stroke-width="4"/>
+        <line x1="-24" y1="18" x2="-14" y2="18" stroke="#d89b4a" stroke-width="4"/>
+        <circle cx="-14" cy="18" r="5.5" fill="#f3ede2"/>
+      </g>
+      <text y="78" font-size="21" font-weight="700" fill="#f3ede2">Adjust</text>
+      <text y="100" font-size="13" fill="#8c8378">fine-tune individual sliders</text>
+    </g>
+    <!-- 4 Preview -->
+    <g transform="translate(880,140)">
+      <circle r="48" fill="#1f1f1f" stroke="#3a3a3a" stroke-width="2"/>
+      <circle cx="-36" cy="-36" r="12" fill="#e74c3c"/>
+      <text x="-36" y="-31.5" font-size="13" font-weight="700" fill="#f3ede2">4</text>
+      <g transform="translate(0,2)">
+        <rect x="-27" y="-21" width="54" height="40" rx="3" fill="#f3ede2"/>
+        <rect x="-23" y="-17" width="46" height="32" fill="url(#sky)"/>
+        <circle cx="12" cy="-7" r="5" fill="#f3ede2" fill-opacity="0.9"/>
+        <path d="M-23 15 L-8 1 L2 9 L12 -1 L23 15 Z" fill="#2b1d16"/>
+        <circle cx="21" cy="-15" r="4" fill="#e74c3c"/>
+      </g>
+      <text y="78" font-size="21" font-weight="700" fill="#f3ede2">Preview</text>
+      <text y="100" font-size="13" fill="#8c8378">live as you drag, rendered on the GPU</text>
+    </g>
+    <!-- 5 Export -->
+    <g transform="translate(1120,140)">
+      <circle r="48" fill="#1f1f1f" stroke="#3a3a3a" stroke-width="2"/>
+      <circle cx="-36" cy="-36" r="12" fill="#e74c3c"/>
+      <text x="-36" y="-31.5" font-size="13" font-weight="700" fill="#f3ede2">5</text>
+      <g transform="translate(0,2)" fill="none" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M-24 4 V22 H24 V4" stroke="#f3ede2" stroke-width="4"/>
+        <line x1="0" y1="10" x2="0" y2="-22" stroke="#d89b4a" stroke-width="4"/>
+        <path d="M-10 -12 L0 -23 L10 -12" stroke="#d89b4a" stroke-width="4"/>
+      </g>
+      <text y="78" font-size="21" font-weight="700" fill="#f3ede2">Export</text>
+      <text y="100" font-size="13" fill="#8c8378">full-resolution, always a new file</text>
+    </g>
+  </g>
+
+  <!-- footer -->
+  <text x="640" y="282" text-anchor="middle" font-family="ui-monospace, Consolas, 'Courier New', monospace" font-size="12" fill="#8c8378">photo originals and XMP presets are never written to  ·  export never overwrites</text>
+</svg>
