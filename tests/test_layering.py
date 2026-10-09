@@ -132,9 +132,18 @@ class TestLayering(unittest.TestCase):
         banned_attrs = {"write_bytes", "write_text", "touch", "unlink", "rmdir", "symlink_to", "hardlink_to",
                         "imwrite", "write_image", "tofile", "save"}
         offenders = []
+
+        def writes(c):
+            return isinstance(c, ast.Constant) and isinstance(c.value, str) and bool(set(c.value) & set("wax+"))
         for path in py_files():
             rel = os.path.relpath(path, APP).replace("\\", "/")
             tree = parse(path)
+            alias = {}               # local name -> real dotted name (import os as o; from os import replace as r)
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Import):
+                    alias.update({a.asname: a.name for a in node.names if a.asname})
+                elif isinstance(node, ast.ImportFrom) and node.module and not node.level:
+                    alias.update({a.asname or a.name: f"{node.module}.{a.name}" for a in node.names})
             for node in ast.walk(tree):
                 if isinstance(node, (ast.Import, ast.ImportFrom)):
                     for mod in imported_modules(path):
@@ -143,14 +152,21 @@ class TestLayering(unittest.TestCase):
                 if not isinstance(node, ast.Call):
                     continue
                 name = dotted(node.func)
-                if name in ("open", "io.open", "builtins.open"):
-                    mode = node.args[1] if len(node.args) > 1 else next(
-                        (k.value for k in node.keywords if k.arg == "mode"), None)
-                    if mode is not None and not (isinstance(mode, ast.Constant) and isinstance(mode.value, str)
-                                                 and not set(mode.value) & set("wax+")):
+                if name:
+                    head, _, rest = name.partition(".")
+                    name = alias.get(head, head) + ("." + rest if rest else "")
+                mode_kw = next((k.value for k in node.keywords if k.arg == "mode"), None)
+                is_open = name in ("open", "io.open", "builtins.open", "codecs.open") or (
+                    isinstance(node.func, ast.Attribute) and node.func.attr == "open")
+                if is_open:
+                    # any write-mode constant in the first two positions or mode=, for open() and every .open()
+                    # (Path(...).open("wb"), codecs.open(p, "w")); a non-constant mode= is refused outright
+                    if any(writes(a) for a in node.args[:2]) or writes(mode_kw) or (
+                            mode_kw is not None and not isinstance(mode_kw, ast.Constant)):
+                        offenders.append((rel, node.lineno, name or node.func.attr))
+                    elif name in ("open", "io.open", "builtins.open") and len(node.args) > 1                             and not isinstance(node.args[1], ast.Constant):
                         offenders.append((rel, node.lineno, name))
-                elif name == "os.fdopen" and rel == "mcp_server/__init__.py" and len(node.args) >= 1 \
-                        and isinstance(node.args[0], ast.Name) and node.args[0].id == "protocol_fd":
+                elif name == "os.fdopen" and rel == "mcp_server/__init__.py" and len(node.args) >= 1                         and isinstance(node.args[0], ast.Name) and node.args[0].id == "protocol_fd":
                     continue
                 elif name in banned_calls:
                     offenders.append((rel, node.lineno, name))
