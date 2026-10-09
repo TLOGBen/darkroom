@@ -55,6 +55,8 @@
 
 - WG13（封緘第 3 次派遣 findings，收緊）：(1) WG2 的 `_winapi.CreateFile`「寫入權限」原本只看 GENERIC_WRITE 一個位元；實測 GENERIC_ALL（0x10000000）、FILE_GENERIC_WRITE（0x120116）開既有 `.jpg` 可改內容，DELETE＋FILE_FLAG_DELETE_ON_CLOSE 可刪檔，違規 0 筆。改為：access 含任一位元 GENERIC_WRITE｜GENERIC_ALL｜MAXIMUM_ALLOWED｜FILE_WRITE_DATA｜FILE_APPEND_DATA｜FILE_WRITE_EA｜FILE_WRITE_ATTRIBUTES｜DELETE｜WRITE_DAC｜WRITE_OWNER、或 flags 帶 FILE_FLAG_DELETE_ON_CLOSE、或 disposition 會建檔／截斷 → 判路徑。釘死：`test_writeguard_probes` 新增 GENERIC_ALL 改寫與 DELETE_ON_CLOSE 刪檔兩支探針。(2) G2 寫入 flags 補 `O_TEMPORARY`、`O_SHORT_LIVED`（`os.open(既有檔, O_RDONLY|O_TEMPORARY)` 關檔即刪）；釘死：`os.open(p,O_RDONLY|O_TEMPORARY)` 探針。(3) WG11 的失敗路徑補釘死測試 `test_undeletable_root_fails`（首行恰為 WG11 句子）。(4) 程式裡的測試執行檔 tuple 只列 G3 原本 4 項，`cmd.exe` 只走 WG3 分支；註解標明，不算放寬。
 
+- WG14（範圍裁決，2026-10-09 主 session；獨立稽核判 DRIFT 後收斂，與條文同等效力）：(a) **威脅模型**＝自家程式的「意外寫入」（自己寫的產品碼或測試不小心寫到根目錄外），**不是**故意繞守門的對手程式。(b) **主要保證**＝`safe_write`（G8）＋G10 的「只有 safe_write 能寫」結構檢查＋G7 受保護資料夾快照；audit hook（G2～G6）降為**輔助偵測器**，G2／G3 事件清單與 WG13 的 CreateFile 權限位元清單**以 HEAD 5702870 為準凍結**，之後不再擴充。之後再發現的對抗性繞法（例如 `FILE_DELETE_CHILD`、同名函式或 code 物件偽造、未列的原生 API 之類）一律記進 WG10 已知缺口，**不擋封緘、不開修正輪**；凍結不等於放寬：既有的攔截一條都不拿掉。(c) **封緘條件**縮成四項有界檢查，全過即 sealed：① WG13 回歸——`GENERIC_ALL` 改寫根目錄外既有 `.jpg`、`DELETE`＋`FILE_FLAG_DELETE_ON_CLOSE` 刪除、`os.open(p,O_RDONLY|O_TEMPORARY)` 三者都要被攔（違規表多一筆、檔案內容不變／仍存在）；② 凍結清單上已咬過的 28 支突變探針重發，全部要讓整套變紅；③ `safe_write` 拒絕情境（G11 列的 7 條＋WG6）逐條驗；④ 全套 `python -s -m unittest discover -s tests` 結束碼 0。
+
 ## 錯不起表面（Surface Inventory）
 | 表面 | 格式 | 影響（資產 → 後果｜類別） | 釘死測試 |
 |------|------|--------------------------|----------|
