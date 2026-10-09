@@ -46,7 +46,10 @@ PATH_EVENTS = {     # event -> indexes of the target arguments (G2; patch WG2 ad
     "shutil.unpack_archive": (1,), "tempfile.mkstemp": (0,), "tempfile.mkdtemp": (0,), "sqlite3.connect": (0,),
     "dbm.open": (0,), "_winapi.CopyFile2": (1,), "_winapi.CreateJunction": (1,), "_winapi.CreateFile": (0,),
 }
-WATCHED = frozenset(PATH_EVENTS) | frozenset(ALWAYS_VIOLATION) | {"subprocess.Popen", "ctypes.dlopen", "ctypes.dlsym"}
+PROCESS_EVENTS = ("subprocess.Popen", "_winapi.CreateProcess")                   # patch WG9
+CMD_SPECIAL = frozenset('&|<>^%!"' + chr(13) + chr(10))                                         # patch WG3
+WATCHED = frozenset(PATH_EVENTS) | frozenset(ALWAYS_VIOLATION) | frozenset(PROCESS_EVENTS) | {"ctypes.dlopen",
+                                                                                              "ctypes.dlsym"}
 _GENERIC_WRITE, _CREATE_DISPOSITIONS = 0x40000000, (1, 2, 4, 5)   # _winapi.CreateFile: write access / creates
 
 _BASE = os.path.normcase(os.path.realpath(sys.base_prefix))
@@ -176,6 +179,23 @@ def _outside(target):
     return n
 
 
+def _in_fixture_root(path):
+    """Strictly inside a registered fixture root: no devnull / pycache allowance (patch WG3)."""
+    n = _norm(path)
+    with _lock:
+        return any(_inside(n, r) for r in _roots)
+
+
+def _report_cleanup(event, args):
+    """Parent only (patch WG4): rmtree / rmdir of the report folder itself, os.remove of <folder>/<digits>.jsonl."""
+    if _child or not _report_dir or not args or isinstance(args[0], int):
+        return False
+    n, folder = _norm(args[0]), _norm(_report_dir)
+    if event in ("shutil.rmtree", "os.rmdir"):
+        return n == folder
+    return event == "os.remove" and os.path.dirname(n) == folder and re.fullmatch(r"\d+\.jsonl", os.path.basename(n))
+
+
 def _sqlite_target(db):
     if isinstance(db, (bytes, bytearray)):
         db = os.fsdecode(bytes(db))
@@ -210,9 +230,10 @@ def _popen_allowed(executable, args, who):
         while rest and rest[0] in ("-s", "-u", "-B"):
             rest = rest[1:]
         return bool(rest) and os.path.normcase(os.path.abspath(rest[0])) == _N_GUARDRUN
-    if exe == "cmd.exe":        # patch WG3: test_cli's junction, both ends inside a root
+    if exe == "cmd.exe":        # patch WG3: test_cli's junction, both ends strictly inside a fixture root
+        raw = args if isinstance(args, str) else " ".join(argv)
         return (len(argv) == 6 and [a.lower() for a in argv[1:4]] == ["/c", "mklink", "/j"]
-                and _outside(argv[4]) is None and _outside(argv[5]) is None)
+                and not CMD_SPECIAL & set(raw) and _in_fixture_root(argv[4]) and _in_fixture_root(argv[5]))
     return exe in TEST_EXECUTABLES
 
 
@@ -233,6 +254,8 @@ def judge(event, args):
                 return None
             if not (access & _GENERIC_WRITE or disposition in _CREATE_DISPOSITIONS):
                 return None
+        if event in ("shutil.rmtree", "os.rmdir", "os.remove") and _report_cleanup(event, args):
+            return None
         for i in PATH_EVENTS[event]:
             if i < len(args):
                 bad = _outside(args[i])
@@ -244,7 +267,14 @@ def judge(event, args):
     who = initiator()
     if event == "subprocess.Popen":
         executable, cmd = args[0], args[1]
-        return None if _popen_allowed(executable, cmd, who) else str(cmd)
+        ok = _popen_allowed(executable, cmd, who)
+        _tl.approved_popen = ok         # consumed by the _winapi.CreateProcess this Popen makes next (WG9)
+        return None if ok else str(cmd)
+    if event == "_winapi.CreateProcess":
+        # patch WG9: multiprocessing goes straight here. CPython 3.13 hands this event a garbled command line,
+        # so the only process start allowed is the one a just-approved subprocess.Popen on this thread makes.
+        ok, _tl.approved_popen = getattr(_tl, "approved_popen", False), False
+        return None if ok else f"{args[0] or '（命令列不可讀）'}（發起者 {who[1]}）"
     if event in ("ctypes.dlopen", "ctypes.dlsym"):      # G3: third-party only (patch WG2: also dlsym)
         return None if who[0] == "third-party" else f"{args[-1]}（發起者 {who[1]}）"
     return None
@@ -298,11 +328,20 @@ def new_root(prefix="darkroom-test-"):
 
 
 def release_root(d):
-    """Delete the root, then unregister it."""
+    """Delete the root, then unregister it; a root that cannot be deleted fails the test (no silent leak)."""
+    import gc
+    import time
     try:
-        shutil.rmtree(d, True)
+        for attempt in range(5):
+            shutil.rmtree(d, True)
+            if not os.path.lexists(d):
+                break
+            gc.collect()                 # e.g. a connection object still holding a file open
+            time.sleep(0.2)
     finally:
         _unregister(_norm(d))
+    if os.path.lexists(d):
+        raise AssertionError(f"暫存根目錄刪不掉（有檔案還開著？）：{d}")
 
 
 def _unregister(n):
@@ -490,7 +529,7 @@ def _install_unittest():
 # ---------------------------------------------------------------- child processes (G6)
 def python_cmd():
     """argv prefix for a guarded child python: [python, -s, _guardrun.py, --roots, …, --report, …, --test-id, …]."""
-    return [sys.executable, "-s", GUARDRUN, "--roots", json.dumps(roots()), "--report", _report_dir,
+    return [sys.executable, "-s", GUARDRUN, "--roots", json.dumps(roots()), "--report", _report_dir,   # WG4: no report
             "--test-id", _test_id()]
 
 
@@ -519,8 +558,7 @@ def _arm_parent():
     _snapshot_at_arm = snapshot()
     _report_dir = os.path.join(tempfile.gettempdir(), f"darkroom-guard-{os.getpid()}-{secrets.token_hex(6)}")
     os.mkdir(_report_dir)                       # the guard's own report folder, made before the hook exists
-    with _lock:
-        _roots.append(_norm(_report_dir))       # patch WG4: so the parent can delete it at exit
+    # patch WG4: the report folder is NOT a root; only _report_cleanup's three exact events are let through
     import atexit
     atexit.register(shutil.rmtree, _report_dir, True)
     _install_unittest()

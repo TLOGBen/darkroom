@@ -53,8 +53,8 @@ PROBES_HANDOFF = [
     ('o = open; o(p,"wb")', 'o = open\no(p, "wb").close()', "open"),
     ("def f(p, opener=open)", 'def f(q, opener=open):\n    opener(q, "wb").close()\nf(p)', "open"),
     ("logging.FileHandler", "import logging\nlogging.FileHandler(p).close()", "open"),
-    ("sqlite3.connect (file: URI)", "import sqlite3, pathlib\nsqlite3.connect(pathlib.Path(p).as_uri(), uri=True)"
-     ".execute('create table t(x)')", "sqlite3.connect"),
+    ("sqlite3.connect (file: URI)", "import sqlite3, pathlib\nc = sqlite3.connect(pathlib.Path(p).as_uri(), uri=True)\n"
+     "c.execute('create table t(x)')\nc.close()", "sqlite3.connect"),
     ("os.utime", "import os\nos.utime(p)", "os.utime"),
     ('zipfile.ZipFile(p,"w") via a', 'import zipfile\nwith zipfile.ZipFile(p, "w") as z:\n    z.write(a, "a")', "open"),
     ('gzip.GzipFile(p,"wb")', 'import gzip\ngzip.GzipFile(p, "wb").close()', "open"),
@@ -69,9 +69,16 @@ PROBES_HANDOFF = [
      "_winapi.CloseHandle(h)", "_winapi.CreateFile"),
     ("_winapi.CreateJunction", "import _winapi\n_winapi.CreateJunction(os.path.dirname(a), p)",
      "_winapi.CreateJunction"),
+    # patch WG9 (seal probe X1): multiprocessing spawns through _winapi.CreateProcess, no subprocess.Popen event
+    ("ProcessPoolExecutor", "from concurrent.futures import ProcessPoolExecutor\nfrom pathlib import Path\n"
+     "with ProcessPoolExecutor(1) as ex:\n    ex.submit(Path(p).write_bytes, b'x').result()",
+     "_winapi.CreateProcess"),
+    ("multiprocessing.Process", "import multiprocessing\nfrom pathlib import Path\n"
+     "q = multiprocessing.Process(target=Path(p).write_bytes, args=(b'x',))\nq.start()\nq.join()",
+     "_winapi.CreateProcess"),
 ]
-# G3: blocked whatever the path (the product may not start processes or load DLLs) - patch WG5
-NOT_PATH_BASED = {"subprocess.Popen", "ctypes.dlopen", "ctypes.dlsym", "os.system"}
+# G3: blocked whatever the path (the product may not start processes or load DLLs) - patch WG5, WG9
+NOT_PATH_BASED = {"subprocess.Popen", "_winapi.CreateProcess", "ctypes.dlopen", "ctypes.dlsym", "os.system"}
 
 
 def run_as_product(src, **names):
@@ -148,6 +155,60 @@ class TestWriteGuardProbes(unittest.TestCase):  # G2, G3, G11
         self.assertEqual(_writeguard.judge("ctypes.dlopen", ("kernel32",)) is not None, True)   # test frame
         for ev in ("os.system", "os.startfile", "os.exec", "os.spawn", "os.posix_spawn"):
             self.assertIsNotNone(_writeguard.judge(ev, ("x",)), ev)
+
+    def test_mklink_exemption_is_exact(self):  # patch WG3 (tightened 2026-10-09)
+        root = _util.tmpdir(self)
+        report = _writeguard._report_dir
+
+        def popen(cmdline):
+            return _writeguard.judge("subprocess.Popen", (None, cmdline, None, None))
+        self.assertIsNone(popen(f"cmd /c mklink /J {root}\\j {root}"))
+        cp = ("_winapi.CreateProcess", (None, "\x02", None))     # 3.13 passes a garbled command line here
+        self.assertIsNone(_writeguard.judge(*cp))                # the one start the approved Popen makes
+        self.assertIsNotNone(_writeguard.judge(*cp))             # approval consumed: a second start is blocked
+        for bad in (f"cmd /c mklink /J nul {root}",                                         # devnull end
+                    f"cmd /c mklink /J C:\\Windows\\__pycache__\\j.cpython-313.pyc {root}",  # pycache end
+                    f"cmd /c mklink /J {root}\\x&echo>C:\\evil.txt {root}",                 # cmd metacharacters
+                    f"cmd /c mklink /J {root}\\x|y {root}", f"cmd /c mklink /J {root}\\x^y {root}",
+                    f"cmd /c mklink /J {root}\\%x% {root}", f"cmd /c mklink /J {root}\\x!y! {root}",
+                    f"cmd /c mklink /J {root}\\x<y {root}", f'cmd /c mklink /J "{root}\\x" {root}',
+                    f"cmd /c mklink /J {root}\\x\ny {root}", f"cmd /c mklink /J {root}\\x\ry {root}",
+                    f"cmd /c mklink /J {report}\\j {root}",                                 # report folder end
+                    f"cmd /c mklink /J {root}\\j {tempfile.gettempdir()}",                  # target outside
+                    f"cmd /c mklink /J {root}\\j {root} extra", f"cmd /c echo {root}"):
+            with self.subTest(bad=bad):
+                self.assertIsNotNone(popen(bad))
+
+    def test_report_folder_is_not_a_root(self):  # patch WG4 (tightened 2026-10-09)
+        report = _writeguard._report_dir
+        self.assertNotIn(_writeguard._norm(report), _writeguard.roots())
+        cmd = _writeguard.python_cmd()
+        self.assertNotIn(_writeguard._norm(report), cmd[cmd.index("--roots") + 1].lower().replace("\\\\", "\\"))
+        with _writeguard.expect_violation():                       # the parent may not write there either
+            open(os.path.join(report, "x.bin"), "wb").close()
+        self.assertFalse(os.path.exists(os.path.join(report, "x.bin")))
+        self.assertIsNone(_writeguard.judge("os.remove", (os.path.join(report, "123.jsonl"), None)))
+        self.assertIsNone(_writeguard.judge("os.rmdir", (report, None)))
+        for ev, target in (("os.remove", os.path.join(report, "x.jsonl")), ("os.remove", os.path.join(report, "1.bin")),
+                           ("os.rmdir", os.path.join(report, "sub")), ("shutil.rmtree", os.path.dirname(report))):
+            self.assertIsNotNone(_writeguard.judge(ev, (target, None)), (ev, target))
+        child = ("import os, sys\nd = sys.argv[1]\n"
+                 "for name in ('x.bin', '999999999.jsonl'):\n"
+                 "    try:\n        open(os.path.join(d, name), 'ab').close()\n"
+                 "    except BaseException:\n        pass\n")
+
+        class Inner(unittest.TestCase):
+            def test_child_writes_into_report_folder(self):
+                subprocess.run([*_util.guarded_python(), "-c", child, report], capture_output=True, timeout=120)
+
+        result = unittest.TestResult()
+        case = Inner("test_child_writes_into_report_folder")
+        with _writeguard.expect_violation() as ev:
+            case.run(result)
+        self.assertFalse(result.wasSuccessful())                   # the parent test turns red
+        self.assertEqual(sorted(os.path.basename(v["target"]) for v in ev.caught), ["999999999.jsonl", "x.bin"])
+        for name in ("x.bin", "999999999.jsonl"):
+            self.assertFalse(os.path.exists(os.path.join(report, name)), name)
 
     def test_classification(self):
         cat = _writeguard._category
