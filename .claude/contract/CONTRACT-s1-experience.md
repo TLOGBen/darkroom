@@ -106,3 +106,5 @@ A/B：按鈕文字「對照」 ｜ 標籤「原圖」「編輯後」 ｜ 快捷�
 - S13g'（修訂 S13 (g)）：存檔失敗當下就 `save.dirty=true`，失敗那筆存在 `save.retry`；退避期間關頁由 `unloadSave` 送出；同一張的新變更取代它。釘死：`test_autosave_targets_the_photo_it_was_scheduled_for`（retry 斷言）。
 - S14a（修訂 S14）：`L.explain` 對頁面自己的組合句（「{中文前綴}：{service 原句}」）翻譯全形冒號後的 service 句；狀態列的錯誤也經 `L.explain`。釘死：`tests/js`「S14 (seal patch S14a)」、`test_toasts_go_through_explain`（setStatus／textContent 帶錯誤原文時必經 `L.explain`）。
 - Verbatim 追加：`conflict（S4a）：這張照片已經有別的編輯，取回上一份會蓋掉它；要取回請先還原成原圖：{file_name}`
+- S13g''（seal 複驗 1 的資料類例外修正，修訂 S13g'）：失敗的存檔以「每張照片一筆」記在 `save.retries`（Map）；退避到時由 `flushRetry(path)` 依 `L.retryDue(pendingPath, path)`（`now`／`after`＝別張的 pending 先送／`superseded`＝同張已有更新的狀態）真的重送一次；`openPhoto` 先 `flushRetries()` 再讀檔（不讓舊編輯先載回畫面）；`beforeunload` 送 `L.unloadJobs(pending, retries)`（別張的失敗存檔全部送出，同張只送最新）。釘死：`tests/js`「S13g' (seal round 2)」、`test_autosave_targets_the_photo_it_was_scheduled_for`（flushRetry 全文逐行、openPhoto 順序）。
+- 記錄、不修（複驗 1 新發現，低）：N3 縮圖格結果面板的單筆錯誤（`gridBatchDone`、匯出所選整批失敗）雖有 `L.explain`，但沒有測試釘住；N4 `api_thumbnail` 真實回應的 `X-Edit` 沒有與 `x_edit` 逐位元組比對（只有 regex＋unquote）。

@@ -372,12 +372,31 @@ class TestPageStructure(unittest.TestCase):
         self.assertIn("res = await (await api('GET', '/api/edit?path=' + encodeURIComponent(path))).json();", paste)
         self.assertNotRegex(paste, r"res\s*=\s*r\b")
         # seal F4 / S13 (g): a failed save is dirty again at once and kept for unload during its back-off
-        self.assertIn("save.retry = Object.assign({}, job, {retried: true}); save.dirty = true;", send)
+        self.assertIn("save.retries.set(path, Object.assign({}, job, {retried: true})); save.dirty = true;", send)
+        self.assertIn("setTimeout(() => flushRetry(path), L.SAVE_RETRY_MS);", send)
         unload = js[js.index("function unloadSave"):js.index("function applyEditInfo")]
-        self.assertIn("const job = save.pending || save.retry;", unload)
-        flush = js[js.index("async function flushSave"):js.index("function unloadSave")]
-        self.assertIn("if (save.retry) save.dirty = true;", flush)
-        self.assertIn("if (save.retry && save.retry.path === path) save.retry = null;", sched)
+        self.assertIn("const jobs = L.unloadJobs(save.pending, [...save.retries.values()]);", unload)
+        self.assertIn("for (const job of jobs) sendSave(job);", unload)
+        flush = js[js.index("async function flushSave"):js.index("async function flushRetry")]
+        self.assertIn("if (save.retries.size) save.dirty = true;", flush)
+        self.assertIn("save.retries.delete(path);", sched)
+        # seal round 2 (N1 / N1b / N2): the retry really goes out - once, after other photos, never over newer
+        retry = js[js.index("async function flushRetry"):js.index("async function flushRetries")]
+        self.assertEqual([l.strip() for l in retry.splitlines()[1:] if l.strip()][:-1], [
+            "const r = save.retries.get(path);",
+            "if (!r) return;",
+            "const due = L.retryDue(save.pending && save.pending.path, path);",
+            "if (due === 'superseded') { save.retries.delete(path); return; }",
+            "if (due === 'after') await flushSave();          // another photo's pending save goes first",
+            "if (save.retries.get(path) !== r) return;          // superseded (or sent) meanwhile",
+            "save.retries.delete(path);",
+            "if (save.pending && save.pending.path === path) return;",
+            "save.pending = r;",
+            "await flushSave();"])
+        self.assertIn("for (const path of [...save.retries.keys()]) await flushRetry(path);",
+                      js[js.index("async function flushRetries"):js.index("function unloadSave")])
+        op = js[js.index("async function openPhoto"):js.index("function openFailed")]
+        self.assertLess(op.index("await flushRetries();"), op.index("await flushSave();"))   # before re-read
         self.assertIn("if (st.image && st.image.path === path) applyEditInfo(res);", send)
         opened = js[js.index("async function openPhoto"):js.index("function openFailed")]
         self.assertLess(opened.index("await flushSave();"), opened.index("st.loading = token;"))

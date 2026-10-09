@@ -713,6 +713,7 @@ let openSeq = 0;                        // S1: the newest openPhoto wins; older 
 async function openPhoto(path) {
   path = (path || '').trim().replace(/^"|"$/g, '');
   if (!path) return;
+  await flushRetries();                 // S13g': a failed save of any photo goes out before anything is re-read
   await flushSave();                    // the previous photo's last change goes out first (PL15)
   const token = ++openSeq;
   setStatus('讀取照片中…', 'busy');
@@ -755,13 +756,14 @@ function openFailed(path, reason) {     // S13 (i): the old picture goes away, t
 // ------------------------------------------------------------------ photo library: autosave (PL15 / PLP9)
 // The open photo's edit is sent AUTOSAVE_MS after the last change; only the newest state waits (latest wins).
 // S1: what is sent (path and body) is fixed when the change is scheduled, never read later from st.image.
-const save = {timer: null, dirty: false, pending: null, promise: null, retry: null};   // retry: a failed save in its back-off (S13 g)
+// retries: path -> a failed save waiting out its back-off (S13 g / S13g'), one per photo
+const save = {timer: null, dirty: false, pending: null, promise: null, retries: new Map()};
 
 function scheduleSave() {
   if (!st.image || st.loading) return;
   const path = st.image.path;
   save.pending = {path, req: L.editRequest(ed, path, st.snapshots, st.fingerprint), retried: false};
-  if (save.retry && save.retry.path === path) save.retry = null;   // newer state supersedes a failed save
+  save.retries.delete(path);            // newer state of this photo supersedes its failed save
   save.dirty = true;
   clearTimeout(save.timer);
   save.timer = setTimeout(flushSave, L.AUTOSAVE_MS);
@@ -787,14 +789,8 @@ async function sendSave(job) {
     if (!job.retried) {                 // S13 (g): one more try after a short back-off, latest state wins
       // dirty again at once: a page closed during the back-off still sends this body from beforeunload
       // (kept apart from save.pending, so a flush already looping does not resend it before the back-off)
-      save.retry = Object.assign({}, job, {retried: true}); save.dirty = true;
-      setTimeout(async () => {
-        // another photo's pending save goes first; a newer change of this photo supersedes the retry
-        if (save.pending && save.retry && save.pending.path !== save.retry.path) await flushSave();
-        const r = save.retry; save.retry = null;
-        if (!r || (save.pending && save.pending.path === r.path)) return;
-        save.pending = r; flushSave();
-      }, L.SAVE_RETRY_MS);
+      save.retries.set(path, Object.assign({}, job, {retried: true})); save.dirty = true;
+      setTimeout(() => flushRetry(path), L.SAVE_RETRY_MS);
     }
   }
 }
@@ -804,16 +800,32 @@ async function flushSave() {            // sends what is pending and waits until
   while (save.pending || save.promise) {
     if (save.promise) { await save.promise; continue; }
     const job = save.pending; save.pending = null; save.dirty = false;
-    if (save.retry) save.dirty = true;  // a failed save still waits for its retry: unload must send it
+    if (save.retries.size) save.dirty = true;   // a failed save still waits for its retry: unload must send it
     save.promise = sendSave(job).finally(() => { save.promise = null; });
   }
 }
 
+async function flushRetry(path) {       // S13g': the one retry of a failed save (after its back-off, or now)
+  const r = save.retries.get(path);
+  if (!r) return;
+  const due = L.retryDue(save.pending && save.pending.path, path);
+  if (due === 'superseded') { save.retries.delete(path); return; }
+  if (due === 'after') await flushSave();          // another photo's pending save goes first
+  if (save.retries.get(path) !== r) return;          // superseded (or sent) meanwhile
+  save.retries.delete(path);
+  if (save.pending && save.pending.path === path) return;
+  save.pending = r;
+  await flushSave();
+}
+
+async function flushRetries() {         // before another photo is opened: nothing of a failed save is left behind
+  for (const path of [...save.retries.keys()]) await flushRetry(path);
+}
+
 function unloadSave() {                 // S13 (g): the newest body goes out at once, not after the one in flight
-  const job = save.pending || save.retry;   // a failed save waiting out its back-off goes out too
-  if (!job) return;
-  save.pending = null; save.retry = null; save.dirty = false;
-  sendSave(job);
+  const jobs = L.unloadJobs(save.pending, [...save.retries.values()]);   // failed saves in back-off go out too
+  save.pending = null; save.retries.clear(); save.dirty = false;
+  for (const job of jobs) sendSave(job);
 }
 
 function applyEditInfo(res) {           // {fingerprint, edit, preset_status, previous} from the photo library

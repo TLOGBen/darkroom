@@ -307,6 +307,14 @@
   // goes through the reducer's restoreEdit and never schedules a save. The grid selects, copies, pastes, exports.
   const AUTOSAVE_MS = 500;
   const SAVE_RETRY_MS = 2000;                                // S13 (g): one retry after a failed save
+  // S13g': a failed save's retry, given the path of what is pending now: a newer change of the same photo
+  // supersedes it; another photo's pending save goes first; nothing pending -> now
+  const retryDue = (pendingPath, retryPath) =>
+    (pendingPath == null ? 'now' : pendingPath === retryPath ? 'superseded' : 'after');
+  // what beforeunload sends: every failed save still in its back-off (unless the same photo has a newer
+  // pending state), then the pending one - nothing is left behind when the page goes away
+  const unloadJobs = (pending, retries) =>
+    [...retries.filter((r) => !pending || r.path !== pending.path), ...(pending ? [pending] : [])];
   const CARRY_HINT = '沿用上一張的設定（還不是這張的編輯，會再沿用到下一張）';   // S11 (replaces R5's sentence)
   const CARRY_HINT_SHORT = '沿用中';
   const openFailed = (fileName, reason) => `開啟失敗：${fileName}：${reason}`;
@@ -451,7 +459,7 @@
           EXPORT_BUSY, EXPORT_DEFAULT_QUALITY, baseName, exportDone, exportFailed, exportBody, exportMessage,
           USER_GROUP, FAV_EMPTY, UPLOAD_BATCH_CHARS, presetSaved, importSummary, importedLine, canSavePreset, favMark,
           groupCreated, saveBody, uploadBatches, importReport,
-          explain, EXPLAIN_EXACT, EXPLAIN_PREFIX, openFailed, SAVE_RETRY_MS, CARRY_HINT, CARRY_HINT_SHORT, GRID_EMPTY,
+          explain, EXPLAIN_EXACT, EXPLAIN_PREFIX, openFailed, SAVE_RETRY_MS, retryDue, unloadJobs, CARRY_HINT, CARRY_HINT_SHORT, GRID_EMPTY,
           sliderVars, strengthVars, bipolar, HUE_DOTS, hueDot, CANVASES, CANVAS_STORAGE_KEY, canvasFrom,
           AB_KEY, AB_STORAGE_KEY, AB_DEFAULT_SPLIT, abStep, abSplitFrom,
           FILTERS, FILTER_LABELS, badgeTitle, stale, gridFilter, onlyShown, gridPending, resetConfirm, resetDone, restoreDone,
