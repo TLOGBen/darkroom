@@ -137,8 +137,16 @@ def main(argv=None):
             ts.append(time.perf_counter() - t)
             assert any(x["id"] == ids[100 + i] and x["favorite"] for x in listing["items"])
         res["list after external change (max of 10)"] = max(ts)
-        if res["cold load (median of 3)"] > LIMITS["cold load (median of 3)"]:
-            profiles["cold load (median of 3)"] = profiled(lambda: Library(pd))
+        again = {"cold load (median of 3)": lambda: Library(pd),
+                 "list_presets(query) p95": lambda: [f.list_presets(w) for w in words],
+                 "preset_groups p95": lambda: [f.preset_groups() for _ in range(10)],
+                 "import 20": lambda: f.import_presets([src]),
+                 "save_user_preset p95": lambda: f.save_user_preset("bench profile", preset_id=ids[0]),
+                 "list after external change (max of 10)":
+                     lambda: (other.set_favorite(ids[200], True), f.list_presets())}
+        for label, fn in again.items():            # KP7: every miss is profiled (seal F3)
+            if res[label] > LIMITS[label]:
+                profiles[label] = profiled(fn)
     finally:
         if not a.keep:
             shutil.rmtree(root, ignore_errors=True)

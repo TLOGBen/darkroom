@@ -289,6 +289,7 @@ test('K19: preset library messages, save body, upload batches', () => {
   assert.equal(L.importSummary(2, 1), '已匯入 2 個，1 個沒有匯入');
   assert.equal(L.FAV_EMPTY, '還沒有最愛，按 preset 旁的 ☆ 加入');
   assert.equal(L.USER_GROUP, '自存 preset');
+  assert.equal(L.groupCreated('電影 - 暖調'), '已建立群組：電影 - 暖調');
   assert.equal(L.favMark(true), '★');
   assert.equal(L.favMark(false), '☆');
   const ed = L.initialEditor();

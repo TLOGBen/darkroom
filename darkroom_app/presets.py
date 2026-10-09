@@ -208,7 +208,7 @@ class Library:
         try:
             params = load_preset(path)
             supported, skipped = True, list(params.skipped)
-        except (UnsupportedPresetError, OSError, ValueError):
+        except (UnsupportedPresetError, OSError, ValueError, LookupError):   # LookupError: unknown XML encoding
             params, supported, skipped = None, False, []
         name, group = meta_of(data) if supported else ("", "")
         info = PresetFile(path, _rel(path, self.root), stamp, hashlib.sha256(data).hexdigest(), supported, skipped,

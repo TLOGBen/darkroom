@@ -691,6 +691,31 @@ class TestLibraryHttp(AioHTTPTestCase):  # KP4: R10 middleware, no paths over HT
         self.assertEqual(sorted(os.listdir(self.root)), before)
 
 
+class TestBadEncoding(LibCase):  # seal F2: an unknown XML encoding is one failed item / one unsupported preset
+    BAD = b"<?xml version='1.0' encoding='bogus'?><x:xmpmeta xmlns:x='adobe:ns:meta/'/>"
+
+    def test_import_bad_encoding_fails_one_item(self):
+        good = base64.b64encode(_xmpgen.xmp_text({"Contrast2012": "+2"}, name="好").encode()).decode()
+        r = self.f.import_presets(None, None, [{"name": "good.xmp", "data_base64": good},
+                                               {"name": "bad.xmp", "data_base64": base64.b64encode(self.BAD).decode()}])
+        self.assertEqual([x["ok"] for x in r["results"]], [True, False])
+        self.assertTrue(r["results"][1]["error"].startswith("無法讀取 preset：bad.xmp："), r)
+        self.assertIn("import:good", [x["id"] for x in self.f.list_presets()["items"]])
+        src = self.src()
+        with open(os.path.join(src, "bad2.xmp"), "wb") as fh:
+            fh.write(self.BAD)
+        r = self.f.import_presets([src])
+        self.assertEqual(r["results"][0]["ok"], False)
+        self.assertEqual(os.listdir(os.path.join(self.root, "import")), ["good.xmp"])
+
+    def test_library_loads_with_bad_encoding_file(self):
+        user = self.src("user")
+        with open(os.path.join(user, "dropped.xmp"), "wb") as fh:
+            fh.write(self.BAD)
+        rows = {x["id"]: x for x in self.facade().list_presets()["items"]}
+        self.assertIs(rows["user:dropped"]["supported"], False)
+
+
 class TestLibraryCli(LibCase):
     def call(self, argv):
         from darkroom_app import cli
@@ -698,6 +723,23 @@ class TestLibraryCli(LibCase):
         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
             rc = cli.main(argv, facade=self.f)
         return rc, out.getvalue(), err.getvalue()
+
+    def test_cli_uses_configured_library_root(self):  # seal F1 / KP2: no --preset-dir -> preset_library_dir
+        from darkroom_app import cli, config
+        lib = self.src("configured-lib")
+        out, err = io.StringIO(), io.StringIO()
+        with mock.patch.object(config, "preset_dir", return_value=self.pd), \
+                mock.patch.object(config, "preset_library_dir", return_value=lib), \
+                contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            rc = cli.main(["presets", "favorite", "p-plain", "on", "--json"])
+        self.assertEqual((rc, err.getvalue()), (0, ""))
+        self.assertTrue(os.path.exists(os.path.join(lib, "library.json")))
+        self.assertFalse(os.path.exists(self.index_path))
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+            rc = cli.main(["--preset-dir", self.pd, "presets", "favorite", "p-plain", "on", "--json"])
+        self.assertEqual(rc, 0)
+        self.assertTrue(os.path.exists(self.index_path))               # explicit folder -> dirname(preset_dir)
 
     def test_cli_commands(self):  # K16 / KP5 / KP9
         self.assertEqual(self.call(["presets", "favorite", "p-plain", "on", "--json"])[0], 0)

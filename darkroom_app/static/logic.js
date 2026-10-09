@@ -230,6 +230,7 @@
   const presetSaved = (name) => `已存成 preset：${name}`;
   const importSummary = (ok, fail) => `已匯入 ${ok} 個，${fail} 個沒有匯入`;
   const importedLine = (id) => `已匯入：${id}`;
+  const groupCreated = (group) => `已建立群組：${group}`;
   const canSavePreset = (ed) => ed.presetId !== null || Object.keys(ed.tweaks).some((k) => ed.tweaks[k]);
   const favMark = (fav) => (fav ? '★' : '☆');
 
@@ -262,5 +263,5 @@
           parseValueInput, curveAtStrength, curvePath,
           EXPORT_BUSY, EXPORT_DEFAULT_QUALITY, baseName, exportDone, exportFailed, exportBody, exportMessage,
           USER_GROUP, FAV_EMPTY, UPLOAD_BATCH_CHARS, presetSaved, importSummary, importedLine, canSavePreset, favMark,
-          saveBody, uploadBatches, importReport};
+          groupCreated, saveBody, uploadBatches, importReport};
 });

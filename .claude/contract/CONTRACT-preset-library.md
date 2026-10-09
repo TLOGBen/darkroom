@@ -95,3 +95,13 @@ G10 寫檔白名單（SAFE_WRITE_USERS）：("services/export.py", "services/pre
   - `test_app_frontend`：`PROTECTED` 與 HTML 檢查清單加 K19 四項；新增 `test_preset_library_controls`、`test_library_sentences_same_in_page_and_contract`；`tests/js/test_logic.cjs` 新增 K19 一支。
   - 新增：`tests/test_preset_library.py`、`tools/bench_preset_library.py`、`darkroom_app/formats.py`、`darkroom_app/services/preset_library.py`。
   - `config.py`：`load()` 回傳形狀不變（`test_app_launch.test_config_resolution` 不動），`preset_library_dir()` 另讀設定檔。
+
+## 封緘第 1 次派遣處置紀錄（2026-10-09；依 Loose-Criterion Escalation，與條文同等效力）
+- KP17（F1，KP2 違反，已修）：`cli.main` 沒帶 `--preset-dir` 時把 `config.preset_dir()` 當成明確路徑傳給 `build_facade`，設定檔的 `preset_library_dir` 被忽略，CLI 會在 `dirname(preset_dir)` 另起一份索引、與 App 分岔。改為 `build_facade(a.preset_dir) if a.preset_dir else build_facade()`。K17 補強：一致性測試注入 `facade=`，不涵蓋「入口自己組 facade」，所以另加釘死 `test_cli_uses_configured_library_root`（不注入 facade，mock 設定，斷言索引落在設定的庫根；帶 `--preset-dir` 時落在 `dirname`）。
+- KP18（F2，K11 違反＋穩定性，已修）：XML 宣告是未知編碼（例 `encoding='bogus'`）時 `load_preset` 拋 `LookupError`，原本沒接：整批匯入中斷（HTTP 500／CLI 1）、前面已寫的檔不進索引；這種檔被丟進 `import/`、`user/`（或 `preset_dir`）時 `Library()` 直接起不來。改為：`_import_one` 與 `Library.file_info` 一併接 `LookupError`——匯入時該筆「無法讀取 preset」、掃描時列為不支援。釘死：`TestBadEncoding.test_import_bad_encoding_fails_one_item`、`test_library_loads_with_bad_encoding_file`（修正前兩支都 ERROR）。
+- KP19（F3，KP7，已修）：bench 每一項未達標都印 cProfile 前 20 名（原本只有整理類與冷載入）。
+- KP20（F4，K19 常數太鬆，已修）：「已建立群組：{group}」補成常數（`logic.js` `groupCreated`），釘死 `test_library_sentences_same_in_page_and_contract`、`tests/js/test_logic.cjs` K19。K19 的其他提示照常數句型。
+```text
+封緘補丁常數：前端新群組：已建立群組：{group}
+```
+

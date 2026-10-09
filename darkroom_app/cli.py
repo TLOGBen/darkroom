@@ -224,7 +224,8 @@ def main(argv=None, facade=None):
     if facade is None:
         from .composition import build_facade
         try:
-            facade = build_facade(a.preset_dir if a.preset_dir else config.preset_dir())
+            # KP2: without --preset-dir both the preset folder and the library root come from the configuration
+            facade = build_facade(a.preset_dir) if a.preset_dir else build_facade()
         except (config.ConfigError, FileNotFoundError) as e:
             _line(CONFIG_ERROR.format(e=e), sys.stderr)
             return 2

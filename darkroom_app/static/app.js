@@ -506,7 +506,7 @@ function showMenu(anchor, items) {
 
 function askNewGroup(base) {
   const g = prompt('新群組名稱（用「 - 」分層）', base ? base + ' - ' : '');
-  if (g !== null) libraryCall('groups/create', {group: g}, (r) => '已建立群組：' + r.group);
+  if (g !== null) libraryCall('groups/create', {group: g}, (r) => L.groupCreated(r.group));
 }
 
 function presetMenu(p, anchor) {

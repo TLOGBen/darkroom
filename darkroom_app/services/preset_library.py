@@ -487,7 +487,7 @@ class PresetLibraryService:
         except _ItemWriteFailed as e:
             return {"ok": False, "source": source,
                     "error": M.LIB_IMPORT_WRITE_FAILED.format(file_name=source, reason=e.reason)}
-        except (UnsupportedPresetError, ValueError, OSError) as e:
+        except (UnsupportedPresetError, ValueError, OSError, LookupError) as e:   # LookupError: unknown XML encoding
             return fail(e)
 
         def unavailable(reason):

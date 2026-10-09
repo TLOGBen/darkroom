@@ -290,6 +290,8 @@ class TestPageStructure(unittest.TestCase):
         self.assertIn("const presetSaved = (name) => `已存成 preset：${name}`;", logic)
         self.assertIn("const importSummary = (ok, fail) => `已匯入 ${ok} 個，${fail} 個沒有匯入`;", logic)
         self.assertIn("const FAV_EMPTY = '還沒有最愛，按 preset 旁的 ☆ 加入';", logic)
+        self.assertIn("const groupCreated = (group) => `已建立群組：${group}`;", logic)       # seal F4
+        self.assertIn("(r) => L.groupCreated(r.group));", read("app.js"))
         from darkroom_app import cli
         m = __import__("re").search(r"const importedLine = \(id\) => `([^`]*)`;", logic)
         self.assertEqual(m.group(1).replace("${id}", "{id}"), cli.IMPORTED)
