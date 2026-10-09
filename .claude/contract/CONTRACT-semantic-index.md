@@ -1,0 +1,60 @@
+# CONTRACT — darkroom preset 語意索引（Claude 看 preset 效果 → 風格標籤 → 搜尋比對）
+<!-- 此處採預設：決定由主 session 2026-10-10 與使用者定案，執行者依派工撰寫，不再問使用者 -->
+
+## 目標
+1466 個 preset 只能用名稱搜（搜「底片」0 筆）。每個 preset 在 100% 強度下套在 4 張公開標準圖上，送 Claude（Haiku 5.5，Message Batches）產生一句描述＋中英風格標籤，存成 `<庫根>/semantic.json`（key＝xmp 內容雜湊）；`presets list --query` 同時比對名稱、群組、語意標籤（中英文）。能偵測就不叫人設定；缺任何一項就安靜關掉並回一句固定原因。搜尋永遠不需要金鑰。
+
+## 前提（Premises）
+- S1 已驗（`pip install --dry-run anthropic==1.13.0`，2026-10-10）：只會裝 anthropic、docstring_parser、httpcore2、httpx2、jiter、sniffio、truststore；torch／numpy／pillow／aiohttp／opencv 都不動。已裝（使用者同意的唯一一次新增）。
+- S2 已驗（SDK 1.13.0 內省）：`MessageCreateParamsBase` 有 `output_config`；`client.messages.batches` 有 `create/retrieve/results/cancel`；`count_tokens` 存在。Haiku 5.5 定價（claude-api skill 快取 2026-10-06）：輸入 $0.10／M、輸出 $0.50／M，Batches 5 折；thinking 預設 adaptive、effort 預設 medium、不收 budget_tokens、不收 prefill。
+- S3 已驗（`E:/llm/scratch/lr-calibration/sources/`）：`real-portrait.jpg` 8256×5504、`real-landscape.jpg` 9787×5000、`real-night.jpg` 4592×3056、`real-fog.jpg` 4340×2893；`op` CLI 2.40.0 在 PATH。
+- S4 已驗（`presets.py`、`services/presets.py`、`test_http_golden.PRESET_ROW`）：列恰 6 欄（K9）；query 只比對 name／group；`Library` 的檔案快取已算每個 xmp 的 sha256。前端 `logic.js matchPreset` 只看 name＋group。
+- S5 已驗（`_writeguard.py:40`、`test_initiator_rules`）：G3 產品子程序只有 `gpucheck → nvidia-smi.exe`；`_popen_allowed(executable, args, who)` 是純函式，可直接測形狀。
+- S6 未驗、不入條文為事實：Haiku 5.5 對 512px 合成圖的實際 token 數與標籤品質——由主 session 封緘後對 3 個 preset 試跑驗證；本片以估算公式與固定上限守住費用。
+
+## 可斷言條文
+- [ ] SI1（模組與分層）：新增恰一個會寫檔的模組 `darkroom_app/services/semantic_index.py`（G10 白名單 3→4；`SAFE_WRITE_USERS` 常數同步）；它是全產品唯一能開 `op.exe` 的模組（見 WG15 補丁）；模組頂層不得 import torch／cv2／anthropic（`presets semantic status`、`presets list` 跑完 `sys.modules` 不得有 torch、cv2）。讀 `semantic.json` 的邏輯放 `presets.py`（只讀）。facade 新增 2 個操作（第 25、26 個，依序）：`semantic_build(limit=None, dry_run=False, wait_seconds=None)`、`semantic_status()`；OPERATIONS／HTTP／CLI／MCP 見常數「操作表」。
+- [ ] SI2（能力偵測，固定句）：`available` 為 true 的充要條件＝三項同時成立：(a) `anthropic` 可 import；(b) 金鑰來源存在：`config.local.json` 的 `anthropic_api_key_ref`（非空字串）或環境變數 `DARKROOM_ANTHROPIC_API_KEY`（非空）；(c) 標準圖資料夾（設定鍵 `calibration_sources_dir`，預設 `<localllms_root>/scratch/lr-calibration/sources`）裡 4 個常數檔名都存在。缺的話 `reason` 恰為常數三句之一，判斷順序 (a)→(b)→(c)，只回第一個缺的。`semantic_status` 不跑 `op`、不連網、不碰 GPU、不寫檔；`semantic_build` 在 `available` 為 false 時丟 unavailable、message＝同一句 reason，什麼都不做。
+- [ ] SI3（金鑰只在記憶體）：金鑰只在 `semantic_build`（非 dry-run）需要時取得：有 `anthropic_api_key_ref` → `subprocess.run(["op","read",<ref>], capture_output=True, timeout=30)` 的 stdout 去頭尾空白；否則環境變數。取得的字串只傳給 `anthropic.Anthropic(api_key=…)`，不存進任何屬性以外的地方、不寫檔、不進 log、不進任何 DarkroomError／結果／stderr／stdout。失敗 → unavailable「無法取得 Anthropic 金鑰：{reason}」，reason 恰為常數四句之一，永不含 op 的 stdout／stderr。釘死：`test_key_never_leaks`（假 op 回 `sk-ant-TESTSECRET…`，比對 CLI stdout／stderr、MCP 輸出、`semantic.json`、例外訊息都不含它）。
+- [ ] SI4（輸入只有公開照片，渲染不落檔）：每個 preset 的 batch 請求恰含 4 張 JPEG（順序 portrait、landscape、night、fog），每張是「左原圖｜右套 preset 100%」的並排合成圖：原圖先縮到長邊 512（INTER_AREA），渲染走 `Engine.render_full(small, effective_params(params, 1.0, {}), 8)`，合成與 JPEG 編碼（品質 85）全在記憶體；整個流程零寫檔（write-guard）、不開使用者任何照片（唯一讀的路徑＝常數 4 檔）。GPU 工作一律經 `on_gpu`。禁止：把 `preset_dir`、照片庫、縮圖快取的任何檔案當輸入。
+- [ ] SI5（請求形狀）：`model="claude-haiku-5-5"`、`max_tokens=2048`、`output_config={"effort":"low","format":{"type":"json_schema","schema":常數 SCHEMA}}`、`system`＝常數提示、不帶 `thinking`、不帶 `budget_tokens`、沒有 assistant prefill；`custom_id`＝該 preset 的 sha256（64 hex）；結果一律用 `custom_id` 對應，不依順序。回應以 `json.loads(第一個 text block)` 解析後逐欄驗證（欄位恰為 SCHEMA 的 10 個、enum 值合法、陣列元素都是非空字串、confidence 是 0..1 的數）；不合格的視為該筆失敗（`failed` 計數、記進 `errors`），不寫進 entries。
+- [ ] SI6（索引格式與位置）：`<庫根>/semantic.json`（庫根＝K1／KP2 的 `Library.root`），內容恰為常數「語意索引 schema」；entries 的 key＝xmp 內容 sha256（改名、搬移不重跑；內容變了就視為新 preset）；UTF-8 無 BOM。所有寫入走 `safe_write`（root＝庫根、`preset_dir=`）：`create_new(semantic.json.tmp-{pid}-{12 hex})`＋`replace_into`，鎖＝`open_lock(semantic.json.lock)`（msvcrt 同 KP8，等鎖 5 秒 → conflict 同 LIB_BUSY 句），失敗一律先 `remove(tmp)`。讀：壞檔或 schema 不對 → 當成空索引（不改名、不刪；status 的 `index_state` 回 `bad`）。`semantic.json` 存在與否不影響任何既有操作；K3 讀取類零寫入照舊（status 也零寫入）。
+- [ ] SI7（只送還沒做的）：待辦＝支援的 preset（有 Params）之中，sha256 既不在 entries、也不在任何 in-flight batch 的 `items` 裡；`--limit N` 取排序後（依 B3 列順序）前 N 個；N 不是 ≥1 的整數 → invalid 常數句。`dry_run=True`：不取金鑰、不碰 GPU、不連網、不寫檔，回 `{state:"dry_run", planned, estimated_usd, budget_usd, …}`。
+- [ ] SI8（費用防護）：送出前先算 `estimated_usd`＝Σ每筆［(影像 tokens＋文字 tokens)×0.10＋2048×0.50］÷1e6×0.5，影像 tokens＝ceil(w×h/750) 逐張合成圖、文字 tokens＝ceil(len(system＋user 文字)/3)；上限＝設定鍵 `semantic_index_budget_usd`（預設 5.0；不是正數 → 當成預設）；`estimated_usd > budget_usd` → invalid 常數句、什麼都不送。每個收回的 batch 都把實際 usage（Σ input_tokens、output_tokens、cache_*）與 `cost_usd`（同價表×0.5）追加進 `semantic.json` 的 `usage` 陣列並放進結果 `usage`。
+- [ ] SI9（Batches 流程與可中斷）：build 先收回所有已登記且 `processing_status=="ended"` 的 batch（results 逐筆對應 sha；`succeeded` 寫 entries、其他記 errors），再送新的（`client.messages.batches.create`，一次最多 `BATCH_MAX`＝500 筆，多的分多個 batch），把 batch id＋items 登記進 `semantic.json` 後才開始等；每 15 秒 `retrieve` 一次直到 ended 或超過 `wait_seconds`（CLI 預設 3600、MCP 預設 0；超時只是回 `state:"submitted"`，再跑一次 build 會收回）。`anthropic.APIError` 及其子類 → unavailable「Anthropic API 錯誤：{detail}」（detail＝一行化的 str(e)）。結果形狀見常數。
+- [ ] SI10（搜尋比對語意）：`list_presets(query)` 的比對集合＝name、group、`tags_zh`、`tags_en`、`good_for`、`look_zh`、`look_en`（casefold 子字串，任一命中即列出）；`favorites`／`offset`／`limit` 規則不變。每列第 7 欄 `tags`＝`tags_zh`＋`tags_en`（去重、保序；沒索引＝`[]`），修訂 K9／KP10 的六欄為七欄（`ROW_KEYS`、`PRESET_ROW`、`_fakes`、golden 同步，逐處記在實作補丁）。前端 `logic.matchPreset(p, q)` 的 hay 加入 `p.tags`；列的 `title` 在有 tags 時為「{group} / {name}｜{tags 以 、 連接}」。釘死：`test_query_matches_semantic_tags`（中文「底片」與英文「film」各命中一個名稱不含該字的 preset）、`tests/js/test_logic.cjs` 加 tags 案例。
+- [ ] SI11（三入口）：HTTP `POST /api/preset-library/semantic/build` 不呼叫 facade，一律 400 常數句（網頁上不能花錢）；`GET /api/preset-library/semantic` 回 `semantic_status()`；兩條都過 `_local_only`。CLI `presets semantic build [--limit N] [--dry-run] [--wait-seconds S]`、`presets semantic status`，`--json` 信封同 L9；MCP `darkroom_semantic_build`（annotations 恰為 `{"readOnlyHint":false,"destructiveHint":false,"idempotentHint":false,"openWorldHint":true}`）、`darkroom_semantic_status`（唯讀）。`test_interface_parity` 加情境：status（三邊 `available`／`reason`／`indexed`／`total` 相同）、build 在功能關閉時（CLI 與 MCP 同一句 unavailable；HTTP 400 常數句）、build dry-run（CLI 與 MCP `planned`、`estimated_usd` 相同）。
+- [ ] SI12（測試與回歸）：測試一律注入假 `anthropic` 客戶端（`client_factory`）、假金鑰讀取（`key_reader`）、假渲染（`renderer`）與假 sleep；不打真 API、不跑 op、不碰 GPU；全程 write-guard。必測：金鑰不外洩（SI3）、cache key 是內容雜湊（改檔名後 status 的 `indexed` 不變；改內容後變待辦）、超預算被拒且 `batches.create` 未被呼叫、三種關閉原因各一、限制 limit、搜尋命中中英標籤、`dry_run` 零副作用、結果用 custom_id 亂序對應、壞回應記 errors 不寫 entries、usage 入帳。`python -s -m unittest discover -s tests` 結束碼 0；`node --test`；preset 合併雜湊仍 `15C015CC0C080FF9`、1466 個。
+- [ ] SI13（文件與相依）：`requirements.txt` 加 `anthropic==1.13.0`（標選用）；AGENTS.md／CLAUDE.md／docs/agent-install.md 的工具數 24→26，CLI 表與 MCP 表加兩列，`darkroom-presets` skill 說明語意搜尋與建立索引的費用；`config.local.json` 新鍵在 AGENTS.md 說明（值只放 1Password 參照，不放金鑰）。
+
+## 錯不起表面（Surface Inventory）
+| 表面 | 格式 | 影響（資產 → 後果｜類別） | 釘死測試 |
+|------|------|--------------------------|----------|
+| 金鑰（SI3） | 只進 `api_key=` | 使用者的 Anthropic 金鑰 → 落進檔案／log／回報就外洩，得撤銷重發｜不可逆／資料 | `test_key_never_leaks`、`test_initiator_rules`（op 形狀） |
+| 送出的影像（SI4） | 恰 4 張常數來源的合成圖 | 使用者的私人照片 → 被上傳到雲端｜不可逆／資料 | `test_only_calibration_sources_are_sent`、`test_build_never_writes_photos` |
+| 費用閘（SI8） | 常數句、不送 | 使用者的錢 → 一次指令花掉幾十美元｜邏輯核心 | `test_over_budget_refused`、`test_estimate_formula` |
+| `semantic.json`（SI6） | schema、sha key、原子寫 | 使用者已付費算好的標籤 → 寫一半全丟、或改個檔名就重花錢｜不可逆／資料 | `test_index_key_is_content_hash`、`test_index_atomic_and_safe_write` |
+| 列第 7 欄與搜尋（SI10） | 七欄、比對集合 | 前端與代理 → 欄位對不上左欄壞掉；搜「底片」仍 0 筆｜上下游契約 | `test_api_presets_shape`、`test_query_matches_semantic_tags`、`test_logic.cjs` |
+| 三入口句子（SI2、SI11） | 常數句逐字 | 代理 → 不同入口說法不同，照錯的去設定｜上下游契約 | `test_interface_parity`、`test_http_golden` 路由數 |
+| HTTP build 拒絕（SI11） | 400 常數句 | 使用者的錢 → 網頁一按就送 batch｜邏輯核心 | `test_semantic_build_refused_over_http` |
+
+## Verbatim Constants
+```text
+模型：claude-haiku-5-5 ｜ 價表（USD／M tokens）：輸入 0.10、輸出 0.50 ｜ Batches 折扣 0.5 ｜ max_tokens 2048 ｜ effort low ｜ BATCH_MAX 500 ｜ POLL_S 15 ｜ CLI wait 預設 3600 ｜ MCP wait 預設 0 ｜ op read timeout 30 s
+估算：影像 tokens＝ceil(w*h/750) ｜ 文字 tokens＝ceil(len(text)/3) ｜ estimated_usd＝Σ((img+text)*0.10 + 2048*0.50)/1e6*0.5
+設定鍵：anthropic_api_key_ref ｜ semantic_index_budget_usd（預設 5.0） ｜ calibration_sources_dir（預設 <localllms_root>/scratch/lr-calibration/sources） ｜ 環境變數：DARKROOM_ANTHROPIC_API_KEY
+標準圖（順序固定）：real-portrait.jpg ｜ real-landscape.jpg ｜ real-night.jpg ｜ real-fog.jpg ｜ 長邊 512 ｜ 合成：左原圖右 preset ｜ JPEG 品質 85
+語意索引 schema：{"schema":"darkroom-semantic-index/1","model":"claude-haiku-5-5","entries":{"<sha256>":{"look_zh":…,"look_en":…,"tags_zh":[…],"tags_en":[…],"tone":"dark|balanced|bright","contrast":"low|medium|high","saturation":"muted|natural|vivid|monochrome","temperature":"cool|neutral|warm","good_for":[…],"confidence":0..1,"at":unix秒}},"batches":{"<batch_id>":{"created":unix秒,"items":{"<sha256>":"<preset id 當時>"}}},"usage":[{"batch":id,"at":unix秒,"input_tokens":n,"output_tokens":n,"cache_creation_input_tokens":n,"cache_read_input_tokens":n,"cost_usd":x,"succeeded":n,"failed":n}]}
+SCHEMA（output_config.format）：{"type":"object","properties":{"look_zh":{"type":"string"},"look_en":{"type":"string"},"tags_zh":{"type":"array","items":{"type":"string"}},"tags_en":{"type":"array","items":{"type":"string"}},"tone":{"type":"string","enum":["dark","balanced","bright"]},"contrast":{"type":"string","enum":["low","medium","high"]},"saturation":{"type":"string","enum":["muted","natural","vivid","monochrome"]},"temperature":{"type":"string","enum":["cool","neutral","warm"]},"good_for":{"type":"array","items":{"type":"string"}},"confidence":{"type":"number"}},"required":["look_zh","look_en","tags_zh","tags_en","tone","contrast","saturation","temperature","good_for","confidence"],"additionalProperties":false}
+檔案：semantic.json ｜ semantic.json.tmp-{pid}-{12 hex} ｜ semantic.json.lock
+關閉原因（SI2，依序只回第一個）：需要 anthropic 套件：python -s -m pip install anthropic==1.13.0 ｜ 需要在 config.local.json 設定 anthropic_api_key_ref（1Password 參照，例如 op://<vault>/<item>/credential），或設定環境變數 DARKROOM_ANTHROPIC_API_KEY ｜ 需要標準圖：{dir} 裡要有 real-portrait.jpg、real-landscape.jpg、real-night.jpg、real-fog.jpg
+unavailable：無法取得 Anthropic 金鑰：{reason}（reason：找不到 op（1Password CLI） ｜ op read 結束碼 {code} ｜ op read 逾時 ｜ op read 回傳空值） ｜ Anthropic API 錯誤：{detail} ｜ 無法寫入語意索引：{reason}   conflict：preset 庫正被其他程式修改，請稍後再試（沿用 LIB_BUSY）
+invalid：limit 必須是 1 以上的整數 ｜ 預估費用 {usd:.4f} 美元超過上限 {budget:.2f} 美元（設定鍵 semantic_index_budget_usd） ｜ wait_seconds 必須是 0 以上的數   單筆 error：回應不合格式：{reason} ｜ 批次結果：{result_type}
+HTTP 入口句（400）：{"error": "semantic build is not accepted over HTTP (use the CLI or MCP)"}
+操作表：semantic_build(limit=None,dry_run=False,wait_seconds=None) ｜ POST /api/preset-library/semantic/build（入口拒絕） ｜ presets semantic build [--limit N] [--dry-run] [--wait-seconds S] ｜ darkroom_semantic_build；semantic_status() ｜ GET /api/preset-library/semantic ｜ presets semantic status ｜ darkroom_semantic_status
+status 結果：{"available":bool,"reason":str|null,"model":"claude-haiku-5-5","index_state":"missing|ok|bad","indexed":n,"total":n,"pending":n,"in_flight":[batch id…],"budget_usd":x,"last_usage":{…}|null}
+build 結果：{"state":"dry_run|nothing|submitted|done","model":…,"planned":n,"estimated_usd":x,"budget_usd":x,"batch_ids":[…],"collected":n,"failed":n,"errors":[{"sha256":…,"preset_id":…,"error":…}],"indexed":n,"total":n,"pending":n,"usage":{…}|null}
+列（修訂 K9）：id, group, name, supported, skipped, favorite, tags ｜ 前端 title：{group} / {name}｜{tags 以 、 連接}
+G10 白名單：("services/export.py", "services/preset_library.py", "services/photo_library.py", "services/semantic_index.py") ｜ MCP 工具順序：…darkroom_edit_save_preset, darkroom_semantic_build, darkroom_semantic_status
+preset 合併雜湊：15C015CC0C080FF9 ｜ 數量：1466
+```
