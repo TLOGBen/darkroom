@@ -21,15 +21,23 @@
 - [ ] H5：方向：像素照 libheif 套用 irot／imir 後的結果，不再套 EXIF Orientation；EXIF 方向 3、6、8 的測試檔讀回後等於來源經 PIL 對應轉置（3＝ROTATE_180、6＝ROTATE_270、8＝ROTATE_90），差在 H4 的 8-bit 容差內。
 - [ ] H6：壞檔（截斷、空檔、亂碼、副檔名對但內容不是 HEIC）→ `read_image` 拋 `ValueError`（原因句型見常數），程序不得當掉；影像資料部分損毀但 libheif 仍解得出時，回傳解出的像素或 `ValueError`，兩者皆可、不得當掉；CLI `apply` 印「錯誤（照片）」行、結束碼 2、不產生輸出；App `POST /api/open` 回 400 與「App 開檔錯誤」句型，之後的請求照常回應。
   內嵌 ICC／nclx 損壞但像素解得出時（ICC 截斷到 200 bytes、最後一個標籤被截斷、600 bytes 亂碼）：一律拋 `ValueError`，原因句型見常數「描述檔損壞原因」，CLI 印「錯誤（照片）」行、結束碼 2、不印 traceback，App 回 400、之後照常回應（決定：不退回當 sRGB 讀——顏色會默默錯掉；iPhone 寫的描述檔是完好的，壞掉代表檔案本身有問題；封緘第 1 輪 F1）。
-- [ ] H7：App：`.heic`／`.heif` 出現在開啟允許的格式與 `GET /api/folder` 清單（依檔名排序規則不變）；`/api/open` 的 `width`／`height` 是轉正後的尺寸；B7 延遲驗收照舊（R1 跳過規則）。
+- [ ] H7：App：`.heic`／`.heif` 出現在開啟允許的格式與 `GET /api/folder` 清單（依檔名排序規則不變）；`/api/open` 的 `width`／`height` 是轉正後的尺寸；B7 延遲驗收照舊（R1 跳過規則）。畫面上的格式提示（照片路徑欄位的 placeholder）與 CLI `apply` 的 help 都列出 HEIC（封緘第 2 輪 N2：`test_photo_path_hint_lists_heic`、`test_cli_help_mentions_heic`）。
 - [ ] H8：CLI：`apply` 接受 HEIC 輸入，輸出格式不變（`.heic` 當輸出＝「錯誤（格式）」）。
 - [ ] H9：測試只用程式產生的 HEIC（`tests/_heicgen.py`：Display P3 與 sRGB 各一、8-bit 與 10-bit 各一、方向標記、含縮圖與第二張影像各一），Display P3 描述檔由 `tests/_iccgen.py` 組出；不用使用者照片；`python -s -m unittest discover -s tests` 結束碼 0、preset 合併雜湊仍為 `15C015CC0C080FF9`。
 - [ ] H10（App 外殼 N1）：`app.js` 對 `ed` 的賦值恰為 `let ed = L.initialEditor()` 與 `ed = L.reduce(ed, action)` 兩處（結構測試），反向驗證：在 `selectPreset` 加 `ed = Object.assign({}, ed, {strength: 100, tweaks: {}})` 必須變紅。
 - [ ] H11（App 外殼 N2）：R6「不得藏掉」的禁止清單擴充為 `display:none`、`visibility:hidden`、`width:0`、`height:0`、`opacity:0`（任何 media query），以及 `index.html` 裡這些元素不得帶 `hidden` 屬性（換照片提示除外：它依 R5 條件由程式切換）。
-  判斷方式（封緘第 1 輪 F4）：CSS 依巢狀區塊解析，任何深度的 `@media` 內（含 `@media` 裡的 `@supports`）都算；選擇器先依頂層逗號拆開逐項判斷；禁止的藏法另含 `visibility:collapse`、寬高 ≤ 1px、`clip: rect(…)`、`clip-path`、`transform: scale(0)`、`font-size:0`、大幅負的 `text-indent`／`left`／`right`／`top`。例外與 R6 相同：只准裁掉縮成圖示的控制項的長文字子元素（逐項選擇器以 `.hint-text` 或 `.btn-text` 結尾）。
+  判斷方式（封緘第 1 輪 F4）：CSS 依巢狀區塊解析，任何深度的 `@media` 內（含 `@media` 裡的 `@supports`）都算；原生 CSS nesting 也算：樣式規則裡的樣式規則以合併後的選擇器（「外層 內層」，或把 `&` 換成外層）判斷，樣式規則裡的 at-rule 沿用外層選擇器（封緘第 2 輪 N1：`TestHidingJudge`）；選擇器先依頂層逗號拆開逐項判斷；禁止的藏法另含 `visibility:collapse`、寬高 ≤ 1px、`clip: rect(…)`、`clip-path`、`transform: scale(0)`、`font-size:0`、大幅負的 `text-indent`／`left`／`right`／`top`。例外與 R6 相同：只准裁掉縮成圖示的控制項的長文字子元素（逐項選擇器以 `.hint-text` 或 `.btn-text` 結尾）。
 
 - [ ] H12（開檔時間，封緘第 1 輪 F6）：24MP（4284×5712）10-bit Display P3 HEIC、512 px 格狀切塊（iPhone 的存法）、quality 90，`read_image` 熱機後 5 次的中位數 ≤ 1.5 秒；量測前照 R1 判斷 GPU 是否忙碌，忙碌就跳過並印出原因（`test_read_image_24mp_median`）。libheif 解碼執行緒數＝min(16, CPU 核心數)。
 - [ ] H13（兩個介面一致，封緘第 1 輪 F5）：`read_image` 拋出的錯誤，`str(e)` 一定是單行原因（libheif 等外部訊息在源頭收成單行）；CLI 與 App 都原樣使用 `str(e)`、不另外加工。外框句型刻意不同：CLI 是「照片讀取失敗：{input_path}：{reason}」（完整路徑，使用者在命令列打的就是路徑），App 是「照片讀取失敗：{file_name}：{reason}」（只有檔名，畫面空間有限）；同一個壞檔兩邊的 {reason} 必須逐字相同（`test_cli_and_app_same_reason`：截斷 HEIC、壞 ICC、壞 JPEG）。
+
+## 封緘第 2 輪處置紀錄（2026-10-09）
+- 已修並釘死：N1（H11 判斷漏掉原生 CSS nesting）、N2（畫面與 CLI 的格式提示沒列 HEIC）、N6（8-bit P3 缺「忽略描述檔誤差 > 10 倍容差」反證：`test_p3_8bit_ignoring_profile_is_far_off`）、N7（`one_line` 沒有 judge：`test_multiline_library_message_is_one_line`）。
+- 記錄、不修（低嚴重度，留給使用者決定）：
+  - N3：三處「unsupported …（JPEG/PNG/TIFF/HEIC）」訊息（`darkroom/_io.py`、`darkroom_app/engine.py`、`darkroom_app/server.py`）沒有釘死測試；不入 Surface Inventory。
+  - N4：`_heif.py` 的色彩階段用 `except Exception` 包住，MemoryError 或程式錯誤也會被報成「內嵌色彩描述檔損壞」；已知限制（診斷文字可能不精確，但仍是 ValueError、不當掉、不改檔）。
+  - N5：只有 nclx（沒有 ICC）時只看 `color_primaries`，不看 `transfer_characteristics`；linear／PQ／HLG 的 nclx 會被當 sRGB 曲線讀。已知限制，與 P5 一起等真實樣本。
+  - N8：JPEG 等非 HEIC 的 reason（`cannot decode image {path}`）含完整路徑，App 外框只放檔名的理由因此不完全成立；不在本片 diff 範圍。
 
 ## 錯不起表面（Surface Inventory）
 | 表面 | 格式 | 影響（資產 → 後果｜類別） | 釘死測試 |
