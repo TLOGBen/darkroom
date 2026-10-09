@@ -1,4 +1,5 @@
 # CONTRACT — darkroom 分層切片（controller → facade → service；CLI 與 MCP 骨架）
+> STATUS: sealed（2026-10-09）— L1～L15＋S1～S8 符合；2 處修正（os.open 守門、CLI 用法錯誤一行）各附釘死測試；複驗 34 支探針全紅、全數還原；黑名單繞法移交 write-guard 戰線
 
 ## 目標
 ADR-0001 落地：`server.py` 裡的規則搬進 `darkroom_app/services/`，HTTP handler 只做格式轉換；新增給代理用的 CLI（`python -s -m darkroom_app.cli`）和 MCP stdio server（`python -s -m darkroom_app.mcp_server`）。三個入口呼叫同一個 facade，同一件事得到同一句錯誤。HTTP 對外行為逐字不變；這一片不寫任何檔、不新增 HTTP 路由、不碰核心 `darkroom/`、不翻譯任何句子。
