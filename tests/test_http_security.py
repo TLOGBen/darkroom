@@ -25,6 +25,10 @@ ROUTES = [("GET", "/"), ("GET", "/api/health"), ("GET", "/api/presets"), ("GET",
           ("POST", "/api/edit/paste"), ("POST", "/api/edit/save-preset"),
           ("GET", "/api/folder/thumbnails?folder=f"), ("GET", "/api/thumbnail?path=a.jpg")]
 DATA_DIR_REFUSED = "data_dir is not accepted over HTTP (it is configured)"            # verbatim (PLP2)
+FETCH_SITE_REFUSED = "request refused: cross-site request (Sec-Fetch-Site {value})"   # verbatim (PLP11)
+DARKROOM_HEADER_REFUSED = "request refused: X-Darkroom header required"              # verbatim (PLP11)
+PATH_GETS = [("GET", "/api/folder?image_id=i"), ("GET", "/api/edit?path=a.jpg"),
+             ("GET", "/api/folder/thumbnails?folder=f"), ("GET", "/api/thumbnail?path=a.jpg")]   # verbatim (PLP11)
 
 
 class _NoEngine:
@@ -53,7 +57,8 @@ class SecurityCase(AioHTTPTestCase):
         with_body = method in ("POST", "PUT")
         h = {"Content-Type": "application/json", **(headers or {})} if with_body else dict(headers or {})
         r = await self.client.request(method, path, headers=h, data=body if with_body else None)
-        return r.status, await r.text()
+        raw = await r.read()
+        return r.status, raw.decode("utf-8", "replace")     # a thumbnail answer is JPEG bytes (PLP11 test)
 
 
 class TestRefused(SecurityCase):
@@ -110,7 +115,45 @@ class TestRefused(SecurityCase):
                 self.assertEqual((r.status, await r.json()), (400, {"error": DATA_DIR_REFUSED}), (path, dd))
         self.assertEqual(self.fake.calls, [])
 
-    async def test_check_order(self):  # Host -> Origin -> Content-Type -> route
+    async def test_cross_site_fetch_site_refused(self):  # PLP11 (1): <img src> / <script src> from another page
+        for value in ("cross-site", "same-site", "Cross-Site"):
+            for method, path in ROUTES:
+                status, text = await self.send(method, path, {"Sec-Fetch-Site": value, "X-Darkroom": "1"})
+                self.assertEqual((status, json.loads(text)), (403, {"error": FETCH_SITE_REFUSED.format(value=value)}),
+                                 (value, path))
+        self.assertEqual(self.fake.calls, [])
+        for value in ("same-origin", "none"):
+            for method, path in (("GET", "/"), ("GET", "/api/presets"), ("GET", "/static/app.js")):
+                status, _ = await self.send(method, path, {"Sec-Fetch-Site": value})
+                self.assertEqual(status, 200, (value, path))
+
+    async def test_path_reading_gets_need_the_darkroom_header(self):  # PLP11 (2)
+        for method, path in PATH_GETS:
+            status, text = await self.send(method, path)
+            self.assertEqual((status, json.loads(text)), (403, {"error": DARKROOM_HEADER_REFUSED}), path)
+            status, text = await self.send(method, path, {"X-Darkroom": "0"})
+            self.assertEqual(status, 403, path)
+        self.assertEqual(self.fake.calls, [])
+        for method, path in PATH_GETS:
+            status, _ = await self.send(method, path, {"X-Darkroom": "1"})
+            self.assertEqual(status, 200, path)
+        self.assertEqual([c[0] for c in self.fake.calls], ["list_folder", "get_edit", "folder_thumbnails", "thumbnail"])
+        for method, path in (("GET", "/api/presets"), ("GET", "/"), ("DELETE", "/api/edit?path=a.jpg")):
+            status, _ = await self.send(method, path)                        # the other routes need no header
+            self.assertEqual(status, 200, path)
+
+    async def test_check_order(self):  # Host -> Sec-Fetch-Site -> Origin -> Content-Type -> X-Darkroom -> route
+        status, _ = await self.send("GET", "/api/folder?image_id=i", {"Host": "evil.example", "Sec-Fetch-Site": "cross-site",
+                                                                       "Origin": "http://evil.example"})
+        self.assertEqual(status, 421)
+        status, text = await self.send("GET", "/api/folder?image_id=i", {"Sec-Fetch-Site": "cross-site",
+                                                                          "Origin": "http://evil.example"})
+        self.assertEqual((status, json.loads(text)["error"]), (403, FETCH_SITE_REFUSED.format(value="cross-site")))
+        status, text = await self.send("GET", "/api/folder?image_id=i", {"Origin": "http://evil.example"})
+        self.assertEqual((status, json.loads(text)["error"]), (403, ORIGIN_REFUSED.format(origin="http://evil.example")))
+        status, text = await self.send("POST", "/api/export", {"Content-Type": "text/plain", "Sec-Fetch-Site": "same-site"})
+        self.assertEqual((status, json.loads(text)["error"]), (403, FETCH_SITE_REFUSED.format(value="same-site")))
+        self.assertEqual(self.fake.calls, [])
         status, _ = await self.send("POST", "/api/export", {"Host": "evil.example", "Origin": "http://evil.example",
                                                             "Content-Type": "text/plain"})
         self.assertEqual(status, 421)
@@ -135,8 +178,12 @@ class TestAllowed(SecurityCase):
     def test_front_end_posts_json(self):  # XP16 (5): api() declares the body as JSON
         with open(os.path.join(_util.REPO, "darkroom_app", "static", "app.js"), encoding="utf-8") as f:
             js = f.read()
-        self.assertIn("headers: body ? {'Content-Type': 'application/json'} : {}", js)
+        self.assertIn("headers: Object.assign({'X-Darkroom': '1'}, body ? {'Content-Type': 'application/json'} : {})", js)
         self.assertEqual(js.count("fetch("), 1)                         # every request goes through api()
+        with open(os.path.join(_util.REPO, "darkroom_app", "static", "index.html"), encoding="utf-8") as f:
+            html = f.read()
+        self.assertNotRegex(html + js, r"""src=["'`]?/api/""")           # PLP11: thumbnails come through api()
+        self.assertNotIn("new Image(", js.replace("tmp = new Image();", ""))   # the preview swap only
 
 
 class TestRealFacadeUntouched(AioHTTPTestCase):  # a refused export reads and writes nothing
@@ -163,13 +210,19 @@ class TestRealFacadeUntouched(AioHTTPTestCase):  # a refused export reads and wr
                                        ("POST", "/api/edit/save-preset", {"path": photo, "name": "n"})):
                 r = await self.client.request(method, path, data=json.dumps(body).encode(), headers=headers)
                 self.assertIn(r.status, (403, 415, 421), (path, headers))
+        gets = (("GET", f"/api/edit?path={photo}"), ("DELETE", f"/api/edit?path={photo}"),
+                ("GET", f"/api/thumbnail?path={photo}"), ("GET", f"/api/folder/thumbnails?folder={self.photos}"))
         for headers in evil[1:]:                      # GET / DELETE carry no body: Origin and Host decide
-            for method, path in (("GET", f"/api/edit?path={photo}"), ("DELETE", f"/api/edit?path={photo}"),
-                                 ("GET", f"/api/thumbnail?path={photo}"),
-                                 ("GET", f"/api/folder/thumbnails?folder={self.photos}")):
+            for method, path in gets:
                 r = await self.client.request(method, path, headers={k: v for k, v in headers.items()
                                                                      if k != "Content-Type"})
                 self.assertIn(r.status, (403, 421), (path, headers))
+        for method, path in gets:                     # PLP11: an <img src> (no header, Sec-Fetch-Site cross-site)
+            r = await self.client.request(method, path, headers={"Sec-Fetch-Site": "cross-site"})
+            self.assertEqual(r.status, 403, path)
+            if method == "GET":
+                r = await self.client.request(method, path)
+                self.assertEqual((r.status, (await r.json())["error"]), (403, DARKROOM_HEADER_REFUSED), path)
         self.assertFalse(os.path.exists(self.data_dir))
         self.assertEqual(snapshot(self.photos, self.presets), before)
 

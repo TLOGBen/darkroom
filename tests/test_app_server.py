@@ -78,6 +78,10 @@ def decode(data):
 class AppCase(AioHTTPTestCase):
     preset_dir = None
 
+    async def get_client(self, server):
+        from aiohttp.test_utils import TestClient
+        return TestClient(server, headers=_util.HTTP_HEADERS)     # PLP11: the page's own header on every request
+
     async def get_application(self):
         from darkroom_app.server import make_app
         self.tmp = _util.tmpdir(self)

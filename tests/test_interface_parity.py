@@ -281,7 +281,7 @@ class TestInterfaceParity(unittest.IsolatedAsyncioTestCase):
         self.f = build_facade(self.presets, engine=eng)
         app = make_app(self.presets, engine=eng)
         app[FACADE] = self.f                      # one facade behind all three interfaces
-        self.client = TestClient(TestServer(app))
+        self.client = TestClient(TestServer(app), headers=_util.HTTP_HEADERS)   # PLP11
         await self.client.start_server()
         self.drivers = [HttpDriver(self, self.client), CliDriver(self, self.f), McpDriver(self, self.f)]
 
@@ -519,7 +519,7 @@ class TestPresetLibraryParity(unittest.IsolatedAsyncioTestCase):  # CONTRACT-pre
         self.switch = _Switch()
         app = make_app(seed, engine=_NoEngine())
         app[FACADE] = self.switch
-        self.client = TestClient(TestServer(app))
+        self.client = TestClient(TestServer(app), headers=_util.HTTP_HEADERS)   # PLP11
         await self.client.start_server()
         self.n = 0
 
@@ -741,7 +741,7 @@ class TestPhotoLibraryParity(unittest.IsolatedAsyncioTestCase):  # CONTRACT-phot
         self.switch = _Switch()
         app = make_app(seed, engine=_NoEngine())
         app[FACADE] = self.switch
-        self.client = TestClient(TestServer(app))
+        self.client = TestClient(TestServer(app), headers=_util.HTTP_HEADERS)   # PLP11
         await self.client.start_server()
         self.n = 0
         self.libs = []

@@ -358,6 +358,10 @@ KINDS = {"invalid": (400, 2), "not_found": (404, 3), "conflict": (409, 4), "unav
 
 
 class TestHttpControllerWithFake(AioHTTPTestCase):  # L7 / L13: HTTP translation only
+    async def get_client(self, server):
+        from aiohttp.test_utils import TestClient
+        return TestClient(server, headers=_util.HTTP_HEADERS)     # PLP11
+
     async def get_application(self):
         from darkroom_app.server import FACADE, make_app
         from test_app_server import make_presets

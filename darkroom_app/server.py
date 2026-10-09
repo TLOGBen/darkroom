@@ -9,10 +9,13 @@ CONTRACT-preset-library K18 / KP1), and the photo library under /api/edit, /api/
 only, CONTRACT-photo-library PLP1 / PLP2). No request names a place to write: import takes uploaded bytes (KP4), the
 photo library's paths are photos that are only read (hashed, decoded), like /api/open.
 
-Cross-site protection (CONTRACT-export XP16, app shell R10): every request first passes `_local_only`: the Host
-header must be 127.0.0.1:{port} or localhost:{port} (DNS rebinding), an Origin header must be the page's own origin,
-and a POST body must be declared application/json (so a cross-site fetch always needs a CORS preflight, which this
-server never answers). Over HTTP, export takes no dest_dir (the editor never picks a folder; CLI / MCP only).
+Cross-site protection (CONTRACT-export XP16, app shell R10 / R11, photo library PLP11): every request first passes
+`_local_only`: the Host header must be 127.0.0.1:{port} or localhost:{port} (DNS rebinding), a Sec-Fetch-Site of
+cross-site / same-site is refused (an <img src> or <script src> from another page), an Origin header must be the
+page's own origin, a POST / PUT body must be declared application/json, and the four GETs that read a photo path
+must carry X-Darkroom: 1 (an img / script tag cannot add it; a cross-site fetch that adds it needs a CORS
+preflight, which this server never answers). Over HTTP, export takes no dest_dir (the editor never picks a folder;
+CLI / MCP only).
 """
 import asyncio
 import os
@@ -42,6 +45,9 @@ CONTENT_TYPE_REFUSED = "request refused: POST body must be application/json"    
 DEST_DIR_REFUSED = "dest_dir is not accepted over HTTP (use the CLI or MCP)"           # verbatim (XP16), 400
 PATHS_REFUSED = "paths is not accepted over HTTP (upload the files)"                   # verbatim (KP4), 400
 DATA_DIR_REFUSED = "data_dir is not accepted over HTTP (it is configured)"             # verbatim (PLP2), 400
+FETCH_SITE_REFUSED = "request refused: cross-site request (Sec-Fetch-Site {value})"     # verbatim (PLP11), 403
+DARKROOM_HEADER_REFUSED = "request refused: X-Darkroom header required"                # verbatim (PLP11), 403
+PATH_READING_GETS = frozenset(("/api/folder", "/api/edit", "/api/folder/thumbnails", "/api/thumbnail"))   # PLP11
 
 
 def _lenient_int(text):
@@ -51,17 +57,22 @@ def _lenient_int(text):
 
 @web.middleware
 async def _local_only(request, handler):
-    """Host -> Origin -> Content-Type, before any route (XP16)."""
+    """Host -> Sec-Fetch-Site -> Origin -> Content-Type -> X-Darkroom, before any route (XP16, PLP11 / R11)."""
     sock = request.transport.get_extra_info("sockname") if request.transport is not None else None
     port = sock[1] if sock else None
     allowed = (f"127.0.0.1:{port}", f"localhost:{port}")
     if request.headers.get("Host", "").lower() not in allowed:
         return web.json_response({"error": HOST_REFUSED.format(port=port)}, status=421)
+    site = request.headers.get("Sec-Fetch-Site")
+    if site is not None and site.lower() in ("cross-site", "same-site"):       # an <img src> from another page
+        return web.json_response({"error": FETCH_SITE_REFUSED.format(value=site)}, status=403)
     origin = request.headers.get("Origin")
     if origin is not None and origin.lower() not in tuple("http://" + a for a in allowed):
         return web.json_response({"error": ORIGIN_REFUSED.format(origin=origin)}, status=403)
     if request.method in ("POST", "PUT") and request.content_type != "application/json":   # PLP2: PUT too
         return web.json_response({"error": CONTENT_TYPE_REFUSED}, status=415)
+    if request.method == "GET" and request.path in PATH_READING_GETS and request.headers.get("X-Darkroom") != "1":
+        return web.json_response({"error": DARKROOM_HEADER_REFUSED}, status=403)   # img / script cannot add it
     return await handler(request)
 
 

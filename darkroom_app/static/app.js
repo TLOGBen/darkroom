@@ -34,7 +34,9 @@ function setStatus(msg, cls, detail) {
 }
 
 async function api(method, url, body) {
-  const r = await fetch(url, {method, headers: body ? {'Content-Type': 'application/json'} : {},
+  // X-Darkroom on every request (PLP11): an <img src> / <script src> from another page cannot add it, and a
+  // cross-site fetch that adds it needs a CORS preflight the server never answers.
+  const r = await fetch(url, {method, headers: Object.assign({'X-Darkroom': '1'}, body ? {'Content-Type': 'application/json'} : {}),
                               body: body ? JSON.stringify(body) : undefined});
   if (!r.ok) {
     let msg = r.status + '';

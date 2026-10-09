@@ -15,6 +15,7 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if REPO not in sys.path:
     sys.path.insert(0, REPO)
 PHOTOS = os.path.join(REPO, ".claude", "wayfinder", "darkroom", "prototypes", "llm-pick-experiment", "photos")
+HTTP_HEADERS = {"X-Darkroom": "1"}   # what the page's api() sends on every request (CONTRACT-photo-library PLP11)
 
 
 def preset_dir():
