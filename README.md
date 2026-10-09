@@ -122,7 +122,7 @@ python -s -m darkroom_app.cli edit get D:/Photos/a.jpg --json
 
 結束碼：`0` 成功、`1` 未預期錯誤、`2` 參數不對、`3` 找不到、`4` 衝突、`5` 暫時無法使用、`6` 批次裡有部分失敗。
 
-**MCP**——stdio server，24 個 `darkroom_*` 工具（列 preset、預覽會回傳圖片給模型看、套用與保存修改、匯出…）。註冊到 Claude Code：
+**MCP**——stdio server，25 個 `darkroom_*` 工具（列 preset、預覽會回傳圖片給模型看、套用與保存修改、匯出…）。註冊到 Claude Code：
 
 ```powershell
 claude mcp add darkroom -- <你的 python> -s -m darkroom_app.mcp_server

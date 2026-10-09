@@ -272,6 +272,58 @@ test('S3: slider baseline comes from the snapshot; banner and note from the libr
   assert.notEqual(d.values, snap.params.values);                                      // copies
 });
 
+test('S7: A/B split keyboard steps and stored value', () => {
+  assert.equal(L.AB_KEY, 'y');
+  assert.equal(L.AB_STORAGE_KEY, 'darkroom.abSplit');
+  assert.equal(L.AB_DEFAULT_SPLIT, 0.5);
+  assert.ok(Math.abs(L.abStep(0.5, 'ArrowLeft', false) - 0.49) < 1e-9);
+  assert.ok(Math.abs(L.abStep(0.5, 'ArrowRight', true) - 0.6) < 1e-9);
+  assert.equal(L.abStep(0.005, 'ArrowLeft', false), 0);
+  assert.equal(L.abStep(0.99, 'ArrowRight', true), 1);
+  assert.equal(L.abStep(0.3, 'Home', false), 0);
+  assert.equal(L.abStep(0.3, 'End', false), 1);
+  assert.equal(L.abStep(0.3, 'a', false), null);
+  assert.equal(L.abSplitFrom('0.25'), 0.25);
+  assert.equal(L.abSplitFrom(null), 0.5);
+  assert.equal(L.abSplitFrom('7'), 0.5);
+  assert.equal(L.abSplitFrom('abc'), 0.5);
+});
+
+test('S8 / S9 / S10: badge titles, the grid filter, reset / restore sentences and the reducer step', () => {
+  assert.equal(L.badgeTitle({preset: '底片 01', strength: 130, status: 'current'}), '底片 01　130%');
+  assert.equal(L.badgeTitle({preset: '底片 01', strength: 130, status: 'changed'}), '底片 01　130%（preset 已變更）');
+  assert.equal(L.badgeTitle({preset: '底片 01', strength: 80, status: 'missing'}), '底片 01　80%（preset 已不在庫裡）');
+  assert.equal(L.badgeTitle({preset: null, strength: 100, status: null}), '只有微調　100%');
+  assert.equal(L.badgeTitle(null), '已編輯');
+  assert.equal(L.stale({status: 'changed'}), true);
+  assert.equal(L.stale({status: 'current'}), false);
+  assert.equal(L.stale(null), false);
+  const items = [{edited: true}, {edited: false}, {edited: null}, {edited: true}];
+  assert.deepEqual(L.gridFilter(items, 'all').shown.map(([i]) => i), [0, 1, 2, 3]);
+  assert.equal(L.gridFilter(items, 'all').pending, 0);
+  assert.deepEqual(L.gridFilter(items, 'edited').shown.map(([i]) => i), [0, 3]);
+  assert.deepEqual(L.gridFilter(items, 'plain').shown.map(([i]) => i), [1]);
+  assert.equal(L.gridFilter(items, 'plain').pending, 1);
+  assert.deepEqual(L.FILTERS, ['all', 'edited', 'plain']);
+  assert.deepEqual(L.FILTER_LABELS, {all: '全部', edited: '已編輯', plain: '未編輯'});
+  assert.equal(L.gridPending(3), '還有 3 張尚未判定');
+  assert.equal(L.resetConfirm(4), '要把 4 張照片還原成原圖嗎？（可用「取回上一份」拿回來）');
+  assert.equal(L.resetDone(3, 1), '已還原 3 張，失敗 1 張');
+  assert.equal(L.restoreDone(2, 0), '已取回 2 張，失敗 0 張');
+  assert.equal(L.RESET_TOAST, '已還原成原圖（Ctrl+Z 可拿回）');
+  assert.equal(L.RESTORE_TOAST, '已取回上一份編輯');
+  let ed = L.reduce(L.initialEditor(), {type: 'selectPreset', id: 'p'});
+  ed = L.reduce(ed, {type: 'setStrength', value: 140});
+  ed = L.reduce(ed, {type: 'setValue', slider: S_CONTRAST, presetValue: 0, value: 30});
+  const r = L.reduce(ed, {type: 'resetToOriginal'});
+  assert.deepEqual([r.presetId, r.strength, r.tweaks], [null, 140, {}]);       // one step; strength kept
+  assert.equal(r.past.length, ed.past.length + 1);
+  const u = L.reduce(r, {type: 'undo'});
+  assert.deepEqual([u.presetId, u.strength, u.tweaks], ['p', 140, {Contrast2012: 30}]);   // Ctrl+Z brings it back
+  const e0 = L.initialEditor();
+  assert.equal(L.reduce(e0, {type: 'resetToOriginal'}), e0);                    // nothing to reset: no step
+});
+
 test('S14: English service sentences are explained in Chinese, unknown ones pass through', () => {
   assert.equal(L.explain('path is required'), '請輸入照片路徑');
   assert.equal(L.explain('photo not found: D:/a.jpg'), '找不到照片：D:/a.jpg');

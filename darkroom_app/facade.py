@@ -56,6 +56,8 @@ class Facade(Protocol):
 
     def save_edit_as_preset(self, path, name, group=None): ...
 
+    def restore_edit(self, path): ...
+
 
 class DarkroomFacade:
     def __init__(self, presets, photos, previews, exports, library, photo_library):
@@ -138,3 +140,7 @@ class DarkroomFacade:
 
     def save_edit_as_preset(self, path, name, group=None):
         return self._photo_library.save_edit_as_preset(path, name, group)
+
+    # CONTRACT-s1-experience S4: operation 25
+    def restore_edit(self, path):
+        return self._photo_library.restore_edit(path)

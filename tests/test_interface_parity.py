@@ -863,6 +863,14 @@ class TestPhotoLibraryParity(unittest.IsolatedAsyncioTestCase):  # CONTRACT-phot
         return f.set_edit(os.path.join(photos, name), "p-expo", 130, {"Exposure2012": 0.2})
 
     @staticmethod
+    def seed_cleared(photos, data, name="a.jpg"):   # S4: an edit that was set and then cleared (kept as previous)
+        from darkroom_app.composition import build_facade
+        pd = os.path.join(os.path.dirname(photos), "lib", "xmp")
+        f = build_facade(pd, data_dir=data)
+        f.set_edit(os.path.join(photos, name), "p-expo", 130, {"Exposure2012": 0.2})
+        return f.clear_edit(os.path.join(photos, name))
+
+    @staticmethod
     def write_edit_file(photos, data, raw):
         import hashlib
         with open(os.path.join(photos, "a.jpg"), "rb") as fh:
@@ -917,6 +925,13 @@ class TestPhotoLibraryParity(unittest.IsolatedAsyncioTestCase):  # CONTRACT-phot
             ("clear (idempotent)", (lambda ph, d: ("DELETE", E, None, {"path": p(ph, "a.jpg")})),
              (lambda ph, d: ["edit", "clear", p(ph, "a.jpg")]),
              (lambda ph, d: ("darkroom_edit_clear", {"path": p(ph, "a.jpg")})), lambda ph: OK, None),
+            ("restore, nothing kept", (lambda ph, d: ("POST", E + "/restore", {"path": p(ph, "a.jpg")})),   # S4
+             (lambda ph, d: ["edit", "restore", p(ph, "a.jpg")]),
+             (lambda ph, d: ("darkroom_edit_restore", {"path": p(ph, "a.jpg")})),
+             lambda ph: Outcome(False, "not_found", "這張照片沒有上一份編輯可以取回：a.jpg"), None),
+            ("restore after clear", (lambda ph, d: ("POST", E + "/restore", {"path": p(ph, "a.jpg")})),   # S4
+             (lambda ph, d: ["edit", "restore", p(ph, "a.jpg")]),
+             (lambda ph, d: ("darkroom_edit_restore", {"path": p(ph, "a.jpg")})), lambda ph: OK, self.seed_cleared),
             ("paste, source and edit",
              (lambda ph, d: ("POST", E + "/paste", {"targets": [p(ph, "b.jpg")], "source": p(ph, "a.jpg"), "edit": {}})),
              None,

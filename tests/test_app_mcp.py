@@ -22,14 +22,15 @@ TOOLS = ["darkroom_presets_list", "darkroom_preset_show", "darkroom_preset_flags
          "darkroom_group_create", "darkroom_group_rename", "darkroom_presets_import", "darkroom_preset_save",
          "darkroom_presets_rebuild",
          "darkroom_edit_get", "darkroom_edit_set", "darkroom_edit_clear", "darkroom_edit_paste",
-         "darkroom_folder_thumbnails", "darkroom_thumbnail", "darkroom_edit_save_preset"]   # PL6 / PLP6: 18..24
+         "darkroom_folder_thumbnails", "darkroom_thumbnail", "darkroom_edit_save_preset",   # PL6 / PLP6: 18..24
+         "darkroom_edit_restore"]                                                           # S4: 25
 LIBRARY_IDEMPOTENT = {"darkroom_preset_rename": True, "darkroom_preset_move": True, "darkroom_preset_favorite": True,
                       "darkroom_presets_rebuild": True, "darkroom_group_create": False, "darkroom_group_rename": False,
                       "darkroom_presets_import": False, "darkroom_preset_save": False,
                       "darkroom_edit_save_preset": False}   # K16, PLP6
 EDIT_ANNOTATIONS = {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": True,
                     "openWorldHint": False}   # verbatim (CONTRACT-photo-library PL6)
-EDIT_TOOLS = ("darkroom_edit_set", "darkroom_edit_clear", "darkroom_edit_paste")
+EDIT_TOOLS = ("darkroom_edit_set", "darkroom_edit_clear", "darkroom_edit_paste", "darkroom_edit_restore")
 EXPORT_ANNOTATIONS = {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False,
                       "openWorldHint": False}   # verbatim (CONTRACT-export XP4)
 MODERN = {"io.modelcontextprotocol/protocolVersion": "2026-07-28"}

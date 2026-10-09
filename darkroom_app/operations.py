@@ -251,7 +251,8 @@ OPERATIONS = {
         "mcp": "darkroom_edit_get",
         "description": "The edit darkroom keeps for a photo (by its content fingerprint, in the app's data folder): "
                        "{fingerprint, edit: null | {schema, fingerprint, preset: null | {id, name, group, params "
-                       "snapshot}, strength, overrides}, preset_status: null | current | changed | missing}.",
+                       "snapshot}, strength, overrides}, preset_status: null | current | changed | missing, "
+                       "previous: whether a cleared edit is kept for darkroom_edit_restore}.",
         "input_schema": _schema({"path": dict(_STR, description="absolute path of the photo")}, ["path"]),
         "mcp_defaults": {},
     },
@@ -335,5 +336,17 @@ OPERATIONS = {
         }, ["path", "name"]),
         "mcp_defaults": {},
         "mcp_annotations": _writes(False),
+    },
+    # ---- CONTRACT-s1-experience S4: operation 25
+    "restore_edit": {
+        "http": ("POST", "/api/edit/restore"),
+        "cli": "edit restore",
+        "mcp": "darkroom_edit_restore",
+        "description": "Bring back the edit that was kept when this photo's edit was last cleared (edit clear, or "
+                       "edit set with nothing chosen): it becomes the photo's edit again; the kept copy stays, so this "
+                       "can be repeated. Returns the same shape as darkroom_edit_get; not_found when nothing was kept.",
+        "input_schema": _schema({"path": dict(_STR, description="absolute path of the photo")}, ["path"]),
+        "mcp_defaults": {},
+        "mcp_annotations": _edits(),
     },
 }

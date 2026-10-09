@@ -245,7 +245,8 @@ class TestGoldenRoutes(GoldenCase):
             ("POST", "/api/preset-library/import"), ("POST", "/api/preset-library/save"),
             ("POST", "/api/preset-library/rebuild"),
             ("GET", "/api/edit"), ("PUT", "/api/edit"), ("DELETE", "/api/edit"), ("POST", "/api/edit/paste"),
-            ("POST", "/api/edit/save-preset"), ("GET", "/api/folder/thumbnails"), ("GET", "/api/thumbnail")]))
+            ("POST", "/api/edit/save-preset"), ("GET", "/api/folder/thumbnails"), ("GET", "/api/thumbnail"),
+            ("POST", "/api/edit/restore")]))   # CONTRACT-s1-experience S4
 
 
 if __name__ == "__main__":

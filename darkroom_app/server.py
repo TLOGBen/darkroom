@@ -18,7 +18,9 @@ preflight, which this server never answers). Over HTTP, export takes no dest_dir
 CLI / MCP only).
 """
 import asyncio
+import json
 import os
+from urllib.parse import quote
 
 from aiohttp import web
 
@@ -244,6 +246,13 @@ async def api_edit_save_preset(request):
     return await _json(request, "save_edit_as_preset", body.get("path"), body.get("name"), body.get("group"))
 
 
+async def api_edit_restore(request):   # CONTRACT-s1-experience S4
+    body = await _json_body(request)
+    if "data_dir" in body:
+        return web.json_response({"error": DATA_DIR_REFUSED}, status=400)
+    return await _json(request, "restore_edit", body.get("path"))
+
+
 async def api_folder_thumbnails(request):
     q = request.query
     offset = _lenient_int(q["offset"]) if "offset" in q else 0
@@ -256,9 +265,10 @@ async def api_thumbnail(request):
         res = await _call(request, "thumbnail", request.query.get("path"))
     except DarkroomError as e:
         return _error(e)
-    return web.Response(body=res.jpeg, content_type="image/jpeg",
-                        headers={"X-Fingerprint": res.fingerprint, "X-Edited": "1" if res.edited else "0",
-                                 "Cache-Control": "no-store"})
+    headers = {"X-Fingerprint": res.fingerprint, "X-Edited": "1" if res.edited else "0", "Cache-Control": "no-store"}
+    if res.edit is not None:            # S8: the grid's badge text, percent-encoded JSON (header values are ASCII)
+        headers["X-Edit"] = quote(json.dumps(res.edit, ensure_ascii=False, separators=(",", ":")), safe="")
+    return web.Response(body=res.jpeg, content_type="image/jpeg", headers=headers)
 
 
 async def _on_cleanup(app):
@@ -296,6 +306,7 @@ def make_app(preset_dir, engine=None, library_dir=None, data_dir=None):
     app.router.add_delete("/api/edit", api_edit_clear)
     app.router.add_post("/api/edit/paste", api_edit_paste)
     app.router.add_post("/api/edit/save-preset", api_edit_save_preset)
+    app.router.add_post("/api/edit/restore", api_edit_restore)
     app.router.add_get("/api/folder/thumbnails", api_folder_thumbnails, allow_head=False)
     app.router.add_get("/api/thumbnail", api_thumbnail, allow_head=False)
     app.router.add_static("/static/", STATIC)

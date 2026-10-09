@@ -30,10 +30,11 @@ LIBRARY_WRITES = {"darkroom_preset_rename": True, "darkroom_preset_move": True, 
                   "darkroom_presets_rebuild": True, "darkroom_group_create": False, "darkroom_group_rename": False,
                   "darkroom_presets_import": False, "darkroom_preset_save": False}   # idempotentHint (K16)
 PHOTO_TOOLS = ["darkroom_edit_get", "darkroom_edit_set", "darkroom_edit_clear", "darkroom_edit_paste",
-               "darkroom_folder_thumbnails", "darkroom_thumbnail", "darkroom_edit_save_preset"]   # verbatim (PL6, PLP6)
+               "darkroom_folder_thumbnails", "darkroom_thumbnail", "darkroom_edit_save_preset",   # verbatim (PL6, PLP6)
+               "darkroom_edit_restore"]                                                           # S4: operation 25
 EDIT_WRITES = {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": True, "openWorldHint": False}  # PL6
 PHOTO_ANNOTATIONS = {"darkroom_edit_set": EDIT_WRITES, "darkroom_edit_clear": EDIT_WRITES,
-                     "darkroom_edit_paste": EDIT_WRITES,
+                     "darkroom_edit_paste": EDIT_WRITES, "darkroom_edit_restore": EDIT_WRITES,
                      "darkroom_edit_save_preset": {"readOnlyHint": False, "destructiveHint": False,
                                                    "idempotentHint": False, "openWorldHint": False}}   # PLP6
 NATIVE_WRITES = ("write_image", "imwrite", ".save(", ".tofile(")   # G10: no audit event, banned everywhere
@@ -281,7 +282,8 @@ class TestLayering(unittest.TestCase):
                                             "create_group", "rename_group", "import_presets", "save_user_preset",
                                             "rebuild_library",   # CONTRACT-preset-library K16
                                             "get_edit", "set_edit", "clear_edit", "paste_edit", "folder_thumbnails",
-                                            "thumbnail", "save_edit_as_preset"])   # CONTRACT-photo-library PL6, PLP6
+                                            "thumbnail", "save_edit_as_preset",    # CONTRACT-photo-library PL6, PLP6
+                                            "restore_edit"])                       # CONTRACT-s1-experience S4
         self.assertTrue(issubclass(DarkroomFacade, Facade))
 
     def test_operation_coverage(self):  # L2: every registered route, subcommand and tool exists

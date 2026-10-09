@@ -42,6 +42,8 @@ EDIT_SCHEMA = "darkroom-edit/1"                          # verbatim (PL3)
 INDEX_SCHEMA = "darkroom-thumb-index/1"                  # verbatim (PLP8)
 EDITS_DIR, THUMBS_DIR, INDEX_DIR = "edits", "thumbs", "index"   # verbatim (PL1)
 EDIT_KEYS = ("schema", "fingerprint", "preset", "strength", "overrides")      # verbatim order (PL3)
+PREV_SUFFIX = ".prev.json"                               # verbatim (CONTRACT-s1-experience S4): edits/{fp[0:2]}/{fp}.prev.json
+ANSWER_KEYS = ("fingerprint", "edit", "preset_status", "previous")   # verbatim order (S4, revising PL7)
 PRESET_KEYS = ("id", "name", "group", "params")
 THUMB_LONG_EDGE = 256                                    # verbatim (PL11)
 THUMB_QUALITY = 80                                       # verbatim (PL11)
@@ -134,6 +136,7 @@ class ThumbnailResult:
     edited: bool
     width: int
     height: int
+    edit: object = None      # S8: {"preset": name|None, "strength": n, "status": ...} when edited (HTTP X-Edit), else None
 
 
 # ---------------------------------------------------------------------- image helpers (lazy cv2)
@@ -560,10 +563,17 @@ class PhotoLibraryService:
         self._write_json(self._edit_path(edit["fingerprint"]), edit, "." + edit["fingerprint"],
                          os.path.dirname(os.path.abspath(photo_path)))
 
-    def _remove_edit(self, photo_path, fp):
+    def _prev_path(self, fp):
+        return os.path.join(self.data_dir, EDITS_DIR, fp[:2], fp + PREV_SUFFIX)
+
+    def _remove_edit(self, photo_path, fp, keep=None):
+        """Delete the edit file; the edit being cleared is first kept as the one previous edit (S4)."""
         p = self._edit_path(fp)
         if os.path.exists(p):
             self._guard(photo_path)
+            if keep is not None:
+                self._write_json(self._prev_path(fp), keep, "." + fp + ".prev",
+                                 os.path.dirname(os.path.abspath(photo_path)))
             try:
                 self._sw(safe_write.remove, p, self.data_dir)
             except FileNotFoundError:
@@ -571,6 +581,18 @@ class PhotoLibraryService:
             except OSError as e:
                 raise DarkroomError("unavailable", M.PL_CANNOT_WRITE.format(data_dir=self.data_dir,
                                                                             reason=_one_line(e))) from None
+
+    def _read_previous(self, fp):
+        """The kept previous edit of a fingerprint, None when there is none or it is unreadable."""
+        try:
+            raw = self._read_retry(self._prev_path(fp))
+            obj = json.loads(raw.decode("utf-8")) if raw else None
+        except (OSError, ValueError, UnicodeDecodeError):
+            return None
+        return obj if isinstance(obj, dict) and edit_problem(obj) is None and obj["fingerprint"] == fp else None
+
+    def _has_previous(self, fp):
+        return os.path.exists(self._prev_path(fp))
 
     def _status(self, preset):
         """PL4 preset_status: null / "missing" / "current" / "changed" (params only)."""
@@ -588,7 +610,22 @@ class PhotoLibraryService:
             raise read_error(path, e) from None
 
     def _answer(self, fp, edit):
-        return {"fingerprint": fp, "edit": edit, "preset_status": self._status(edit["preset"] if edit else None)}
+        return {"fingerprint": fp, "edit": edit, "preset_status": self._status(edit["preset"] if edit else None),
+                "previous": self._has_previous(fp)}
+
+    def _edit_summary(self, fp):
+        """S8: what the thumbnail grid shows about an edit: {"preset": name|None, "strength", "status"}; None when
+        the photo has no edit or its file cannot be read (the badge then only says "edited")."""
+        try:
+            raw = self._read_retry(self._edit_path(fp))
+            obj = json.loads(raw.decode("utf-8")) if raw else None
+        except (OSError, ValueError, UnicodeDecodeError):
+            return None
+        if not isinstance(obj, dict) or edit_problem(obj) is not None:
+            return None
+        preset = obj["preset"]
+        return {"preset": preset["name"] if preset else None, "strength": obj["strength"],
+                "status": self._status(preset)}
 
     def _resolve(self, edit, preset_id):
         """PL5: the snapshot when the edit holds this preset id, else the library's Params (not_found otherwise)."""
@@ -622,7 +659,7 @@ class PhotoLibraryService:
         except ValueError as e:
             raise DarkroomError("invalid", str(e)) from None
         if preset_id is None and not o:                                      # PL3: no edit at all
-            self._remove_edit(path, fp)
+            self._remove_edit(path, fp, keep=existing)
             return self._answer(fp, None)
         preset = None
         if preset_id is not None:
@@ -639,9 +676,21 @@ class PhotoLibraryService:
     def clear_edit(self, path):
         path = checked_photo_path(path)
         fp = self._fingerprint(path)
-        self._read_edit(fp, os.path.basename(path))                          # PL9: a foreign version is not deleted
-        self._remove_edit(path, fp)
+        existing = self._read_edit(fp, os.path.basename(path))               # PL9: a foreign version is not deleted
+        self._remove_edit(path, fp, keep=existing)
         return self._answer(fp, None)
+
+    def restore_edit(self, path):
+        """S4: the edit kept when this photo's edit was last cleared goes back as its edit (the kept copy stays)."""
+        path = checked_photo_path(path)
+        fp = self._fingerprint(path)
+        self._read_edit(fp, os.path.basename(path))                          # conflict / unavailable first (PL9)
+        prev = self._read_previous(fp)
+        if prev is None:
+            raise DarkroomError("not_found", M.PL_NO_PREVIOUS.format(file_name=os.path.basename(path)))
+        edit = canonical_edit(fp, prev["preset"], prev["strength"], prev["overrides"])
+        self._write_edit(path, edit)
+        return self._answer(fp, edit)
 
     # ------------------------------------------------------------------ paste (PL8, PLP4)
     def paste_edit(self, targets, source=None, edit=None):
@@ -833,7 +882,8 @@ class PhotoLibraryService:
         if jpeg is None:
             fp, jpeg = self._queue.submit(path, folder, 0).wait()
         w, h = _jpeg_size(jpeg)
-        return ThumbnailResult(jpeg, fp, self._edited(fp), w, h)
+        edited = self._edited(fp)
+        return ThumbnailResult(jpeg, fp, edited, w, h, self._edit_summary(fp) if edited else None)
 
     def wait_thumbnails(self, timeout=None):
         """Testing / bench helper: wait until the background queue is empty."""

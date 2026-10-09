@@ -24,6 +24,7 @@
   <button id="undo" class="icon" title="復原（Ctrl+Z）" disabled>↶</button>
   <button id="redo" class="icon" title="重做（Ctrl+Shift+Z）" disabled>↷</button>
   <button id="reset-all" title="還原全部微調：把所有微調歸零（回到 preset × 強度）"><span class="btn-icon" aria-hidden="true">⟲</span><span class="btn-text">還原全部微調</span></button>
+  <button id="reset-original-btn" title="還原成原圖：移除 preset 與全部微調（Ctrl+Z 可拿回；離開後可用「取回上一份」）" disabled><span class="btn-icon" aria-hidden="true">◌</span><span class="btn-text">還原成原圖</span></button>
   <span id="status" class="mute" title="">預覽：待命</span>
   <button id="toggle-sl" class="icon" title="顯示／收起滑桿欄" aria-controls="col-sl">⚙</button>
 </header>
@@ -43,7 +44,7 @@
 
   <section class="col" id="col-pv">
     <div class="pv-tools">
-      <button id="hold" title="按住看原圖（快捷鍵：按住 \）">按住看原圖</button>
+      <span class="seg"><button id="hold" title="按住看原圖（快捷鍵：按住 \）">按住看原圖</button><button id="ab-btn" title="對照：左邊原圖、右邊編輯後，拖分隔線比較（快捷鍵：Y）" aria-pressed="false" disabled>對照</button></span>
       <span id="skip-banner" class="warnbar" role="button" tabindex="0" hidden></span><span id="skip-note" class="skipnote" role="button" tabindex="0" hidden></span>
       <span id="edit-status" class="editstatus" hidden></span>
       <button id="restore-previous-btn" title="取回上一份：把最近一次被還原（清除）的編輯拿回來" disabled>取回上一份</button>
@@ -58,6 +59,9 @@
       <img id="preview-img" alt="預覽" hidden>
       <div class="pv-empty" id="preview-empty">在上方輸入照片路徑後按「開啟」</div>
       <span class="pv-label" id="pv-label" hidden>原圖</span>
+      <img id="ab-orig" alt="" aria-hidden="true">
+      <div id="ab-divider"><div id="ab-handle" tabindex="0" role="slider" aria-label="對照分隔線" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50"><i></i><i></i></div></div>
+      <span class="ab-tag" id="ab-tag-a">原圖</span><span class="ab-tag" id="ab-tag-b">編輯後</span>
       <div id="skip-detail" class="skip-detail" role="dialog" aria-label="無法套用的設定（完整內容）" hidden></div>
     </div>
     <div class="strength">
@@ -85,10 +89,14 @@
   <div class="gridbar">
     <input type="text" id="grid-path" placeholder="照片資料夾路徑，例如 D:\Photos" spellcheck="false">
     <button id="grid-load" title="列出這個資料夾的照片">載入</button>
+    <span id="grid-filter" class="seg" role="group" aria-label="篩選"><button data-filter="all" aria-pressed="true" title="顯示全部照片">全部</button><button data-filter="edited" aria-pressed="false" title="只顯示有編輯的照片">已編輯</button><button data-filter="plain" aria-pressed="false" title="只顯示沒有編輯的照片">未編輯</button></span>
     <span id="grid-count" class="mute"></span>
+    <span id="grid-pending" class="mute" hidden></span>
     <span class="sp"></span>
     <button id="copy-edit-btn" title="複製目前照片的編輯（preset 快照、強度、微調）" disabled>複製編輯</button>
     <button id="paste-edit-btn" title="把複製的編輯貼到選取的照片，取代它們原本的編輯" disabled>貼上編輯</button>
+    <button id="grid-reset-original-btn" title="還原成原圖：移除選取照片的編輯（可用「取回上一份」拿回來）" disabled>還原成原圖</button>
+    <button id="grid-restore-btn" title="取回上一份：把選取照片最近一次被清掉的編輯放回去" disabled>取回上一份</button>
     <button id="export-selected-btn" title="用各自的編輯、全解析度匯出選取的照片（格式與品質取上方匯出設定）" disabled>匯出所選</button>
   </div>
   <div id="grid-result" class="import-result" role="status" hidden></div>

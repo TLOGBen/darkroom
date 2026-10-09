@@ -127,6 +127,8 @@
       }
       case 'resetAll':
         return Object.keys(ed.tweaks).length ? change(ed, {tweaks: {}}) : ed;
+      case 'resetToOriginal':           // S10: no preset, no tweaks, one history step (strength kept for the next preset)
+        return change(ed, {presetId: null, tweaks: {}});
       case 'endGesture':
         return ed.gesture ? Object.assign({}, ed, {gesture: null}) : ed;
       case 'restoreEdit': {             // PL15 / PLP9: a photo's saved edit comes back; history starts afresh
@@ -298,6 +300,52 @@
   const CARRY_HINT_SHORT = '沿用中';
   const openFailed = (fileName, reason) => `開啟失敗：${fileName}：${reason}`;
   const GRID_EMPTY = '這個資料夾沒有支援的照片（JPEG／PNG／TIFF／HEIC）';   // S13 (j)
+
+  // ---------------------------------------------------------------- S7 A/B compare: the split (never in the reducer)
+  const AB_KEY = 'y';
+  const AB_STORAGE_KEY = 'darkroom.abSplit';
+  const AB_DEFAULT_SPLIT = 0.5;
+  const clamp01 = (v) => Math.min(1, Math.max(0, v));
+  function abStep(split, key, shift) {    // keyboard on the handle: null when the key is not ours
+    const step = shift ? 0.1 : 0.01;
+    switch (key) {
+      case 'ArrowLeft': return clamp01(split - step);
+      case 'ArrowRight': return clamp01(split + step);
+      case 'Home': return 0;
+      case 'End': return 1;
+      default: return null;
+    }
+  }
+  function abSplitFrom(stored) {          // sessionStorage -> 0..1, else the default
+    const v = parseFloat(stored);
+    return Number.isFinite(v) && v >= 0 && v <= 1 ? v : AB_DEFAULT_SPLIT;
+  }
+
+  // ---------------------------------------------------------------- S8 / S9 / S10 grid badges, filter, reset / restore
+  const FILTERS = ['all', 'edited', 'plain'];
+  const FILTER_LABELS = {all: '全部', edited: '已編輯', plain: '未編輯'};
+  const BADGE_ONLY_TWEAKS = '只有微調';
+  const BADGE_CHANGED = '（preset 已變更）';
+  const BADGE_MISSING = '（preset 已不在庫裡）';
+  function badgeTitle(info) {             // info: {preset, strength, status} from X-Edit; null = edited, no detail
+    if (!info) return '已編輯';
+    const t = `${info.preset || BADGE_ONLY_TWEAKS}　${info.strength}%`;
+    return t + (info.status === 'changed' ? BADGE_CHANGED : info.status === 'missing' ? BADGE_MISSING : '');
+  }
+  const stale = (info) => !!info && (info.status === 'changed' || info.status === 'missing');
+  function gridFilter(items, filter) {    // {shown: [[index, item]], pending: n}: null edited only under "all"
+    const shown = [], unknown = items.filter((it) => it.edited === null || it.edited === undefined).length;
+    items.forEach((it, i) => {
+      if (filter === 'edited' ? it.edited === true : filter === 'plain' ? it.edited === false : true) shown.push([i, it]);
+    });
+    return {shown, pending: filter === 'all' ? 0 : unknown};
+  }
+  const gridPending = (k) => `還有 ${k} 張尚未判定`;
+  const resetConfirm = (n) => `要把 ${n} 張照片還原成原圖嗎？（可用「取回上一份」拿回來）`;
+  const resetDone = (ok, failed) => `已還原 ${ok} 張，失敗 ${failed} 張`;
+  const restoreDone = (ok, failed) => `已取回 ${ok} 張，失敗 ${failed} 張`;
+  const RESET_TOAST = '已還原成原圖（Ctrl+Z 可拿回）';
+  const RESTORE_TOAST = '已取回上一份編輯';
   const PRESET_CHANGED = 'preset 已變更，這份編輯用的是當時的 preset 快照';
   const PRESET_MISSING = 'preset 已不在庫裡，這份編輯用的是當時的 preset 快照';
   const presetStatusText = (status) => (status === 'changed' ? PRESET_CHANGED : status === 'missing' ? PRESET_MISSING : '');
@@ -369,6 +417,9 @@
           USER_GROUP, FAV_EMPTY, UPLOAD_BATCH_CHARS, presetSaved, importSummary, importedLine, canSavePreset, favMark,
           groupCreated, saveBody, uploadBatches, importReport,
           explain, EXPLAIN_EXACT, EXPLAIN_PREFIX, openFailed, SAVE_RETRY_MS, CARRY_HINT, CARRY_HINT_SHORT, GRID_EMPTY,
+          AB_KEY, AB_STORAGE_KEY, AB_DEFAULT_SPLIT, abStep, abSplitFrom,
+          FILTERS, FILTER_LABELS, badgeTitle, stale, gridFilter, gridPending, resetConfirm, resetDone, restoreDone,
+          RESET_TOAST, RESTORE_TOAST,
           AUTOSAVE_MS, PRESET_CHANGED, PRESET_MISSING, presetStatusText, copied, pasteConfirm, pasteDone,
           exportSelectedDone, gridCount, editBody, editRequest, detailFromSnapshot, gridSelect, exportItems,
           saveEditFailed, loadEditFailed, loadFolderFailed};

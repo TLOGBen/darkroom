@@ -98,7 +98,9 @@ def hides(body):
 PROTECTED = ("#carry-hint", ".hint", "#reset-all", "#undo", "#redo", "#toggle-lib", "#toggle-sl",
              "#prev", "#next", "#strength-100", "#export-btn", "#export-format", "#export-quality",   # + X13
              ".fav", ".row-menu", "#import-btn", "#save-preset-btn",                             # + K19
-             "#grid-btn", "#copy-edit-btn", "#paste-edit-btn", "#export-selected-btn")           # + PL15 / PLP9
+             "#grid-btn", "#copy-edit-btn", "#paste-edit-btn", "#export-selected-btn",           # + PL15 / PLP9
+             "#ab-btn", "#reset-original-btn", "#restore-previous-btn", "#grid-filter",          # + S18
+             "#grid-reset-original-btn", "#grid-restore-btn", ".canvas-pick")
 
 
 def hidden_in_media(css):
@@ -199,7 +201,9 @@ class TestPageStructure(unittest.TestCase):
         for ident in ("reset-all", "undo", "redo", "toggle-lib", "toggle-sl", "prev", "next", "strength-100",
                       "export-btn", "export-format", "export-quality",                                 # + X13
                       "import-btn", "save-preset-btn",                                                 # + K19
-                      "grid-btn", "copy-edit-btn", "paste-edit-btn", "export-selected-btn"):           # + PLP9
+                      "grid-btn", "copy-edit-btn", "paste-edit-btn", "export-selected-btn",            # + PLP9
+                      "ab-btn", "reset-original-btn", "restore-previous-btn", "grid-filter",            # + S18
+                      "grid-reset-original-btn", "grid-restore-btn"):
             tag = re.search(r'<[a-z]+ id="%s"[^>]*>' % ident, html).group(0)
             self.assertNotRegex(tag, r"\shidden(?:[\s=>])", ident)
         self.assertRegex(html, r'<span id="carry-hint"[^>]*title="沿用上一張的設定（還不是這張的編輯，會再沿用到下一張）"')
@@ -418,6 +422,60 @@ class TestPageStructure(unittest.TestCase):
         self.assertIn("if (q) $('#photo-path').value = q;", init)
         self.assertIn("else if (last) { $('#photo-path').value = last; openPhoto(last); }", init)
         self.assertNotRegex(init, r"openPhoto\(q\)")
+
+    def test_ab_compare_structure(self):  # S7
+        html, js, css = read("index.html"), read("app.js"), read("app.css")
+        toolbar = html[html.index('<div class="pv-tools">'):html.index("</div>", html.index('<div class="pv-tools">'))]
+        self.assertRegex(toolbar, r'<span class="seg"><button id="hold"[^>]*>按住看原圖</button><button id="ab-btn"[^>]*aria-pressed="false" disabled>對照</button></span>')
+        wrap = html[html.index('<div class="pv-wrap" id="preview">'):html.index('<div class="strength">')]
+        self.assertIn('<img id="ab-orig" alt="" aria-hidden="true">', wrap)
+        self.assertRegex(wrap, r'<div id="ab-divider"><div id="ab-handle" tabindex="0" role="slider"[^>]*aria-valuemin="0" aria-valuemax="100" aria-valuenow="50">')
+        self.assertIn('<span class="ab-tag" id="ab-tag-a">原圖</span><span class="ab-tag" id="ab-tag-b">編輯後</span>', wrap)
+        self.assertRegex(css, r"#ab-orig \{[^}]*clip-path: inset\(0 calc\(100% - var\(--split, 50%\)\) 0 0\);")
+        mod = js[js.index("const ab = {on: false, split: L.AB_DEFAULT_SPLIT};"):js.index("// ------------------------------------------------------------------ preset tree")]
+        for banned in ("api(", "requestPreview", "dispatch(", "L.reduce", "/api/preview"):   # dragging never renders
+            self.assertNotIn(banned, mod, banned)
+        self.assertIn("abSetSplit((clientX - r.left) / r.width);", mod)
+        self.assertIn("div.addEventListener('dblclick', () => abSetSplit(L.AB_DEFAULT_SPLIT));", mod)
+        self.assertIn("const v = L.abStep(ab.split, e.key, e.shiftKey);", mod)
+        self.assertIn("sessionStorage.setItem(L.AB_STORAGE_KEY, String(ab.split));", mod)
+        self.assertIn("if (k === L.AB_KEY && !e.ctrlKey && !e.metaKey && !e.altKey && !e.repeat) { abToggle(); return; }", js)
+        self.assertNotIn("ab.", read("logic.js"))                              # not editor state (R5 reducer)
+        self.assertIn("$('#preview-img').addEventListener('load', abRefresh);", js)
+
+    def test_grid_badge_and_filter_structure(self):  # S8 / S9
+        html, js = read("index.html"), read("app.js")
+        self.assertRegex(html, r'<span id="grid-filter" class="seg" role="group" aria-label="篩選"><button data-filter="all" aria-pressed="true"[^>]*>全部</button><button data-filter="edited" aria-pressed="false"[^>]*>已編輯</button><button data-filter="plain" aria-pressed="false"[^>]*>未編輯</button></span>')
+        self.assertIn('<span id="grid-pending" class="mute" hidden></span>', html)
+        thumb = js[js.index("async function loadThumb"):js.index("function selectCell")]
+        self.assertIn("JSON.parse(decodeURIComponent(r.headers.get('X-Edit')))", thumb)
+        self.assertIn("cell.classList.toggle('stale', edited && L.stale(info));", thumb)
+        self.assertIn("cell.querySelector('.mark').title = edited ? L.badgeTitle(info) : '';", thumb)
+        grid = js[js.index("function renderGrid"):js.index("async function loadThumb")]
+        self.assertIn("const {shown, pending} = L.gridFilter(st.grid.items, st.grid.filter);", grid)
+        self.assertIn("$('#grid-pending').textContent = pending ? L.gridPending(pending) : '';", grid)
+        flt = js[js.index("async function setGridFilter"):js.index("function releaseGrid")]
+        self.assertIn("if (st.grid.folder) await loadGrid(st.grid.folder); else renderGrid();", flt)   # re-read the listing
+        self.assertIn("$('#grid-count').textContent = L.gridCount(st.grid.sel.size, cells.length);", js)
+        self.assertRegex(read("app.css"), r"\.cell\.edited\.stale \.mark \{")
+
+    def test_reset_original_structure(self):  # S10
+        html, js = read("index.html"), read("app.js")
+        self.assertRegex(html, r'<button id="reset-original-btn" title="[^"]+" disabled>.*還原成原圖.*</button>')
+        self.assertRegex(html, r'<button id="restore-previous-btn" title="[^"]+" disabled>取回上一份</button>')
+        self.assertRegex(html, r'<button id="grid-reset-original-btn" title="[^"]+" disabled>還原成原圖</button>')
+        self.assertRegex(html, r'<button id="grid-restore-btn" title="[^"]+" disabled>取回上一份</button>')
+        self.assertIn("await dispatch({type: 'resetToOriginal'});", js[js.index("async function resetOriginal"):js.index("async function restorePrevious")])
+        rp = js[js.index("async function restorePrevious"):js.index("// ------------------------------------------------------------------ export (X13)")]
+        self.assertIn("if (!st.image || st.edit || !st.previous) return;", rp)
+        self.assertIn("api('POST', '/api/edit/restore', {path})", rp)
+        self.assertIn("if (st.image && st.image.path === path) { restore(res); requestPreview(); toast(L.RESTORE_TOAST); }", rp)
+        self.assertIn("$('#restore-previous-btn').disabled = !(st.image && !st.edit && st.previous);", js)
+        g = js[js.index("async function gridResetOriginal"):js.index("async function resetOriginal")]
+        self.assertIn("if (!confirm(L.resetConfirm(targets.length))) return;", g)
+        self.assertIn("await gridEach('DELETE', '/api/edit', targets, L.resetDone, 'plain');", g)
+        self.assertIn("await gridEach('POST', '/api/edit/restore', targets, L.restoreDone, 'edited');", g)
+        self.assertIn("gridBatchDone(summaryFn, targets, results);", js)       # failures listed per photo
 
     def test_toasts_go_through_explain(self):  # S14: every toast shows the explained sentence
         js = read("app.js")

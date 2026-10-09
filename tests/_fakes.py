@@ -109,3 +109,7 @@ class FakeDarkroom:
     def save_edit_as_preset(self, path, name, group=None):
         return self._do("save_edit_as_preset", (path, name, group),
                         {"id": "user:x", "name": name, "group": group, "file": "user/x.xmp"})
+
+    # CONTRACT-s1-experience S4
+    def restore_edit(self, path):
+        return self._do("restore_edit", (path,), {"fingerprint": FP, "edit": EDIT, "preset_status": None, "previous": True})
