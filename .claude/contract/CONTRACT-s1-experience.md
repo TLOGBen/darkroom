@@ -1,4 +1,5 @@
 # CONTRACT — darkroom S1「體驗與修正」（介面質感、A/B 對照、已編輯徽章與篩選、還原成原圖／取回上一份、審查必修）
+> STATUS: sealed（2026-10-10）— S1～S19＋封緘補丁逐條符合；未釘表面已補（S13g''''、S7a、S13g'''''）；跨入口 restore／X-Edit 共用同一 helper；Verbatim 60 項逐位元組一致；突變 33/33 被測試攔截（含 N5、N6、F1～F4、H4 出生證明），第二次封緘 3 次派遣、末次複驗乾淨
 <!-- 此處採預設：合約未經人工確認即釘死（2026-10-10 工作流程派工；決定由主 session 的 s1-brief.md 做完，不問使用者） -->
 
 ## 目標
@@ -118,3 +119,4 @@ A/B：按鈕文字「對照」 ｜ 標籤「原圖」「編輯後」 ｜ 快捷�
 - 記錄、不修（低）：F5 `test_detail_effects_scale_with_size` 用合成圖 `synth_photo(4096×2731)`，不是條文寫的 real-landscape-4096（公式與門檻都符合；fixture 偏離未附理由）。瀏覽器量測類（S7 拖動時預覽請求數 0、S17 截圖、S18 820 寬實際像素）本次未重做，沿用第一次封緘的證據。
 - S13g'''''（複驗 1 的資料類例外：判官缺口 H4，程式不變）：`flushSave` 的等待語意（`while (save.pending || save.promise)`，等到沒有在送的存檔）整段逐行釘死；它是 N5、F2、PL15「讀檔前存檔已落地」的基礎。釘死：`test_autosave_targets_the_photo_it_was_scheduled_for`（flushSave 全文逐行）。
 - 記錄、不修（複驗 1，低）：N8 `flushRetries` 只處理呼叫當下已有的 retry；flush 期間新出現的 pending 若在結尾那次 flushSave 失敗，新 retry 照常退避、呼叫端繼續（與 N7 同類）。N9 按「取回上一份」後立刻換照片，S13g'''' 的重查讓取回不做，也不跳 toast。
+- 記錄、不修（複驗 2，極低）：N10 `tests/test_app_frontend.py` flushSave 逐行判官的註解寫 `S13g'''' (seal H4)`，合約條號是 `S13g'''''`。
