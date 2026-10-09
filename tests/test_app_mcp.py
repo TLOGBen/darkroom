@@ -202,7 +202,7 @@ class TestMcpProtocol(McpCase):
 class TestMcpSubprocess(McpCase):
     def test_mcp_stdout_clean_subprocess(self):
         env = {k: v for k, v in os.environ.items() if k not in ("PYTHONPATH", "PYTHONHOME")}
-        p = subprocess.Popen([sys.executable, "-s", "-m", "darkroom_app.mcp_server", "--preset-dir", self.presets],
+        p = subprocess.Popen([*_util.guarded_python(), "-m", "darkroom_app.mcp_server", "--preset-dir", self.presets],
                              cwd=_util.REPO, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                              env=env)
         try:

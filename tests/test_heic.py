@@ -355,7 +355,7 @@ class TestOpenTime(unittest.TestCase):  # F6 / H12: 24 MP HEIC opens in about a 
     def setUpClass(cls):
         import tempfile
         import pillow_heif
-        cls.d = tempfile.mkdtemp(prefix="darkroom-heic24-")
+        cls.d = _util.class_tmpdir(cls, "darkroom-heic24-")
         cls.path = os.path.join(cls.d, "IMG_24MP.HEIC")
         h, w = 5712, 4284
         img = _heicgen.pattern(h, w)

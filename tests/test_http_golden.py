@@ -10,6 +10,7 @@ import unittest
 from unittest import mock
 
 import _heicgen
+import _writeguard  # noqa: F401  (CONTRACT-write-guard G1)
 from darkroom import read_image
 from test_app_server import AppCase, write_photo
 

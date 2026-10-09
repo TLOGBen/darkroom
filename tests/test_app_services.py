@@ -19,7 +19,7 @@ class ServiceCase(unittest.TestCase):
     def setUpClass(cls):
         import shutil
         import tempfile
-        cls.tmp = tempfile.mkdtemp(prefix="darkroom-test-")
+        cls.tmp = _util.class_tmpdir(cls, "darkroom-test-")
         cls.addClassCleanup(shutil.rmtree, cls.tmp, True)
         d = os.path.join(cls.tmp, "presets")
         os.makedirs(d)
@@ -145,7 +145,7 @@ class TestLazyEngine(unittest.TestCase):  # L1
                 "    except DarkroomError:\n"
                 "        pass\n"
                 "print(f._photos.engine_ref.peek() is None, 'torch' in sys.modules, 'cv2' in sys.modules)\n")
-        r = subprocess.run([sys.executable, "-s", "-c", code, d], cwd=_util.REPO, capture_output=True, timeout=120)
+        r = subprocess.run([*_util.guarded_python(), "-c", code, d], cwd=_util.REPO, capture_output=True, timeout=120)
         self.assertEqual(r.returncode, 0, r.stderr.decode("utf-8", "replace"))
         self.assertEqual(r.stdout.decode().split(), ["True", "False", "False"])
 

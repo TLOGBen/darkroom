@@ -19,7 +19,7 @@ CONFIG_ERROR = "darkroom：{e}"                                            # ver
 def run_cli(*args, cwd=None):
     env = {k: v for k, v in os.environ.items() if k not in ("PYTHONPATH", "PYTHONHOME")}
     env["PYTHONIOENCODING"] = "utf-8"
-    r = subprocess.run([sys.executable, "-s", "-m", "darkroom_app.cli", *args], cwd=cwd or _util.REPO,
+    r = subprocess.run([*_util.guarded_python(), "-m", "darkroom_app.cli", *args], cwd=cwd or _util.REPO,
                        capture_output=True, env=env, timeout=300)
     return r.returncode, r.stdout, r.stderr.decode("utf-8")
 
@@ -167,7 +167,7 @@ class TestCliLightImports(CliCase):
                 "    with contextlib.redirect_stdout(io.StringIO()):\n"
                 "        assert cli.main(['--preset-dir', sys.argv[1], *argv, '--json']) == 0, argv\n"
                 "print(sorted(m for m in ('torch', 'cv2') if m in sys.modules))\n")
-        r = subprocess.run([sys.executable, "-s", "-c", code, self.presets], cwd=_util.REPO, capture_output=True,
+        r = subprocess.run([*_util.guarded_python(), "-c", code, self.presets], cwd=_util.REPO, capture_output=True,
                            timeout=120)
         self.assertEqual(r.returncode, 0, r.stderr.decode("utf-8", "replace"))
         self.assertEqual(r.stdout.decode().strip(), "[]")

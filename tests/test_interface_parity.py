@@ -323,7 +323,7 @@ class TestSubprocessSmoke(unittest.TestCase):  # L11: one real-process run per i
         self.env = {k: v for k, v in os.environ.items() if k not in ("PYTHONPATH", "PYTHONHOME")}
 
     def test_cli_json_smoke(self):
-        r = subprocess.run([sys.executable, "-s", "-m", "darkroom_app.cli", "--preset-dir", self.presets,
+        r = subprocess.run([*_util.guarded_python(), "-m", "darkroom_app.cli", "--preset-dir", self.presets,
                             "presets", "show", "nope", "--json"], cwd=_util.REPO, capture_output=True,
                            env=self.env, timeout=120)
         self.assertEqual((r.returncode, r.stderr), (3, b""))
@@ -341,7 +341,7 @@ class TestSubprocessSmoke(unittest.TestCase):  # L11: one real-process run per i
                  "params": {"name": "darkroom_preset_show", "arguments": {"preset_id": "nope"},
                             "_meta": {"io.modelcontextprotocol/protocolVersion": "2026-07-28"}}}]
         data = b"".join(json.dumps(m).encode() + b"\n" for m in msgs)
-        r = subprocess.run([sys.executable, "-s", "-m", "darkroom_app.mcp_server", "--preset-dir", self.presets],
+        r = subprocess.run([*_util.guarded_python(), "-m", "darkroom_app.mcp_server", "--preset-dir", self.presets],
                            cwd=_util.REPO, input=data, capture_output=True, env=self.env, timeout=120)
         self.assertEqual(r.returncode, 0, r.stderr.decode("utf-8", "replace"))
         self.assertNotIn(b"\r", r.stdout)

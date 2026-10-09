@@ -99,7 +99,7 @@ class TestModuleLaunch(unittest.TestCase):
         d = small_presets(self)
         port = free_port()
         env = {k: v for k, v in os.environ.items() if k not in ("PYTHONPATH", "PYTHONHOME")}
-        p = subprocess.Popen([sys.executable, "-s", "-m", "darkroom_app", "--port", str(port), "--preset-dir", d],
+        p = subprocess.Popen([*_util.guarded_python(), "-m", "darkroom_app", "--port", str(port), "--preset-dir", d],
                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env, cwd=os.path.dirname(d))
         try:
             line = wait_line(p)

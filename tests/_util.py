@@ -7,6 +7,8 @@ import subprocess
 import sys
 import tempfile
 
+import _writeguard  # noqa: F401  arms the runtime write guard for every test module (CONTRACT-write-guard G1)
+
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # The darkroom runtime is an embedded CPython whose python313._pth ignores the working directory and
 # PYTHONPATH, so the repo root has to be put on sys.path explicitly (tests import _util first).
@@ -57,13 +59,25 @@ def run_cli(*args, cwd=None):
     runtime's python313._pth lists D:/Code/darkroom)."""
     env = {k: v for k, v in os.environ.items() if k not in ("PYTHONPATH", "PYTHONHOME")}
     env["PYTHONIOENCODING"] = "utf-8"
-    r = subprocess.run([sys.executable, "-s", "-m", "darkroom", *args], cwd=cwd or tempfile.gettempdir(),
+    r = subprocess.run([*guarded_python(), "-m", "darkroom", *args], cwd=cwd or tempfile.gettempdir(),
                        capture_output=True, env=env)
     return r.returncode, r.stdout.decode("utf-8"), r.stderr.decode("utf-8")
 
 
+def guarded_python():
+    """argv prefix for a child python under the write guard (G6): `[*guarded_python(), "-m", mod, ...]`."""
+    return _writeguard.python_cmd()
+
+
 def tmpdir(testcase):
-    d = tempfile.mkdtemp(prefix="darkroom-test-")
-    import shutil
-    testcase.addCleanup(shutil.rmtree, d, True)
+    """Fresh writable root for one test: registered first, then created; deleted, then unregistered (G4)."""
+    d = _writeguard.new_root("darkroom-test-")
+    testcase.addCleanup(_writeguard.release_root, d)
+    return d
+
+
+def class_tmpdir(cls, prefix="darkroom-test-"):
+    """Class-level writable root (setUpClass); released by a class cleanup (G4)."""
+    d = _writeguard.new_root(prefix)
+    cls.addClassCleanup(_writeguard.release_root, d)
     return d
