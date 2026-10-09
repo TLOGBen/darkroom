@@ -37,7 +37,10 @@ WRITE_FLAGS = (os.O_WRONLY | os.O_RDWR | os.O_CREAT | os.O_TRUNC | os.O_APPEND  
 WRITE_MODE_CHARS = frozenset("wax+")                                       # verbatim (G2)
 TEST_EXECUTABLES = ("python.exe", "node.exe", "pwsh.exe", "taskkill.exe")  # verbatim (G3); python only via _guardrun;
 #   cmd.exe (WG3 constant row) is NOT in this tuple: only the exact mklink /J shape in _popen_allowed lets it run
-PRODUCT_SUBPROCESSES = {"darkroom_app/gpucheck.py": ("nvidia-smi.exe",)}   # verbatim (G3)
+PRODUCT_SUBPROCESSES = {"darkroom_app/gpucheck.py": ("nvidia-smi.exe",),
+                        "darkroom_app/services/semantic_index.py": ("op.exe",)}   # verbatim (G3, patch WG15)
+OP_REF = re.compile(r'^op://[^\s/"&|<>^%!]+(/[^\s/"&|<>^%!]+){2,3}$')     # verbatim (WG15): the 1Password reference
+OP_MODULE = "darkroom_app/services/semantic_index.py"
 ALWAYS_VIOLATION = ("os.system", "os.exec", "os.spawn", "os.posix_spawn", "os.startfile")   # G3
 PHOTOS = os.path.join(REPO, ".claude", "wayfinder", "darkroom", "prototypes", "llm-pick-experiment", "photos")
 
@@ -271,7 +274,13 @@ def _popen_allowed(executable, args, who):
         exe += ".exe"                    # what CreateProcess does with a bare name (taskkill, cmd, nvidia-smi)
     cat, rel = who
     if cat == "product":
-        return exe in PRODUCT_SUBPROCESSES.get(rel, ())
+        if exe not in PRODUCT_SUBPROCESSES.get(rel, ()):
+            return False
+        if exe == "op.exe":         # patch WG15: only `op read <op://vault/item/[section/]field>`, nothing else
+            raw = args if isinstance(args, str) else " ".join(argv)
+            return (rel == OP_MODULE and len(argv) == 3 and argv[1] == "read" and bool(OP_REF.match(argv[2]))
+                    and not CMD_SPECIAL & set(raw))
+        return True
     if cat != "test":
         return False
     if exe == "python.exe":

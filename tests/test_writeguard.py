@@ -191,6 +191,21 @@ class TestWriteGuardProbes(unittest.TestCase):  # G2, G3, G11
         # the product may start nvidia-smi from gpucheck only
         with _writeguard.expect_violation():
             run_as_product("import subprocess\nsubprocess.run(['nvidia-smi', '-L'], capture_output=True)")
+        # patch WG15: services/semantic_index.py may run exactly `op read <op://...>` (checked as a pure function:
+        # tests never start op); every other shape, module or initiator is refused
+        allowed = _writeguard._popen_allowed
+        sem, gpu = ("product", _writeguard.OP_MODULE), ("product", "darkroom_app/gpucheck.py")
+        self.assertEqual(_writeguard.PRODUCT_SUBPROCESSES,
+                         {"darkroom_app/gpucheck.py": ("nvidia-smi.exe",), _writeguard.OP_MODULE: ("op.exe",)})
+        self.assertTrue(allowed(None, ["op", "read", "op://Personal/ClaudeAPIKey/credential"], sem))
+        self.assertTrue(allowed(None, ["op.exe", "read", "op://v/i/s/f"], sem))
+        for bad in (["op", "read", "op://v/i/s/f", "--no-newline"], ["op", "item", "get", "x"], ["op", "read"],
+                    ["op", "read", "x"], ["op", "read", "op://v"], ["op", "read", "op://v/i"],
+                    ["op", "read", "op://v/i/f&echo"], ["op", "read", "op://v/i/f/g/h"], ["op", "signin"]):
+            self.assertFalse(allowed(None, bad, sem), bad)
+        self.assertFalse(allowed(None, ["op", "read", "op://v/i/f"], gpu))
+        self.assertFalse(allowed(None, ["op", "read", "op://v/i/f"], ("test", "tests/test_x.py")))
+        self.assertFalse(allowed(None, ["nvidia-smi", "-L"], sem))
         self.assertEqual(_writeguard.judge("ctypes.dlopen", ("kernel32",)) is not None, True)   # test frame
         for ev in ("os.system", "os.startfile", "os.exec", "os.spawn", "os.posix_spawn"):
             self.assertIsNotNone(_writeguard.judge(ev, ("x",)), ev)

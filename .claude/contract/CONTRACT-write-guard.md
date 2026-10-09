@@ -57,6 +57,11 @@
 
 - WG14（範圍裁決，2026-10-09 主 session；獨立稽核判 DRIFT 後收斂，與條文同等效力）：(a) **威脅模型**＝自家程式的「意外寫入」（自己寫的產品碼或測試不小心寫到根目錄外），**不是**故意繞守門的對手程式。(b) **主要保證**＝`safe_write`（G8）＋G10 的「只有 safe_write 能寫」結構檢查＋G7 受保護資料夾快照；audit hook（G2～G6）降為**輔助偵測器**，G2／G3 事件清單與 WG13 的 CreateFile 權限位元清單**以 HEAD 5702870 為準凍結**，之後不再擴充。之後再發現的對抗性繞法（例如 `FILE_DELETE_CHILD`、同名函式或 code 物件偽造、未列的原生 API 之類）一律記進 WG10 已知缺口，**不擋封緘、不開修正輪**；凍結不等於放寬：既有的攔截一條都不拿掉。(c) **封緘條件**縮成四項有界檢查，全過即 sealed：① WG13 回歸——`GENERIC_ALL` 改寫根目錄外既有 `.jpg`、`DELETE`＋`FILE_FLAG_DELETE_ON_CLOSE` 刪除、`os.open(p,O_RDONLY|O_TEMPORARY)` 三者都要被攔（違規表多一筆、檔案內容不變／仍存在）；② 凍結清單上已咬過的 28 支突變探針重發，全部要讓整套變紅；③ `safe_write` 拒絕情境（G11 列的 7 條＋WG6）逐條驗；④ 全套 `python -s -m unittest discover -s tests` 結束碼 0。
 
+- WG15（G3 放行，產品的第二個子程序；2026-10-10 語意索引切片 `CONTRACT-semantic-index.md` SI3，使用者已定：金鑰只從 1Password 取、只放記憶體）：`PRODUCT_SUBPROCESSES` 由 `{"darkroom_app/gpucheck.py": ("nvidia-smi.exe",)}` 擴為再加一筆 `"darkroom_app/services/semantic_index.py": ("op.exe",)`，而且 `op.exe` 的放行**只在命令列形狀完全符合**時成立：切開後恰 3 個參數、第 1 個 basename 是 `op`／`op.exe`（不分大小寫）、第 2 個恰為 `read`、第 3 個符合 `^op://[^\s/"&|<>^%!]+(/[^\s/"&|<>^%!]+){2,3}$`（1Password 參照，vault／item／[section／]field），原始命令列不含 WG3 的 cmd 特殊字元；多一個參數（例如 `--no-newline`）、`op item get`、別的模組（含 `gpucheck.py`）開 `op`、測試開 `op` → 一律違規。釘死：`test_initiator_rules` 以純函式 `_popen_allowed` 驗 8 個形狀（測試不准真的跑 op）。不是放寬 WG14 的凍結：G2 事件清單與 CreateFile 位元清單不動，只在 G3 的產品清單加這一筆。G10 白名單 3→4（`services/semantic_index.py`），`safe_write` 零改動。
+```text
+WG15 常數：PRODUCT_SUBPROCESSES = {"darkroom_app/gpucheck.py": ("nvidia-smi.exe",), "darkroom_app/services/semantic_index.py": ("op.exe",)} ｜ op 形狀：恰 3 參數 ｜ op|op.exe read <ref> ｜ ref regex：^op://[^\s/"&|<>^%!]+(/[^\s/"&|<>^%!]+){2,3}$
+```
+
 ## 錯不起表面（Surface Inventory）
 | 表面 | 格式 | 影響（資產 → 後果｜類別） | 釘死測試 |
 |------|------|--------------------------|----------|
@@ -77,8 +82,8 @@ pycache 檔名（任一層有 __pycache__）：^[^\\/]+\.cpython-\d+(\.opt-\d)?\
 測試可開的執行檔 basename：python.exe（僅經 _guardrun.py）｜ node.exe ｜ pwsh.exe ｜ taskkill.exe ｜ cmd.exe（僅 WG3 的 mklink /J 形狀）
 補丁常數：refused: {path} is not a .lock file（WG6）｜ 回報資料夾：darkroom-guard-{pid}-{12 hex}（WG4）｜ 根目錄內照樣攔：subprocess.Popen ctypes.dlopen ctypes.dlsym os.system（WG5）｜ cmd 特殊字元：& | < > ^ % ! " CR LF（WG3）｜ 程序事件：subprocess.Popen _winapi.CreateProcess（WG9）
 補丁常數（WG13）：寫入 flags 另加 O_TEMPORARY|O_SHORT_LIVED ｜ CreateFile 寫入／刪除權限：0x40000000|0x10000000|0x02000000|0x2|0x4|0x10|0x100|0x10000|0x40000|0x80000 ｜ DELETE_ON_CLOSE：0x04000000 ｜ WG11 句：暫存根目錄刪不掉（有檔案還開著？）：{d}
-產品可開的子程序：gpucheck → nvidia-smi
+產品可開的子程序：gpucheck → nvidia-smi ｜ services/semantic_index → op read <op://…>（WG15 形狀）
 探針 13 種：open(p,"wb") ｜ m="w"+"b"; open(p,m) ｜ os.open(p,O_CREAT|O_WRONLY) ｜ Path(p).write_bytes ｜ Path(a).replace(p) ｜ gzip.open(p,"wb") ｜ zipfile.ZipFile(p,"w") ｜ tarfile.open(p,"w") ｜ lzma.open(p,"wb") ｜ shelve.open(p) ｜ sqlite3.connect(p) ｜ subprocess.run(["cmd","/c","echo x>"+p]) ｜ ctypes.WinDLL("kernel32").CreateFileW(p,…)
-safe_write 白名單模組：本片（空）→ XP5：services/export.py → K18：＋services/preset_library.py → PL14：＋services/photo_library.py
+safe_write 白名單模組：本片（空）→ XP5：services/export.py → K18：＋services/preset_library.py → PL14：＋services/photo_library.py → WG15／SI1：＋services/semantic_index.py
 preset 合併雜湊：15C015CC0C080FF9 ｜ 數量：1466
 ```
