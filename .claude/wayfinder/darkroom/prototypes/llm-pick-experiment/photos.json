@@ -3,7 +3,7 @@
   "id": "portrait_studio",
   "file": "portrait_studio.png",
   "subject": "portrait (studio, AI-generated)",
-  "source": "runtimes/comfyui/v0.38.0-portable-nvidia/ComfyUI_windows_portable/ComfyUI/input/portrait_model_denim.png",
+  "source": "runtimes/comfyui/v0.39.0-portable-nvidia/ComfyUI_windows_portable/ComfyUI/input/portrait_model_denim.png",
   "license": "local (generated in this repo)"
  },
  {

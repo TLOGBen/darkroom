@@ -11,7 +11,7 @@ Qwen-Image 修圖的副作用與遮罩接法
 - [S4] LockPixelQwenEncode 節點 https://comfy.icu/node/LockPixelQwenEncode ；Rennart Pixel Drift Fix https://comfy.icu/node/RennartPixelDriftFix
 - [S5] QIE-2511-Object-Remover-v2（Qwen-Image-Edit 2509/2511 的移除 LoRA）https://huggingface.co/prithivMLmods/QIE-2511-Object-Remover-v2
 - [S6] Qwen-Image 2.1 授權改為非商用研究授權 https://alternativeto.net/news/2026/9/alibaba-launches-qwen-image-2-1-a-7b-ai-model-with-native-transparency-and-a-license-change/ ；https://www.eesel.ai/blog/qwen-image-2-1
-- [S7] 本機原始碼：`runtimes/comfyui/v0.38.0-portable-nvidia/ComfyUI_windows_portable/ComfyUI/comfy_extras/nodes_qwen.py`（`TextEncodeQwenImage21`）、`projects/comfyui/tools/make_all_in_one.py`（萬事通的接法）
+- [S7] 本機原始碼：`runtimes/comfyui/v0.39.0-portable-nvidia/ComfyUI_windows_portable/ComfyUI/comfy_extras/nodes_qwen.py`（`TextEncodeQwenImage21`）、`projects/comfyui/tools/make_all_in_one.py`（萬事通的接法）
 
 專門的補圖模型
 - [S8] Acly/comfyui-inpaint-nodes（LaMa、MAT、Fooocus、Fill Masked、Color Match，GPL-3.0）https://github.com/Acly/comfyui-inpaint-nodes

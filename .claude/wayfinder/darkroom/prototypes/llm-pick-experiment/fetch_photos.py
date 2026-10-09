@@ -19,7 +19,7 @@ OUT = os.path.join(HERE, "photos")
 UA = {"User-Agent": "LocalLLMs-experiment/0.1 (personal research)"}
 
 LOCAL = [
-    ("portrait_studio", "runtimes/comfyui/v0.38.0-portable-nvidia/ComfyUI_windows_portable/ComfyUI/input/portrait_model_denim.png",
+    ("portrait_studio", "runtimes/comfyui/v0.39.0-portable-nvidia/ComfyUI_windows_portable/ComfyUI/input/portrait_model_denim.png",
      "portrait (studio, AI-generated)"),
     ("landscape_lighthouse", "outputs/comfyui/qw/2026-10-04-lr-latency-busy_00001_.png", "landscape (stormy coast, AI-generated)"),
 ]

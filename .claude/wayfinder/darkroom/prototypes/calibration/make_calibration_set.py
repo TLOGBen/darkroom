@@ -10,7 +10,7 @@
   5. manifest.csv、expected 檔名清單；--check 可比對 Lightroom 匯出的資料夾少了哪些。
 
 用法（在 repo 根目錄）：
-  $PY = "runtimes/comfyui/v0.38.0-portable-nvidia/ComfyUI_windows_portable/python_embeded/python.exe"
+  $PY = "runtimes/comfyui/v0.39.0-portable-nvidia/ComfyUI_windows_portable/python_embeded/python.exe"
   & $PY -s <本檔> build                 # 產生全部（預設下載真實照片）
   & $PY -s <本檔> build --no-download   # 不下載；真實照片要自己放進 <out>/sources/
   & $PY -s <本檔> check <Lightroom 匯出資料夾>      # 檔名開頭有沒有 YYYY-MM-DD- 都認得

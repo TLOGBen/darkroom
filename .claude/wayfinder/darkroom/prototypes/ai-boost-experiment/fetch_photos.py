@@ -12,9 +12,9 @@ sys.path.insert(0, os.path.join(HERE, "..", "llm-pick-experiment"))
 from fetch_photos import commons_info, _get, UA  # noqa: E402
 
 OUT = os.path.join(HERE, "photos")
-INPUT = os.path.join(ROOT, "runtimes/comfyui/v0.38.0-portable-nvidia/ComfyUI_windows_portable/ComfyUI/input")
+INPUT = os.path.join(ROOT, "runtimes/comfyui/v0.39.0-portable-nvidia/ComfyUI_windows_portable/ComfyUI/input")
 LOCAL = [
-    ("portrait_studio", "runtimes/comfyui/v0.38.0-portable-nvidia/ComfyUI_windows_portable/ComfyUI/input/portrait_model_denim.png",
+    ("portrait_studio", "runtimes/comfyui/v0.39.0-portable-nvidia/ComfyUI_windows_portable/ComfyUI/input/portrait_model_denim.png",
      "portrait (studio, AI-generated, profile face)"),
     ("landscape_lighthouse", "outputs/comfyui/qw/2026-10-04-lr-latency-busy_00001_.png", "landscape (stormy coast, AI-generated)"),
 ]

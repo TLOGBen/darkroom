@@ -37,7 +37,7 @@
 ### 0. 產生檔案（在 repo 根目錄、pwsh）
 
 ```powershell
-$PY = "runtimes/comfyui/v0.38.0-portable-nvidia/ComfyUI_windows_portable/python_embeded/python.exe"
+$PY = "runtimes/comfyui/v0.39.0-portable-nvidia/ComfyUI_windows_portable/python_embeded/python.exe"
 & $PY -s .claude/wayfinder/comfyui-photo-editor/prototypes/calibration/make_calibration_set.py build
 ```
 
