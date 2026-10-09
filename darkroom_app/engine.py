@@ -92,14 +92,22 @@ class Engine:
             self.images.move_to_end(image_id)
             return info
 
-    def preview(self, image_id, params):
-        """Render `params` (already at their final values: strength 1) -> (JPEG bytes, milliseconds)."""
+    def preview(self, image_id, params, max_pixels=None):
+        """Render `params` (already at their final values: strength 1) -> (JPEG bytes, milliseconds).
+
+        max_pixels (optional): shrink the rendered preview on the device to preview_size(w, h, max_pixels).
+        """
         if not isinstance(params, Params):
             raise TypeError("params must be a darkroom.Params")
         t = self.get(image_id)["tensor"]
         t0 = time.perf_counter()
         with self._on_stream():
             out = render(t, params, strength=1.0)                       # stays on the device
+            if max_pixels is not None:
+                h, w = out.shape[-2:]
+                pw, ph = preview_size(w, h, max_pixels)
+                if (pw, ph) != (w, h):
+                    out = torch.nn.functional.interpolate(out, size=(ph, pw), mode="area")
             u8 = (out[0].clamp(0, 1) * 255.0 + 0.5).to(torch.uint8)    # 3xHxW RGB
             bgr = u8.flip(0).permute(1, 2, 0).contiguous()
             host = bgr.cpu()                                            # the one copy, for the JPEG encoder
