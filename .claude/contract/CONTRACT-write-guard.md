@@ -52,6 +52,8 @@
 
 - WG12（G2 收緊，封緘第 2 次派遣讀碼疑點）：`os.link` 原本只查目的端；把根目錄外的檔（同磁碟的 preset、受保護資料夾）硬連結進 fixture 根，再以寫入模式開根內那個連結，`realpath` 判在根內而放行，原檔被改。補：`os.link` 兩端都查（來源也必須在根目錄內）。釘死：`test_writeguard_probes` 的 `os.link(outside, inside)` 探針。
 
+- WG13（封緘第 3 次派遣 findings，收緊）：(1) WG2 的 `_winapi.CreateFile`「寫入權限」原本只看 GENERIC_WRITE 一個位元；實測 GENERIC_ALL（0x10000000）、FILE_GENERIC_WRITE（0x120116）開既有 `.jpg` 可改內容，DELETE＋FILE_FLAG_DELETE_ON_CLOSE 可刪檔，違規 0 筆。改為：access 含任一位元 GENERIC_WRITE｜GENERIC_ALL｜MAXIMUM_ALLOWED｜FILE_WRITE_DATA｜FILE_APPEND_DATA｜FILE_WRITE_EA｜FILE_WRITE_ATTRIBUTES｜DELETE｜WRITE_DAC｜WRITE_OWNER、或 flags 帶 FILE_FLAG_DELETE_ON_CLOSE、或 disposition 會建檔／截斷 → 判路徑。釘死：`test_writeguard_probes` 新增 GENERIC_ALL 改寫與 DELETE_ON_CLOSE 刪檔兩支探針。(2) G2 寫入 flags 補 `O_TEMPORARY`、`O_SHORT_LIVED`（`os.open(既有檔, O_RDONLY|O_TEMPORARY)` 關檔即刪）；釘死：`os.open(p,O_RDONLY|O_TEMPORARY)` 探針。(3) WG11 的失敗路徑補釘死測試 `test_undeletable_root_fails`（首行恰為 WG11 句子）。(4) 程式裡的測試執行檔 tuple 只列 G3 原本 4 項，`cmd.exe` 只走 WG3 分支；註解標明，不算放寬。
+
 ## 錯不起表面（Surface Inventory）
 | 表面 | 格式 | 影響（資產 → 後果｜類別） | 釘死測試 |
 |------|------|--------------------------|----------|
@@ -71,6 +73,7 @@ pycache 檔名（任一層有 __pycache__）：^[^\\/]+\.cpython-\d+(\.opt-\d)?\
 寫入 flags：O_WRONLY|O_RDWR|O_CREAT|O_TRUNC|O_APPEND ｜ 寫入 mode 字元：w a x +
 測試可開的執行檔 basename：python.exe（僅經 _guardrun.py）｜ node.exe ｜ pwsh.exe ｜ taskkill.exe ｜ cmd.exe（僅 WG3 的 mklink /J 形狀）
 補丁常數：refused: {path} is not a .lock file（WG6）｜ 回報資料夾：darkroom-guard-{pid}-{12 hex}（WG4）｜ 根目錄內照樣攔：subprocess.Popen ctypes.dlopen ctypes.dlsym os.system（WG5）｜ cmd 特殊字元：& | < > ^ % ! " CR LF（WG3）｜ 程序事件：subprocess.Popen _winapi.CreateProcess（WG9）
+補丁常數（WG13）：寫入 flags 另加 O_TEMPORARY|O_SHORT_LIVED ｜ CreateFile 寫入／刪除權限：0x40000000|0x10000000|0x02000000|0x2|0x4|0x10|0x100|0x10000|0x40000|0x80000 ｜ DELETE_ON_CLOSE：0x04000000 ｜ WG11 句：暫存根目錄刪不掉（有檔案還開著？）：{d}
 產品可開的子程序：gpucheck → nvidia-smi
 探針 13 種：open(p,"wb") ｜ m="w"+"b"; open(p,m) ｜ os.open(p,O_CREAT|O_WRONLY) ｜ Path(p).write_bytes ｜ Path(a).replace(p) ｜ gzip.open(p,"wb") ｜ zipfile.ZipFile(p,"w") ｜ tarfile.open(p,"w") ｜ lzma.open(p,"wb") ｜ shelve.open(p) ｜ sqlite3.connect(p) ｜ subprocess.run(["cmd","/c","echo x>"+p]) ｜ ctypes.WinDLL("kernel32").CreateFileW(p,…)
 safe_write 白名單模組：本片（空）→ XP5：services/export.py → K18：＋services/preset_library.py → PL14：＋services/photo_library.py
