@@ -77,3 +77,5 @@ CLI：python -m darkroom scan <preset_dir>
 
 ## 條文補丁（Patches）
 - K1（2026-10-04，HEIC 合約 H1～H6）`read_image` 加讀 `.heic`／`.heif`（不分大小寫，經 pillow-heif 1.8.0）：只解主影像、10-bit 不降 8-bit、內嵌 ICC／nclx 轉成 sRGB 編碼、方向照 libheif（不再套 EXIF）、壞檔拋 `ValueError`。JPEG／PNG／TIFF 的行為不變（仍假設 sRGB、不讀 ICC、忽略 EXIF 方向）。細節與容差見 `CONTRACT-heic.md`。
+- K2（2026-10-09，匯出合約 X6／XP9）`read_image` 讀 JPEG／TIFF 時依 EXIF Orientation 轉正像素（3／6／8 等於 PIL `ImageOps.exif_transpose`）；PNG 與 HEIC 行為不變；取代 K1 中「忽略 EXIF 方向」對 JPEG／TIFF 的部分。
+  （補註，2026-10-09 實測：OpenCV 5.0.0 的 TIFF 解碼器不管旗標都已依 TIFF Orientation 轉正，1～8 全部、8／16-bit 都等於 `exif_transpose`——K1「TIFF 忽略方向」原本就不成立；所以 `read_image` 只對 JPEG 自己轉，TIFF 交給解碼器，兩者都只轉一次。釘死：`tests/test_core_orientation.py` `test_read_image_orientation_jpeg_tiff`，1～8 全部逐值相等。）

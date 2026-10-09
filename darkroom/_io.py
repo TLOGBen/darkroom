@@ -1,7 +1,14 @@
 """Image IO: read JPEG/PNG/TIFF (8 or 16-bit, assumed sRGB) and HEIC/HEIF (pillow-heif: colour profile,
 10-bit, orientation; see _heif) as HxWx3 float32 0..1 in sRGB encoding;
-write 16-bit PNG/TIFF or 8-bit JPEG. Unicode paths are fine (bytes go through numpy)."""
+write 16-bit PNG/TIFF or 8-bit JPEG. Unicode paths are fine (bytes go through numpy).
+
+Orientation (core patch K2): JPEG and TIFF pixels come out upright by their EXIF / TIFF Orientation tag (the
+same transposition as PIL ImageOps.exif_transpose). OpenCV's TIFF decoder already turns TIFF pixels whatever the
+flags (measured 2026-10-09, all 8 values, 8 and 16-bit), so only JPEG is turned here; PNG is never turned; HEIC is
+turned by libheif only (_heif).
+"""
 import os
+import struct
 
 import numpy as np
 
@@ -9,6 +16,70 @@ from . import _heif
 
 READ_EXT = (".jpg", ".jpeg", ".png", ".tif", ".tiff") + _heif.EXT
 WRITE_EXT = (".jpg", ".jpeg", ".png", ".tif", ".tiff")
+
+# EXIF Orientation -> transform of an HxWxC array, as PIL ImageOps.exif_transpose: 2 FLIP_LEFT_RIGHT,
+# 3 ROTATE_180, 4 FLIP_TOP_BOTTOM, 5 TRANSPOSE, 6 ROTATE_270, 7 TRANSVERSE, 8 ROTATE_90 (PIL turns counter-clockwise)
+_ORIENT = {
+    2: lambda a: a[:, ::-1],
+    3: lambda a: a[::-1, ::-1],
+    4: lambda a: a[::-1],
+    5: lambda a: a.transpose(1, 0, 2),
+    6: lambda a: a.transpose(1, 0, 2)[:, ::-1],
+    7: lambda a: a.transpose(1, 0, 2)[::-1, ::-1],
+    8: lambda a: a.transpose(1, 0, 2)[::-1],
+}
+
+
+def _tiff_orientation(t):
+    """Orientation (tag 274) in IFD0 of TIFF-structured bytes; 1 when absent or not 1..8."""
+    if t[:4] == b"II*\0":
+        e = "<"
+    elif t[:4] == b"MM\0*":
+        e = ">"
+    else:
+        return 1
+    (ifd,) = struct.unpack_from(e + "I", t, 4)
+    (n,) = struct.unpack_from(e + "H", t, ifd)
+    for i in range(n):
+        tag, typ, count = struct.unpack_from(e + "HHI", t, ifd + 2 + 12 * i)
+        if tag == 274 and typ == 3 and count >= 1:
+            (v,) = struct.unpack_from(e + "H", t, ifd + 2 + 12 * i + 8)
+            return v if v in _ORIENT else 1
+    return 1
+
+
+def _jpeg_exif(data):
+    """TIFF-structured bytes of the first APP1 Exif segment before the image data of a JPEG, else None."""
+    if data[:2] != b"\xff\xd8":
+        return None
+    pos = 2
+    while pos + 4 <= len(data):
+        if data[pos] != 0xFF:
+            return None
+        m = data[pos + 1]
+        if m == 0xFF:                      # fill byte
+            pos += 1
+            continue
+        if m in (0x01, 0xD8) or 0xD0 <= m <= 0xD7:
+            pos += 2
+            continue
+        if m in (0xD9, 0xDA):              # end of image / start of scan: no metadata after this
+            return None
+        (n,) = struct.unpack_from(">H", data, pos + 2)
+        seg = data[pos + 4:pos + 2 + n]
+        if m == 0xE1 and seg[:6] == b"Exif\0\0":
+            return seg[6:]
+        pos += 2 + n
+    return None
+
+
+def _jpeg_orientation(data):
+    """EXIF Orientation (1..8) of JPEG file bytes; 1 when absent or unreadable."""
+    try:
+        t = _jpeg_exif(data)
+        return 1 if t is None else _tiff_orientation(t)
+    except struct.error:
+        return 1
 
 
 def read_image(path):
@@ -19,8 +90,9 @@ def read_image(path):
         return _heif.read(path)
     import cv2  # imported lazily so `import darkroom` stays light
     with open(path, "rb") as f:
-        buf = np.frombuffer(f.read(), np.uint8)
-    a = cv2.imdecode(buf, cv2.IMREAD_UNCHANGED | cv2.IMREAD_ANYDEPTH | cv2.IMREAD_IGNORE_ORIENTATION)
+        data = f.read()
+    a = cv2.imdecode(np.frombuffer(data, np.uint8),
+                     cv2.IMREAD_UNCHANGED | cv2.IMREAD_ANYDEPTH | cv2.IMREAD_IGNORE_ORIENTATION)
     if a is None:
         raise ValueError(f"cannot decode image {path}")
     if a.ndim == 2:
@@ -30,6 +102,9 @@ def read_image(path):
     elif a.shape[2] == 1:
         a = np.repeat(a, 3, 2)
     a = a[..., ::-1]  # BGR -> RGB
+    turn = _ORIENT.get(_jpeg_orientation(data)) if ext in (".jpg", ".jpeg") else None   # K2: exactly once
+    if turn is not None:
+        a = turn(a)
     if a.dtype == np.uint8:
         out = a.astype(np.float32) / 255.0
     elif a.dtype == np.uint16:
