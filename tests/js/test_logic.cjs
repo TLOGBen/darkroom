@@ -260,6 +260,24 @@ test('R5: a drag whose first event changes nothing still records one step', () =
   assert.equal(ed.strength, 150);
 });
 
+test('X13: export request and messages', () => {
+  const req = {image_id: 'i', preset_id: 'p', strength: 150, overrides: {Exposure2012: 0.5}};
+  assert.deepEqual(L.exportBody(req, 'jpeg', ''), {items: [{image_id: 'i', preset_id: 'p', strength: 150,
+                                                            overrides: {Exposure2012: 0.5}}], format: 'jpeg', quality: 92});
+  assert.equal(L.exportBody(req, 'jpeg', ' 80 ').quality, 80);
+  assert.equal(L.exportBody(req, 'jpeg', '8x').quality, '8x');            // the server says why
+  assert.equal('quality' in L.exportBody(req, 'tiff', '80'), false);      // TIFF: no quality
+  assert.equal('dest_dir' in L.exportBody(req, 'jpeg', ''), false);       // XP16: no folder over HTTP
+  assert.equal(L.EXPORT_BUSY, '匯出中…');
+  assert.equal(L.EXPORT_DEFAULT_QUALITY, 92);
+  assert.equal(L.exportMessage({ok: true, source: 'a.jpg', output: 'D:\\p\\darkroom 匯出\\a.jpg'}),
+               '已匯出：D:\\p\\darkroom 匯出\\a.jpg');
+  assert.equal(L.exportMessage({ok: false, source: 'a.jpg', error: '匯出失敗：a.jpg：壞了'}), '匯出失敗：a.jpg：壞了');
+  assert.equal(L.exportFailed('a.jpg', '沒有要匯出的照片'), '匯出失敗：a.jpg：沒有要匯出的照片');
+  assert.equal(L.baseName('D:\\x\\y\\IMG_1.HEIC'), 'IMG_1.HEIC');
+  assert.equal(L.baseName('/a/b.jpg'), 'b.jpg');
+});
+
 test('R3 / F8: tooltip sentence with suffixes is fixed', () => {
   assert.equal(L.sliderTooltip(S_CONTRAST, 40, 100, 10), 'preset × 100% = 40；微調 +10；雙擊＝還原這一項');
   assert.equal(L.sliderTooltip(S_CONTRAST, 80, 150, -5), 'preset × 150% = 120，已到上限 100；微調 -5；雙擊＝還原這一項');

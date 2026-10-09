@@ -41,6 +41,9 @@
       <span id="skip-banner" class="warnbar" hidden></span><span id="skip-note" class="skipnote" hidden></span>
       <span class="sp"></span>
       <span class="mute" id="photo-size"></span>
+      <select id="export-format" title="匯出格式：JPEG 8-bit 或 TIFF 16-bit"><option value="jpeg" selected>JPEG</option><option value="tiff">TIFF</option></select>
+      <input id="export-quality" type="number" min="1" max="100" step="1" value="92" title="JPEG 品質（1～100，預設 92）">
+      <button id="export-btn" title="用全解析度匯出成新檔，存進照片旁的「darkroom 匯出」資料夾" disabled>匯出</button>
     </div>
     <div class="pv-wrap" id="preview">
       <img id="preview-img" alt="預覽" hidden>

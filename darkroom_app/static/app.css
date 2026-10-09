@@ -15,6 +15,10 @@ button.icon { padding: 3px 7px; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 input[type=text], input[type=search] { font: inherit; color: var(--text); background: #1b1b1b; border: 1px solid #555;
   border-radius: 4px; padding: 3px 6px; min-width: 0; }
+input[type=number], select { font: inherit; color: var(--text); background: #1b1b1b; border: 1px solid #555;
+  border-radius: 4px; padding: 2px 4px; }
+#export-quality { width: 54px; }
+#export-quality:disabled, select:disabled { opacity: .55; }
 input[type=range] { width: 100%; accent-color: var(--accent); height: 14px; margin: 0; }
 .mute { color: var(--mute); }
 .sp { flex: 1; }

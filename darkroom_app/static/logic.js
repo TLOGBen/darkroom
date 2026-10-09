@@ -1,5 +1,6 @@
 // darkroom front-end logic without DOM access (shared by the page and the node:test suite).
-// Contract R3 (slider semantics), R5 (undo history), R6 (tree keyboard, search, typed values, curves).
+// Contract R3 (slider semantics), R5 (undo history), R6 (tree keyboard, search, typed values, curves),
+// CONTRACT-export X13 (export request and messages).
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory();
   else root.DarkroomLogic = factory();
@@ -198,7 +199,30 @@
     return all.map(([x, y], i) => (i ? 'L' : 'M') + f(x) + ' ' + g(y)).join(' ');
   }
 
+  // ---------------------------------------------------------------- X13 export
+  // The export reads the current edit (never changes it); over HTTP there is no dest_dir (XP16).
+  const EXPORT_BUSY = '匯出中…';
+  const EXPORT_DEFAULT_QUALITY = 92;
+  const baseName = (p) => String(p || '').split(/[\\/]/).pop();
+  const exportDone = (outputPath) => `已匯出：${outputPath}`;
+  const exportFailed = (fileName, reason) => `匯出失敗：${fileName}：${reason}`;
+
+  function exportBody(req, format, qualityText) {
+    const body = {items: [{image_id: req.image_id, preset_id: req.preset_id, strength: req.strength,
+                           overrides: req.overrides}], format};
+    if (format === 'jpeg') {
+      const t = String(qualityText == null ? '' : qualityText).trim();
+      body.quality = t === '' ? EXPORT_DEFAULT_QUALITY : (/^\d+$/.test(t) ? parseInt(t, 10) : t);   // the server judges
+    }
+    return body;
+  }
+
+  function exportMessage(result) {        // one entry of results: {ok, source, output} | {ok: false, source, error}
+    return result.ok ? exportDone(result.output) : result.error;
+  }
+
   return {sliderView, tweakFor, sliderTooltip, clampNote, fmtNum, History, treeKey, matchPreset,
           HISTORY_LIMIT, initialEditor, reduce, strengthEnabled, strengthInEffect, canUndo, canRedo, carryHintVisible,
-          parseValueInput, curveAtStrength, curvePath};
+          parseValueInput, curveAtStrength, curvePath,
+          EXPORT_BUSY, EXPORT_DEFAULT_QUALITY, baseName, exportDone, exportFailed, exportBody, exportMessage};
 });

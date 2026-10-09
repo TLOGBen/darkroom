@@ -455,7 +455,36 @@ async function openPhoto(path) {
   try { st.folder = await (await api('GET', '/api/folder?image_id=' + info.image_id)).json(); }
   catch (e) { st.folder = null; }
   renderPosition();
+  refreshExport();
   requestPreview();
+}
+
+// ------------------------------------------------------------------ export (X13): reads the edit, never changes it
+const exp = {busy: false};
+
+function refreshExport() {
+  const b = $('#export-btn');
+  b.disabled = !st.image || exp.busy;
+  b.textContent = exp.busy ? L.EXPORT_BUSY : '匯出';
+  $('#export-quality').disabled = $('#export-format').value !== 'jpeg';
+}
+
+async function exportPhoto() {
+  if (!st.image || exp.busy) return;
+  exp.busy = true;
+  refreshExport();
+  const name = L.baseName(st.image.path);
+  try {
+    const res = await (await api('POST', '/api/export',
+      L.exportBody(currentRequest(), $('#export-format').value, $('#export-quality').value))).json();
+    const r = res.results[0];
+    toast(L.exportMessage(r), !r.ok);
+  } catch (e) {
+    toast(L.exportFailed(name, e.message), true);
+  } finally {
+    exp.busy = false;
+    refreshExport();
+  }
 }
 
 function renderPosition() {
@@ -501,6 +530,9 @@ async function init() {
     editValue($('#strength-value'), String(ed.strength), STRENGTH, (v) => setStrength(v));
   });
   $('#reset-all').onclick = () => dispatch({type: 'resetAll'});
+  $('#export-btn').onclick = exportPhoto;
+  $('#export-format').addEventListener('change', refreshExport);
+  refreshExport();
   $('#search').addEventListener('input', (e) => { st.search = e.target.value.trim(); renderTree(); });
   $('#preset-tree').addEventListener('keydown', onTreeKey);
   const hold = $('#hold');
@@ -536,5 +568,6 @@ async function init() {
   if (last) { $('#photo-path').value = last; openPhoto(last); }
 }
 
-window.darkroom = {st, pv, get ed() { return ed; }, dispatch, requestPreview, selectPreset, openPhoto, step, undo, redo, setStrength};
+window.darkroom = {st, pv, get ed() { return ed; }, dispatch, requestPreview, selectPreset, openPhoto, step, undo, redo, setStrength,
+                   exportPhoto};
 init().catch((e) => toast('載入失敗：' + e.message, true));

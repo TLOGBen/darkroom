@@ -96,7 +96,7 @@ def hides(body):
 
 
 PROTECTED = ("#carry-hint", ".hint", "#reset-all", "#undo", "#redo", "#toggle-lib", "#toggle-sl",
-             "#prev", "#next", "#strength-100")
+             "#prev", "#next", "#strength-100", "#export-btn", "#export-format", "#export-quality")   # + X13
 
 
 def hidden_in_media(css):
@@ -190,7 +190,8 @@ class TestPageStructure(unittest.TestCase):
         self.assertEqual(found, [])
         self.assertGreater(checked, 0)                                  # the clipped text children are seen
         html = read("index.html")
-        for ident in ("reset-all", "undo", "redo", "toggle-lib", "toggle-sl", "prev", "next", "strength-100"):
+        for ident in ("reset-all", "undo", "redo", "toggle-lib", "toggle-sl", "prev", "next", "strength-100",
+                      "export-btn", "export-format", "export-quality"):                                # + X13
             tag = re.search(r'<[a-z]+ id="%s"[^>]*>' % ident, html).group(0)
             self.assertNotRegex(tag, r"\shidden(?:[\s=>])", ident)
         self.assertRegex(html, r'<span id="carry-hint"[^>]*title="目前修改尚未儲存，切換照片會沿用"')
@@ -211,6 +212,23 @@ class TestPageStructure(unittest.TestCase):
         self.assertNotRegex(js, r"\bst\.(presetId|strength|tweaks)\b")
         self.assertRegex(js, r"function selectPreset\(id\) \{ return dispatch\(\{type: 'selectPreset', id\}\); \}")
         self.assertNotIn("new L.History", js)
+
+    def test_export_controls(self):  # CONTRACT-export X13
+        html = read("index.html")
+        start = html.index('<div class="pv-tools">')
+        toolbar = html[start:html.index("</div>", start)]
+        self.assertRegex(toolbar, r'<button id="export-btn"[^>]*\sdisabled>匯出</button>')     # no photo yet: disabled
+        self.assertRegex(toolbar, r'<select id="export-format"[^>]*><option value="jpeg" selected>JPEG</option>'
+                                  r'<option value="tiff">TIFF</option></select>')
+        self.assertRegex(toolbar, r'<input id="export-quality" type="number" min="1" max="100" step="1" value="92"')
+        js = read("app.js")
+        body = js[js.index("async function exportPhoto"):js.index("function renderPosition")]
+        self.assertIn("api('POST', '/api/export'", body)
+        self.assertIn("L.EXPORT_BUSY", js)
+        self.assertIn("$('#export-quality').disabled = $('#export-format').value !== 'jpeg'", js)
+        self.assertIn("b.disabled = !st.image || exp.busy", js)
+        for banned in ("dispatch(", "ed =", "ed.", "History", "requestPreview", "dest_dir"):   # never changes the edit
+            self.assertNotIn(banned, body, banned)
 
     def test_section_headers_are_buttons(self):  # R6
         js = read("app.js")
