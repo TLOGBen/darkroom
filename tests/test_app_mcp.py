@@ -85,6 +85,7 @@ class TestMcpProtocol(McpCase):
         self.assertEqual(res[3]["result"], {})
         for r in res:
             self.assertNotIn("resultType", r["result"])
+            self.assertNotIn("ttlMs", r["result"])
 
     def test_mcp_discover_flow(self):
         res = self.exchange(
@@ -96,8 +97,10 @@ class TestMcpProtocol(McpCase):
             req(6, "server/discover"))
         self.assertEqual(res[0]["result"], {"resultType": "complete", "supportedVersions": ["2026-07-28"],
                                             "capabilities": {"tools": {}},
-                                            "_meta": {"io.modelcontextprotocol/serverInfo": SERVER_INFO}})
+                                            "_meta": {"io.modelcontextprotocol/serverInfo": SERVER_INFO},
+                                            "ttlMs": 3600000, "cacheScope": "public"})
         self.assertEqual(res[1]["result"]["resultType"], "complete")
+        self.assertEqual((res[1]["result"]["ttlMs"], res[1]["result"]["cacheScope"]), (3600000, "public"))
         self.assertEqual([t["name"] for t in res[1]["result"]["tools"]], TOOLS)
         self.assertEqual(res[2]["result"], {"content": [{"type": "text", "text": "unknown preset nope"}],
                                             "structuredContent": {"kind": "not_found",

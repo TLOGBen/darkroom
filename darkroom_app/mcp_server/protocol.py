@@ -2,7 +2,8 @@
 
 One UTF-8 JSON-RPC 2.0 message per line. Dual-era: legacy clients open with `initialize` (answered with
 2025-11-25), modern clients may probe with `server/discover` and send the protocol version in every request's
-params._meta (2026-07-28: results then carry resultType "complete"; any other version -> -32022).
+params._meta (2026-07-28: results then carry resultType "complete", and tools/list the caching hints;
+any other version -> -32022).
 Notifications are never answered. Logging and listChanged are not declared.
 """
 import json
@@ -13,6 +14,9 @@ SERVER_INFO = {"name": "darkroom", "version": "0.1.0"}
 META_VERSION = "io.modelcontextprotocol/protocolVersion"
 META_SERVER_INFO = "io.modelcontextprotocol/serverInfo"
 CAPABILITIES = {"tools": {}}
+# 2026-07-28 caching hints, required on complete results of server/discover and tools/list (the tool list is
+# fixed for the life of the process and the same for every caller).
+CACHE_HINTS = {"ttlMs": 3600000, "cacheScope": "public"}
 
 PARSE_ERROR = -32700
 INVALID_REQUEST = -32600
@@ -92,7 +96,7 @@ class Dispatcher:
             result = {"protocolVersion": LEGACY_VERSION, "capabilities": CAPABILITIES, "serverInfo": SERVER_INFO}
         elif method == "server/discover":
             result = {"resultType": "complete", "supportedVersions": [MODERN_VERSION], "capabilities": CAPABILITIES,
-                      "_meta": {META_SERVER_INFO: SERVER_INFO}}
+                      "_meta": {META_SERVER_INFO: SERVER_INFO}, **CACHE_HINTS}
         elif method == "ping":
             result = {}
         elif method == "tools/list":
@@ -103,4 +107,6 @@ class Dispatcher:
             raise RpcError(METHOD_NOT_FOUND, f"Method not found: {method}")
         if modern:
             result["resultType"] = "complete"
+            if method == "tools/list":
+                result.update(CACHE_HINTS)
         return result
