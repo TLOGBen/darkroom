@@ -32,9 +32,11 @@ GUARDRUN = os.path.join(TESTS, "_guardrun.py")
 VIOLATION_LINE = "寫檔守門：{event} → {target}（測試 {test_id}）"         # verbatim (G5)
 CHILD_EXIT = 86                                                           # verbatim (G6)
 PYCACHE_NAME = re.compile(r"^[^\\/]+\.cpython-\d+(\.opt-\d)?\.pyc(\.\d+)?$")   # verbatim (G4)
-WRITE_FLAGS = os.O_WRONLY | os.O_RDWR | os.O_CREAT | os.O_TRUNC | os.O_APPEND  # verbatim (G2)
+WRITE_FLAGS = (os.O_WRONLY | os.O_RDWR | os.O_CREAT | os.O_TRUNC | os.O_APPEND   # verbatim (G2)
+               | os.O_TEMPORARY | os.O_SHORT_LIVED)                                # patch WG13: delete on close
 WRITE_MODE_CHARS = frozenset("wax+")                                       # verbatim (G2)
-TEST_EXECUTABLES = ("python.exe", "node.exe", "pwsh.exe", "taskkill.exe")  # verbatim (G3); python only via _guardrun
+TEST_EXECUTABLES = ("python.exe", "node.exe", "pwsh.exe", "taskkill.exe")  # verbatim (G3); python only via _guardrun;
+#   cmd.exe (WG3 constant row) is NOT in this tuple: only the exact mklink /J shape in _popen_allowed lets it run
 PRODUCT_SUBPROCESSES = {"darkroom_app/gpucheck.py": ("nvidia-smi.exe",)}   # verbatim (G3)
 ALWAYS_VIOLATION = ("os.system", "os.exec", "os.spawn", "os.posix_spawn", "os.startfile")   # G3
 PHOTOS = os.path.join(REPO, ".claude", "wayfinder", "darkroom", "prototypes", "llm-pick-experiment", "photos")
@@ -50,7 +52,9 @@ PROCESS_EVENTS = ("subprocess.Popen", "_winapi.CreateProcess")                  
 CMD_SPECIAL = frozenset('&|<>^%!"' + chr(13) + chr(10))                                         # patch WG3
 WATCHED = frozenset(PATH_EVENTS) | frozenset(ALWAYS_VIOLATION) | frozenset(PROCESS_EVENTS) | {"ctypes.dlopen",
                                                                                               "ctypes.dlsym"}
-_GENERIC_WRITE, _CREATE_DISPOSITIONS = 0x40000000, (1, 2, 4, 5)   # _winapi.CreateFile: write access / creates
+# _winapi.CreateFile (patch WG13): any write / delete access right, DELETE_ON_CLOSE, or a creating disposition
+_WRITE_ACCESS = (0x40000000 | 0x10000000 | 0x02000000 | 0x2 | 0x4 | 0x10 | 0x100 | 0x10000 | 0x40000 | 0x80000)
+_DELETE_ON_CLOSE, _CREATE_DISPOSITIONS = 0x04000000, (1, 2, 4, 5)
 
 _BASE = os.path.normcase(os.path.realpath(sys.base_prefix))
 _STDLIB = (os.path.join(_BASE, "python313.zip") + os.sep, os.path.join(_BASE, "lib") + os.sep)
@@ -297,9 +301,10 @@ def judge(event, args):
             return _sqlite_target(args[0])
         elif event == "_winapi.CreateFile":
             name, access, _share, disposition = args[:4]
+            flags_attrs = args[4] if len(args) > 4 and isinstance(args[4], int) else 0
             if str(name).startswith("\\\\.\\pipe\\"):       # patch WG2: named pipes are not files
                 return None
-            if not (access & _GENERIC_WRITE or disposition in _CREATE_DISPOSITIONS):
+            if not (access & _WRITE_ACCESS or flags_attrs & _DELETE_ON_CLOSE or disposition in _CREATE_DISPOSITIONS):
                 return None
         if event in ("shutil.rmtree", "os.rmdir", "os.remove") and _report_cleanup(event, args):
             return None

@@ -66,6 +66,12 @@ PROBES_HANDOFF = [
     ("os.replace(a,p)", "import os\nos.replace(a, p)", "os.rename"),
     ("os.mkdir(p)", "import os\nos.mkdir(p)", "os.mkdir"),
     ("os.link(p, inside)", "import os\nos.link(p, a + '.lnk')", "os.link"),     # patch WG12: hard link in
+    # patch WG13: rights other than GENERIC_WRITE that still change or delete an existing file
+    ("_winapi.CreateFile GENERIC_ALL", "import _winapi\nh = _winapi.CreateFile(p, 0x10000000, 0, 0, 3, 0x80, 0)\n"
+     "_winapi.CloseHandle(h)", "_winapi.CreateFile"),
+    ("_winapi.CreateFile DELETE_ON_CLOSE", "import _winapi\nh = _winapi.CreateFile(p, 0x10000, 7, 0, 3, 0x04000000, 0)\n"
+     "_winapi.CloseHandle(h)", "_winapi.CreateFile"),
+    ("os.open(p,O_RDONLY|O_TEMPORARY)", "import os\nos.close(os.open(p, os.O_RDONLY | os.O_TEMPORARY))", "open"),
     ("_winapi.CreateFile", "import _winapi\nh = _winapi.CreateFile(p, 0x40000000, 0, 0, 2, 0x80, 0)\n"
      "_winapi.CloseHandle(h)", "_winapi.CreateFile"),
     ("_winapi.CreateJunction", "import _winapi\n_winapi.CreateJunction(os.path.dirname(a), p)",
@@ -79,6 +85,8 @@ PROBES_HANDOFF = [
      "_winapi.CreateProcess"),
 ]
 # G3: blocked whatever the path (the product may not start processes or load DLLs) - patch WG5, WG9
+EXISTING_P = ("os.utime", "os.link(p, inside)", "_winapi.CreateFile GENERIC_ALL",
+              "_winapi.CreateFile DELETE_ON_CLOSE", "os.open(p,O_RDONLY|O_TEMPORARY)")
 NOT_PATH_BASED = {"subprocess.Popen", "_winapi.CreateProcess", "ctypes.dlopen", "ctypes.dlsym", "os.system"}
 
 
@@ -115,7 +123,7 @@ class TestWriteGuardProbes(unittest.TestCase):  # G2, G3, G11
                 with open(a, "wb") as f:
                     f.write(b"a")
                 p = os.path.join(root, f"p-{secrets.token_hex(4)}.bin")
-                if name in ("os.utime", "os.link(p, inside)"):   # these need an existing p
+                if name in EXISTING_P:   # these need an existing p
                     with open(p, "wb"):
                         pass
                 events = event if isinstance(event, tuple) else (event,)
@@ -128,7 +136,8 @@ class TestWriteGuardProbes(unittest.TestCase):  # G2, G3, G11
                 before = len(_writeguard.violations())
                 run_as_product(src, p=p, a=a)
                 self.assertEqual(len(_writeguard.violations()), before, name)
-                self.assertTrue(os.path.lexists(p), name)
+                if name not in ("_winapi.CreateFile DELETE_ON_CLOSE", "os.open(p,O_RDONLY|O_TEMPORARY)"):
+                    self.assertTrue(os.path.lexists(p), name)     # (those two delete it: allowed in a root)
 
     def test_probe_names_are_the_contract_constant(self):
         self.assertEqual(" ｜ ".join(n for n, _, _ in PROBES_13),
@@ -440,6 +449,16 @@ class TestGuardWiring(unittest.TestCase):  # G1, G4, G7
             if f.endswith(".py") and f != "test_writeguard.py":
                 with open(os.path.join(TESTS, f), encoding="utf-8") as fh:
                     self.assertNotIn("mkdtemp(", fh.read(), f)
+
+    def test_undeletable_root_fails(self):  # patch WG11 / WG13 (3)
+        outer = _util.tmpdir(self)
+        d = os.path.join(outer, "stuck")
+        os.mkdir(d)
+        with mock.patch.object(_writeguard.shutil, "rmtree"), mock.patch("time.sleep"):   # rmtree "fails"
+            with self.assertRaises(AssertionError) as cm:
+                _writeguard.release_root(d)
+        self.assertEqual(str(cm.exception).splitlines()[0], f"暫存根目錄刪不掉（有檔案還開著？）：{d}")
+        self.assertNotIn(_writeguard._norm(d), _writeguard.roots())
 
     def test_protected_folders(self):  # G7
         local = os.environ.get("LOCALAPPDATA")
