@@ -38,8 +38,15 @@ def _override(text):
         return key, value          # the service reports it ("override for KEY must be a finite number")
 
 
+class _OneLineParser(argparse.ArgumentParser):
+    """Usage errors are exactly one stderr line, exit 2 (L9): no usage block before the error."""
+
+    def error(self, message):
+        self.exit(2, f"{self.prog}: error: {' '.join(str(message).split())}\n")
+
+
 def _parser():
-    ap = argparse.ArgumentParser(prog="python -m darkroom_app.cli",
+    ap = _OneLineParser(prog="python -m darkroom_app.cli",
                                  description="darkroom for agents: presets, sliders, open and preview photos "
                                              "(read-only)")
     ap.add_argument("--preset-dir", default=None, help="default: from LOCALLLMS_ROOT or config.local.json")

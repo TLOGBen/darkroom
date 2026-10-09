@@ -171,6 +171,8 @@ class TestLayering(unittest.TestCase):
                 if name in open_funcs:
                     if bad_mode(node.args[1] if len(node.args) > 1 else None) or bad_mode(mode_kw):
                         offenders.append((rel, node.lineno, name))
+                elif name == "os.open":       # S1: banned outright, however the flags are spelled (path=, flags=)
+                    offenders.append((rel, node.lineno, name))
                 elif attr == "open":          # Path(p).open(m), gzip/lzma/tarfile.open(p, m), zf.open(n, m), ...
                     # exact exemption (S7): Engine.open(path) in services/photos.py - receiver `eng`, one
                     # positional argument, no keywords; every other .open(...) gets the full rule

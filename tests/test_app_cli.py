@@ -111,6 +111,18 @@ class TestCliExitCodes(CliCase):
         self.assertTrue(err)
         self.assertEqual(call(["bogus"], f)[0], 2)
 
+    def test_cli_usage_error_one_line(self):
+        # L9 (S2 folded in): a usage error is exactly one stderr line and empty stdout, with or without --json
+        from darkroom_app.composition import build_facade
+        f = build_facade(self.presets)
+        for argv in (["presets", "list", "--limit", "x"], ["presets", "list", "--limit", "x", "--json"],
+                     ["bogus"], ["bogus", "--json"], ["preview"], ["preview", "--json"], []):
+            rc, out, err = call(argv, f)
+            self.assertEqual((rc, out), (2, ""), argv)
+            self.assertTrue(err.endswith("\n"), (argv, err))
+            self.assertEqual(err.count("\n"), 1, (argv, err))
+            self.assertIn("error:", err, argv)
+
     def test_cli_unexpected_error(self):
         from darkroom_app.composition import build_facade
         f = build_facade(self.presets)
