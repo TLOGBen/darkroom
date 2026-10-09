@@ -1,4 +1,5 @@
 # CONTRACT — darkroom 寫檔守門（執行期 audit hook＋safe_write；AST 降級為分層規則）
+> STATUS: unsealed（2026-10-09）— 封緘派遣 3/3 次已用完：第 3 次五點完整，28 支突變探針全紅；4 項 findings（WG13：CreateFile 寫入／刪除權限、O_TEMPORARY、WG11 釘死、測試執行檔常數註解）已修並各附釘死測試，但未經冷眼複驗，故不蓋 sealed
 <!-- 此處採預設：合約未經人工確認即釘死（2026-10-09 工作流程派工；決定由主 session 做完，不問使用者） -->
 
 ## 目標
