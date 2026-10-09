@@ -393,11 +393,22 @@ class TestPageStructure(unittest.TestCase):
             "if (save.pending && save.pending.path === path) return;",
             "save.pending = r;",
             "await flushSave();"])
-        self.assertIn("for (const path of [...save.retries.keys()]) await flushRetry(path);",
-                      js[js.index("async function flushRetries"):js.index("function unloadSave")])
+        retries = js[js.index("async function flushRetries"):js.index("function unloadSave")]
+        self.assertIn("for (const path of [...save.retries.keys()]) await flushRetry(path);", retries)
+        # S13g'''' (seal F2): a retry another caller already took is waited out before anything is read
+        self.assertRegex(retries, r"await flushRetry\(path\);\n\s*await flushSave\(\);[^\n]*\n\}")
         op = js[js.index("async function openPhoto"):js.index("function openFailed")]
         self.assertLess(op.index("await flushSave();"), op.index("await flushRetries();"))   # N5: both settled
         self.assertLess(op.index("await flushRetries();"), op.index("api('POST', '/api/open'"))  # before re-read
+        # S13g'''' (seal F2): the newest click wins even while the flushes wait - token first, checked after them
+        self.assertLess(op.index("const token = ++openSeq;"), op.index("await flushSave();"))
+        self.assertRegex(op, r"await flushRetries\(\);[^\n]*\n\s*if \(token !== openSeq\) return;\n\s*setStatus\('讀取照片中…'")
+        # S13g'''' (seal F1 / F4): restore previous re-checks after the flushes - same photo, not loading, still no edit
+        rp = js[js.index("async function restorePrevious"):js.index("function copyEdit")]
+        guard = "if (!st.image || st.image.path !== path || st.loading || st.edit) return;"
+        self.assertLess(rp.index("const path = st.image.path;"), rp.index("await flushSave();"))
+        self.assertLess(rp.index("await flushRetries();"), rp.index(guard))
+        self.assertLess(rp.index(guard), rp.index("api('POST', '/api/edit/restore'"))
         # N6 (seal re-verification 2): every user-level write or read of saved edits settles the retries first
         for start, end in (("async function openPhoto", "function openFailed"),
                            ("async function savePreset", "// ------------------------------------------------------------------ photo library: autosave"),
@@ -414,7 +425,7 @@ class TestPageStructure(unittest.TestCase):
         self.assertLess(opened.index("await flushSave();"), opened.index("st.loading = token;"))
         self.assertLess(opened.index("st.loading = token;"), opened.index("st.image = Object.assign(info, {path});"))
         self.assertIn("st.snapshots = {}; st.fingerprint = null; st.previous = false; st.editStatus = null;", opened)
-        self.assertEqual(opened.count("if (token !== openSeq) return;"), 3)   # latest open wins, at every await
+        self.assertEqual(opened.count("if (token !== openSeq) return;"), 4)   # latest open wins, at every await
         self.assertLess(opened.index("await loadEdit(path, token);"), opened.index("st.loading = null;"))
         load = js[js.index("async function loadEdit"):js.index("// ------------------------------------------------------------------ photo library: the grid")]
         self.assertIn("if (!st.image || st.image.path !== path || (token !== undefined && token !== openSeq)) return;", load)
@@ -496,7 +507,7 @@ class TestPageStructure(unittest.TestCase):
         self.assertIn("div.addEventListener('dblclick', () => abSetSplit(L.AB_DEFAULT_SPLIT));", mod)
         self.assertIn("const v = L.abStep(ab.split, e.key, e.shiftKey);", mod)
         self.assertIn("sessionStorage.setItem(L.AB_STORAGE_KEY, String(ab.split));", mod)
-        self.assertIn("if (k === L.AB_KEY && !e.ctrlKey && !e.metaKey && !e.altKey && !e.repeat) { abToggle(); return; }", js)
+        self.assertIn("if (k === L.AB_KEY && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && !e.repeat) { abToggle(); return; }", js)
         self.assertNotIn("ab.", read("logic.js"))                              # not editor state (R5 reducer)
         self.assertIn("$('#preview-img').addEventListener('load', abRefresh);", js)
 

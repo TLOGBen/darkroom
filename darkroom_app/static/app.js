@@ -714,9 +714,10 @@ let openSeq = 0;                        // S1: the newest openPhoto wins; older 
 async function openPhoto(path) {
   path = (path || '').trim().replace(/^"|"$/g, '');
   if (!path) return;
+  const token = ++openSeq;              // S1: taken before the flushes, so the newest click wins while a save is sent
   await flushSave();                    // the previous photo's last change goes out first (PL15)
   await flushRetries();                 // S13g''': no failed save is left to land over what follows
-  const token = ++openSeq;
+  if (token !== openSeq) return;
   setStatus('讀取照片中…', 'busy');
   let info;
   try { info = await (await api('POST', '/api/open', {path})).json(); }
@@ -821,6 +822,7 @@ async function flushRetry(path) {       // S13g': the one retry of a failed save
 
 async function flushRetries() {         // before another photo is opened: nothing of a failed save is left behind
   for (const path of [...save.retries.keys()]) await flushRetry(path);
+  await flushSave();                    // a retry another caller already took may still be in flight: wait it out
 }
 
 function unloadSave() {                 // S13 (g): the newest body goes out at once, not after the one in flight
@@ -1040,10 +1042,11 @@ async function resetOriginal() {        // the editor: one undo step; the photo 
 
 async function restorePrevious() {
   if (!st.image || st.edit || !st.previous) return;
+  const path = st.image.path;
   await flushSave();
   await flushRetries();                 // S13g''': no failed save is left to land over what follows
-  if (!st.image || st.edit) return;      // a retried save just gave this photo an edit: nothing to restore
-  const path = st.image.path;
+  // a retried save just gave this photo an edit, or another photo is being opened: nothing to restore
+  if (!st.image || st.image.path !== path || st.loading || st.edit) return;
   try {
     const res = await (await api('POST', '/api/edit/restore', {path})).json();
     if (st.image && st.image.path === path) { restore(res); requestPreview(); toast(L.RESTORE_TOAST); }
@@ -1263,7 +1266,7 @@ async function init() {
     if ((e.ctrlKey || e.metaKey) && k === 'z') { e.preventDefault(); if (e.shiftKey) redo(); else undo(); return; }
     if ((e.ctrlKey || e.metaKey) && k === 'y') { e.preventDefault(); redo(); return; }
     if (e.target.closest && (e.target.closest('#preset-tree') || e.target.closest('#grid'))) return;
-    if (k === L.AB_KEY && !e.ctrlKey && !e.metaKey && !e.altKey && !e.repeat) { abToggle(); return; }   // S7
+    if (k === L.AB_KEY && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && !e.repeat) { abToggle(); return; }   // S7
     if (e.key === '\\' && !e.repeat) showOriginal(true);
     else if (e.key === 'ArrowLeft' && !inField(e.target) && !e.repeat) step(-1);
     else if (e.key === 'ArrowRight' && !inField(e.target) && !e.repeat) step(1);

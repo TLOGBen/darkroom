@@ -87,7 +87,7 @@ A/B：按鈕文字「對照」 ｜ 標籤「原圖」「編輯後」 ｜ 快捷�
 色票（:root）：--bg0 #121212 ｜ --bg1 #191919 ｜ --bg2 #202020 ｜ --bg3 #2a2a2a ｜ --line rgba(255,255,255,.07) ｜ --line-2 rgba(255,255,255,.12)
   --text #e6e6e6 ｜ --text-2 #a9a9a9 ｜ --text-3 #8a8a8a ｜ --tweak #d9a85b ｜ --clamp #d27a7a ｜ --err #e06b6b ｜ --ok #8fbf93
   預覽底色：dark #151515 ｜ black #000000 ｜ mid #4a4a4a ｜ localStorage 鍵 darkroom.canvas
-字型：--font "Segoe UI Variable Text","Segoe UI","Noto Sans TC","Microsoft JhengHei UI",system-ui,sans-serif ｜ --num "Bahnschrift","Segoe UI Variable Small","Segoe UI",system-ui,sans-serif（font-stretch 87.5%）
+字型：--font "Segoe UI Variable Text", "Segoe UI", "Noto Sans TC", "Microsoft JhengHei UI", system-ui, sans-serif ｜ --num "Bahnschrift", "Segoe UI Variable Small", "Segoe UI", system-ui, sans-serif（font-stretch 87.5%）
 字級：11／12／13／14 ｜ 強度讀數 22px ｜ 動效 120ms（只回應操作）
 滑桿 CSS 變數：--base（preset 落點 %）、--lo／--hi（差值段兩端 %），百分比＝(v−min)/(max−min)×100，兩位小數
 ```
@@ -110,3 +110,9 @@ A/B：按鈕文字「對照」 ｜ 標籤「原圖」「編輯後」 ｜ 快捷�
 - 記錄、不修（複驗 1 新發現，低）：N3 縮圖格結果面板的單筆錯誤（`gridBatchDone`、匯出所選整批失敗）雖有 `L.explain`，但沒有測試釘住；N4 `api_thumbnail` 真實回應的 `X-Edit` 沒有與 `x_edit` 逐位元組比對（只有 regex＋unquote）。
 - S13g'''（seal 複驗 2 的資料類例外修正，修訂 S13g''）：`openPhoto` 改為先 `flushSave()` 再 `flushRetries()`、再讀檔（N5：剛改完又開同一張時，失敗那筆不會在讀檔後才補上）；`savePreset`、`gridResetOriginal`、`gridRestore`、`restorePrevious`、`pasteEdit`、`exportSelected` 在 `flushSave()` 之後一律 `flushRetries()`（N6：退避中的失敗存檔不會在使用者明確的還原／貼上／取回之後才落地蓋掉它）；`restorePrevious` 重送後若這張已有編輯就不取回。釘死：`test_autosave_targets_the_photo_it_was_scheduled_for`（各函式 `flushSave` 下一行必為 `flushRetries`、openPhoto 順序）。
 - 記錄、不修（複驗 2，低）：N7 換照片或明確操作時 `flushRetries` 會立刻重送（不等滿 2 秒退避）；同一張連續兩次失敗時，第一個計時器可能提早送出第二筆 retry。
+
+## 封緘補丁（S1 第二次封緘第 1 次派遣，2026-10-10；本節生效後以此為準）
+- S13g''''（修訂 S1「最新一次優先」與 S13g'''，F2／F1／F4）：`openPhoto` 在 `flushSave()`／`flushRetries()` 之前就取 `token`，flush 完先比 `token !== openSeq`（有失敗存檔正在重送時連按兩次換照片，畫面停在最後按的那張）；`flushRetries` 結尾 `await flushSave()`，別人已取走、還在送的那筆重送送完才往下讀檔；`restorePrevious` 在 flush 之前記下 `path`，flush 之後若照片換了、正在載入、或這張已有編輯就不取回。釘死：`test_autosave_targets_the_photo_it_was_scheduled_for`（token 在 flushSave 之前、flush 後的 token 檢查、`openSeq` 檢查 4 處、flushRetries 結尾、restorePrevious 的重查位置）。
+- S7a（修訂 S7「無修飾鍵」，F3）：快捷鍵 `Y` 也排除 Shift（`!e.shiftKey`）。釘死：`test_ab_compare_structure`。
+- Verbatim 修正（F6，G3 格式）：字型常數改成與 `app.css` 一致的「逗號後一個空格」寫法（CSS 語意不變，`test_css_palette_is_neutral` 原本就釘這個寫法）。
+- 記錄、不修（低）：F5 `test_detail_effects_scale_with_size` 用合成圖 `synth_photo(4096×2731)`，不是條文寫的 real-landscape-4096（公式與門檻都符合；fixture 偏離未附理由）。瀏覽器量測類（S7 拖動時預覽請求數 0、S17 截圖、S18 820 寬實際像素）本次未重做，沿用第一次封緘的證據。
