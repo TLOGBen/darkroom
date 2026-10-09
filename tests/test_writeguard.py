@@ -164,8 +164,9 @@ class TestWriteGuardProbes(unittest.TestCase):  # G2, G3, G11
             return _writeguard.judge("subprocess.Popen", (None, cmdline, None, None))
         self.assertIsNone(popen(f"cmd /c mklink /J {root}\\j {root}"))
         cp = ("_winapi.CreateProcess", (None, "\x02", None))     # 3.13 passes a garbled command line here
-        self.assertIsNone(_writeguard.judge(*cp))                # the one start the approved Popen makes
-        self.assertIsNotNone(_writeguard.judge(*cp))             # approval consumed: a second start is blocked
+        self.assertIsNotNone(_writeguard.judge(*cp))   # approved, but not called from Popen._execute_child (WG9)
+        popen(f"cmd /c mklink /J {root}\\j {root}")
+        self.assertIsNotNone(_writeguard.judge(*cp))   # still not _execute_child, and the permit is gone now
         for bad in (f"cmd /c mklink /J nul {root}",                                         # devnull end
                     f"cmd /c mklink /J C:\\Windows\\__pycache__\\j.cpython-313.pyc {root}",  # pycache end
                     f"cmd /c mklink /J {root}\\x&echo>C:\\evil.txt {root}",                 # cmd metacharacters
@@ -179,6 +180,41 @@ class TestWriteGuardProbes(unittest.TestCase):  # G2, G3, G11
             with self.subTest(bad=bad):
                 self.assertIsNotNone(popen(bad))
 
+    def test_createprocess_permit_cannot_be_reused(self):  # patch WG9 (tightened 2026-10-09)
+        mp = ("import multiprocessing\nfrom pathlib import Path\n"
+              "q = multiprocessing.Process(target=Path(p).write_bytes, args=(b'x',))\nq.start()\nq.join()")
+        # an approved Popen that raises before CreateProcess must not leave a permit behind
+        with self.assertRaises(ValueError):
+            subprocess.Popen(["taskkill", "/?"], cwd="a\0b", stdout=subprocess.DEVNULL)
+        p = outside_path()
+        with _writeguard.expect_violation() as ev:
+            run_as_product(mp, p=p)
+        self.assertEqual(ev.caught[0]["event"], "_winapi.CreateProcess")
+        self.assertFalse(os.path.lexists(p))
+        # the same from test code
+        with self.assertRaises(ValueError):
+            subprocess.Popen(["taskkill", "/?"], cwd="a\0b", stdout=subprocess.DEVNULL)
+        with _writeguard.expect_violation() as ev:
+            exec(compile(mp, __file__, "exec"), {"__name__": "probe", "p": p})
+        self.assertEqual(ev.caught[0]["event"], "_winapi.CreateProcess")
+        # any other watched event in between clears the permit
+        root = _util.tmpdir(self)
+        f = os.path.join(root, "f")
+        open(f, "wb").close()
+        with self.assertRaises(ValueError):
+            subprocess.Popen(["taskkill", "/?"], cwd="a\0b", stdout=subprocess.DEVNULL)
+        self.assertTrue(_writeguard._tl.approved_popen)            # the leftover a ValueError leaves
+        os.remove(f)
+        self.assertFalse(_writeguard._tl.approved_popen)
+        with self.assertRaises(ValueError):
+            subprocess.Popen(["taskkill", "/?"], cwd="a\0b", stdout=subprocess.DEVNULL)
+        with _writeguard.expect_violation() as ev:
+            run_as_product("import os\ntry:\n    os.remove(a)\nexcept OSError:\n    pass\n" + mp, p=p,
+                           a=os.path.join(root, "missing"))
+        self.assertEqual(ev.caught[0]["event"], "_winapi.CreateProcess")
+        r = subprocess.run(["taskkill", "/?"], capture_output=True)          # a normal approved Popen still works
+        self.assertEqual(r.returncode, 0)
+
     def test_report_folder_is_not_a_root(self):  # patch WG4 (tightened 2026-10-09)
         report = _writeguard._report_dir
         self.assertNotIn(_writeguard._norm(report), _writeguard.roots())
@@ -187,8 +223,10 @@ class TestWriteGuardProbes(unittest.TestCase):  # G2, G3, G11
         with _writeguard.expect_violation():                       # the parent may not write there either
             open(os.path.join(report, "x.bin"), "wb").close()
         self.assertFalse(os.path.exists(os.path.join(report, "x.bin")))
-        self.assertIsNone(_writeguard.judge("os.remove", (os.path.join(report, "123.jsonl"), None)))
-        self.assertIsNone(_writeguard.judge("os.rmdir", (report, None)))
+        # only the guard's own atexit cleanup may delete there (WG4); any other initiator is blocked
+        self.assertIsNotNone(_writeguard.judge("os.remove", (os.path.join(report, "123.jsonl"), None)))
+        self.assertIsNotNone(_writeguard.judge("os.rmdir", (report, None)))
+        self.assertIsNotNone(_writeguard.judge("shutil.rmtree", (report, None)))
         for ev, target in (("os.remove", os.path.join(report, "x.jsonl")), ("os.remove", os.path.join(report, "1.bin")),
                            ("os.rmdir", os.path.join(report, "sub")), ("shutil.rmtree", os.path.dirname(report))):
             self.assertIsNotNone(_writeguard.judge(ev, (target, None)), (ev, target))

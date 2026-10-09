@@ -186,9 +186,38 @@ def _in_fixture_root(path):
         return any(_inside(n, r) for r in _roots)
 
 
+def _frame_file(f):
+    gf = f.f_globals.get("__file__")
+    return gf if isinstance(gf, str) and os.path.isabs(gf) else f.f_code.co_filename
+
+
+_HOOK_FUNCS = ("_hook", "judge", "_report_cleanup", "_from_cleanup", "_caller_frame")
+
+
+def _caller_frame():
+    """The Python frame right below the hook (the code whose call raised the audit event)."""
+    f = sys._getframe(1)
+    while f is not None and os.path.normcase(_frame_file(f)) == _HERE and f.f_code.co_name in _HOOK_FUNCS:
+        f = f.f_back
+    return f
+
+
+def _from_cleanup():
+    """WG4: the first non-stdlib frame is this module's own atexit cleanup."""
+    f = _caller_frame()
+    while f is not None and _category(_frame_file(f)) == "stdlib":
+        f = f.f_back
+    return f is not None and os.path.normcase(_frame_file(f)) == _HERE and f.f_code.co_name == "_cleanup_report_dir"
+
+
+def _cleanup_report_dir():
+    """atexit: delete the report folder (the only deletion _report_cleanup lets through)."""
+    shutil.rmtree(_report_dir, True)
+
+
 def _report_cleanup(event, args):
     """Parent only (patch WG4): rmtree / rmdir of the report folder itself, os.remove of <folder>/<digits>.jsonl."""
-    if _child or not _report_dir or not args or isinstance(args[0], int):
+    if _child or not _report_dir or not args or isinstance(args[0], int) or not _from_cleanup():
         return False
     n, folder = _norm(args[0]), _norm(_report_dir)
     if event in ("shutil.rmtree", "os.rmdir"):
@@ -239,6 +268,8 @@ def _popen_allowed(executable, args, who):
 
 def judge(event, args):
     """None, or the target string of a violation."""
+    if event not in PROCESS_EVENTS:
+        _tl.approved_popen = False      # WG9: any other watched event clears the CreateProcess permit
     if event in PATH_EVENTS:
         if event == "open":
             path, mode, flags = args
@@ -267,6 +298,7 @@ def judge(event, args):
     who = initiator()
     if event == "subprocess.Popen":
         executable, cmd = args[0], args[1]
+        _tl.approved_popen = False
         ok = _popen_allowed(executable, cmd, who)
         _tl.approved_popen = ok         # consumed by the _winapi.CreateProcess this Popen makes next (WG9)
         return None if ok else str(cmd)
@@ -274,6 +306,8 @@ def judge(event, args):
         # patch WG9: multiprocessing goes straight here. CPython 3.13 hands this event a garbled command line,
         # so the only process start allowed is the one a just-approved subprocess.Popen on this thread makes.
         ok, _tl.approved_popen = getattr(_tl, "approved_popen", False), False
+        f = _caller_frame()             # WG9 (1): must be the very CreateProcess call inside Popen._execute_child
+        ok = ok and f is not None and f.f_code.co_name == "_execute_child" and f.f_globals.get("__name__") == "subprocess"
         return None if ok else f"{args[0] or '（命令列不可讀）'}（發起者 {who[1]}）"
     if event in ("ctypes.dlopen", "ctypes.dlsym"):      # G3: third-party only (patch WG2: also dlsym)
         return None if who[0] == "third-party" else f"{args[-1]}（發起者 {who[1]}）"
@@ -560,7 +594,7 @@ def _arm_parent():
     os.mkdir(_report_dir)                       # the guard's own report folder, made before the hook exists
     # patch WG4: the report folder is NOT a root; only _report_cleanup's three exact events are let through
     import atexit
-    atexit.register(shutil.rmtree, _report_dir, True)
+    atexit.register(_cleanup_report_dir)
     _install_unittest()
     sys.addaudithook(_hook)
 
