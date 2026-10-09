@@ -272,6 +272,26 @@ test('S3: slider baseline comes from the snapshot; banner and note from the libr
   assert.notEqual(d.values, snap.params.values);                                      // copies
 });
 
+test('S17: drawn-slider variables, hue dots, canvas choice', () => {
+  const v = L.sliderView(CONTRAST, 40, 100, 10);                  // base 40, value 50 on -100..100
+  assert.deepEqual(L.sliderVars(CONTRAST, v), {base: '70.00%', lo: '70.00%', hi: '75.00%'});
+  const w = L.sliderView(CONTRAST, -75, 150, 10);                 // clamped base -100 -> 0 %
+  assert.deepEqual(L.sliderVars(CONTRAST, w), {base: '0.00%', lo: '0.00%', hi: '5.00%'});
+  assert.deepEqual(L.sliderVars(EXPO, L.sliderView(EXPO, 1, 100, -2)), {base: '60.00%', lo: '40.00%', hi: '60.00%'});
+  assert.deepEqual(L.strengthVars(100), {base: '50%', lo: '50.00%', hi: '50.00%'});
+  assert.deepEqual(L.strengthVars(150), {base: '50%', lo: '50.00%', hi: '75.00%'});
+  assert.deepEqual(L.strengthVars(0), {base: '50%', lo: '0.00%', hi: '50.00%'});
+  assert.equal(L.bipolar(CONTRAST), true);
+  assert.equal(L.bipolar(GRAIN), false);
+  assert.equal(L.hueDot('HueAdjustmentRed'), '#e04848');
+  assert.equal(L.hueDot('LuminanceAdjustmentBlue'), '#4a7fe0');
+  assert.equal(L.hueDot('Contrast2012'), null);
+  assert.deepEqual(L.CANVASES, ['dark', 'black', 'mid']);
+  assert.equal(L.CANVAS_STORAGE_KEY, 'darkroom.canvas');
+  assert.equal(L.canvasFrom('mid'), 'mid');
+  assert.equal(L.canvasFrom('blue'), 'dark');
+});
+
 test('S7: A/B split keyboard steps and stored value', () => {
   assert.equal(L.AB_KEY, 'y');
   assert.equal(L.AB_STORAGE_KEY, 'darkroom.abSplit');

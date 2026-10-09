@@ -228,6 +228,19 @@ class TestPresetDetail(AppCase):
             self.assertEqual(s["hue"], _params.is_hue_angle(s["key"]), s["key"])
 
 
+class TestStaticFreshness(AppCase):  # CONTRACT-s1-experience S19: an updated page is never served stale
+    async def test_static_files_revalidate(self):
+        for path in ("/static/app.js", "/static/app.css", "/static/logic.js", "/static/logo.svg"):
+            r = await self.client.get(path)
+            self.assertEqual(r.status, 200, path)
+            self.assertEqual(r.headers.get("Cache-Control"), "no-cache", path)
+            self.assertIn("ETag", r.headers, path)
+        r = await self.client.get("/")
+        self.assertEqual(r.headers.get("Cache-Control"), "no-store")
+        r = await self.client.get("/api/presets")
+        self.assertNotEqual(r.headers.get("Cache-Control"), "no-cache")
+
+
 class TestOpen(AppCase):  # B4
     async def test_api_open_shape(self):
         path = write_photo(os.path.join(self.photos, "big.png"), 2400, 1601)

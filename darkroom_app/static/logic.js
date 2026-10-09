@@ -301,6 +301,28 @@
   const openFailed = (fileName, reason) => `開啟失敗：${fileName}：${reason}`;
   const GRID_EMPTY = '這個資料夾沒有支援的照片（JPEG／PNG／TIFF／HEIC）';   // S13 (j)
 
+  // ---------------------------------------------------------------- S17 drawn sliders: CSS variables, hue dots, canvas
+  // --base = where the preset puts the value, --lo..--hi = from there to the thumb (your tweak); 0..100 % of the range.
+  const pct = (s, v) => Math.max(0, Math.min(100, (clamp(s, v) - s.min) / (s.max - s.min) * 100));
+  function sliderVars(s, view) {
+    const a = pct(s, view.base), b = pct(s, view.value);
+    return {base: a.toFixed(2) + '%', lo: Math.min(a, b).toFixed(2) + '%', hi: Math.max(a, b).toFixed(2) + '%'};
+  }
+  function strengthVars(strength) {      // the dial: 0..200, 100 is the centre
+    const a = 50, b = Math.max(0, Math.min(100, strength / 2));
+    return {base: '50%', lo: Math.min(a, b).toFixed(2) + '%', hi: Math.max(a, b).toFixed(2) + '%'};
+  }
+  const bipolar = (s) => s.min < 0 && s.max > 0;
+  const HUE_DOTS = {Red: '#e04848', Orange: '#e08a3c', Yellow: '#d9c43a', Green: '#4fb24f', Aqua: '#3fb8a8', Blue: '#4a7fe0',
+                    Purple: '#8c5fd6', Magenta: '#d65aa8'};
+  function hueDot(key) {                 // HSL rows: a 6 px dot of the colour the row is about (never on the track)
+    const m = /^(?:Hue|Saturation|Luminance)Adjustment(\w+)$/.exec(key);
+    return m && HUE_DOTS[m[1]] ? HUE_DOTS[m[1]] : null;
+  }
+  const CANVASES = ['dark', 'black', 'mid'];
+  const CANVAS_STORAGE_KEY = 'darkroom.canvas';
+  const canvasFrom = (stored) => (CANVASES.includes(stored) ? stored : 'dark');
+
   // ---------------------------------------------------------------- S7 A/B compare: the split (never in the reducer)
   const AB_KEY = 'y';
   const AB_STORAGE_KEY = 'darkroom.abSplit';
@@ -417,6 +439,7 @@
           USER_GROUP, FAV_EMPTY, UPLOAD_BATCH_CHARS, presetSaved, importSummary, importedLine, canSavePreset, favMark,
           groupCreated, saveBody, uploadBatches, importReport,
           explain, EXPLAIN_EXACT, EXPLAIN_PREFIX, openFailed, SAVE_RETRY_MS, CARRY_HINT, CARRY_HINT_SHORT, GRID_EMPTY,
+          sliderVars, strengthVars, bipolar, HUE_DOTS, hueDot, CANVASES, CANVAS_STORAGE_KEY, canvasFrom,
           AB_KEY, AB_STORAGE_KEY, AB_DEFAULT_SPLIT, abStep, abSplitFrom,
           FILTERS, FILTER_LABELS, badgeTitle, stale, gridFilter, gridPending, resetConfirm, resetDone, restoreDone,
           RESET_TOAST, RESTORE_TOAST,

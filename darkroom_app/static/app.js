@@ -126,7 +126,7 @@ async function pump() {
       pv.url = url;
       if (!pv.pending) {
         const rt = performance.now() - t0;
-        setStatus('預覽：已更新', 'mute', `後端 ${(+ms).toFixed(0)} ms，往返 ${rt.toFixed(0)} ms`);
+        setStatus('已更新', 'mute', `預覽已更新：後端 ${(+ms).toFixed(0)} ms，往返 ${rt.toFixed(0)} ms`);   // S17: ms in the tooltip
       }
     }
   } finally {
@@ -461,8 +461,12 @@ function updateRow(row) {
   const key = row.dataset.key, s = st.byKey[key], v = view(key);
   row.classList.toggle('adjusted', !!ed.tweaks[key]);
   row.classList.toggle('clamped', !!v.clamped);
+  row.classList.toggle('at-min', v.clamped === 'min');
+  row.classList.toggle('at-max', v.clamped === 'max');
   const inp = row.querySelector('input[type=range]');
   if (document.activeElement !== inp || !row.dragging) inp.value = v.value;
+  const vars = L.sliderVars(s, v);       // S17: the preset's mark and the tweak line are drawn from these
+  inp.style.setProperty('--base', vars.base); inp.style.setProperty('--lo', vars.lo); inp.style.setProperty('--hi', vars.hi);
   const vs = row.querySelector('.v');
   if (!vs.querySelector('input')) vs.textContent = L.fmtNum(s, v.value);
   row.querySelector('.cn').textContent = L.clampNote(v);
@@ -471,12 +475,14 @@ function updateRow(row) {
 
 function sliderRow(s) {
   const row = document.createElement('div');
-  row.className = 'sl';
+  row.className = 'sl' + (L.bipolar(s) ? ' bipolar' : '');
   row.dataset.key = s.key;
-  row.innerHTML = `<label></label><input type="range" min="${s.min}" max="${s.max}" step="${s.step}">` +
+  row.innerHTML = `<label></label><span class="track"><input type="range" min="${s.min}" max="${s.max}" step="${s.step}"></span>` +
     '<span class="vals"><span class="v editable" title="點兩下輸入數值"></span><span class="cn"></span></span>' +
     '<button class="reset" title="還原這一項的微調（回到 preset × 強度）">↺</button>';
-  row.querySelector('label').textContent = s.label;
+  const dot = L.hueDot(s.key);
+  if (dot) { const h = document.createElement('span'); h.className = 'hue'; h.style.background = dot; row.querySelector('label').appendChild(h); }
+  row.querySelector('label').appendChild(document.createTextNode(s.label));
   const inp = row.querySelector('input');
   inp.setAttribute('aria-label', s.label);
   inp.addEventListener('input', () => { row.dragging = true; setValue(s.key, +inp.value, 'slider:' + s.key); });  // one step per drag
@@ -548,7 +554,7 @@ function refreshBadges() {
   document.querySelectorAll('#sliders .acc').forEach((acc) => {
     const g = acc.dataset.group;
     const n = st.sliders.filter((s) => s.group === g && ed.tweaks[s.key]).length;
-    acc.querySelector('.tc').textContent = n ? `● 微調 ${n} 項` : '';
+    acc.querySelector('.tc').textContent = n ? `微調 ${n} 項` : '';   // the amber dot is drawn by CSS (S17)
   });
 }
 
@@ -564,8 +570,21 @@ function renderStrength() {
   $('#strength').disabled = !on;
   $('#strength-100').disabled = !on;
   if (document.activeElement !== $('#strength')) $('#strength').value = ed.strength;
-  $('#strength-value').textContent = on ? ed.strength + '%' : '—';
+  const val = $('#strength-value');
+  if (!val.querySelector('input')) {
+    val.textContent = on ? String(ed.strength) : '—';
+    if (on) { const p = document.createElement('span'); p.className = 'pct'; p.textContent = '%'; val.appendChild(p); }
+  }
+  const vars = L.strengthVars(on ? ed.strength : 100);   // S17: the dial fills from 100 % toward the thumb
+  for (const [k, v] of Object.entries(vars)) $('#strength').style.setProperty('--' + k, v);
   $('#strength').title = on ? '' : '先選一個 preset';
+}
+
+function setCanvas(name) {              // S17: the preview background, remembered per browser
+  const c = L.canvasFrom(name);
+  document.body.dataset.canvas = c;
+  for (const b of document.querySelectorAll('.canvas-pick button')) b.setAttribute('aria-pressed', String(b.dataset.canvas === c));
+  savePref('canvas', c);
 }
 const setStrength = (v, gesture) => dispatch({type: 'setStrength', value: v, gesture});
 
@@ -1172,7 +1191,11 @@ async function init() {
   $('#strength-value').addEventListener('dblclick', () => {
     if (!L.strengthEnabled(ed)) return;
     editValue($('#strength-value'), String(ed.strength), STRENGTH, (v) => setStrength(v));
+    const inp = $('#strength-value input');
+    if (inp) inp.addEventListener('blur', () => setTimeout(renderStrength, 0), {once: true});
   });
+  setCanvas(loadPref('canvas', 'dark'));                                         // S17
+  for (const b of document.querySelectorAll('.canvas-pick button')) b.onclick = () => setCanvas(b.dataset.canvas);
   $('#reset-all').onclick = () => dispatch({type: 'resetAll'});
   $('#reset-original-btn').onclick = resetOriginal;          // S10
   $('#restore-previous-btn').onclick = restorePrevious;

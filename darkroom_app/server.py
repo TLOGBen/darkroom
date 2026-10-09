@@ -82,7 +82,10 @@ async def _local_only(request, handler):
         canonical = resource.canonical if resource is not None else request.path
         if canonical in PATH_READING_GETS:
             return web.json_response({"error": DARKROOM_HEADER_REFUSED}, status=403)   # img / script cannot add it
-    return await handler(request)
+    response = await handler(request)
+    if request.path.startswith("/static/"):   # S19: an updated app.js / app.css is revalidated (ETag), never stale
+        response.headers["Cache-Control"] = "no-cache"
+    return response
 
 
 def _error(e):

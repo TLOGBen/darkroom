@@ -413,7 +413,7 @@ class TestPageStructure(unittest.TestCase):
         self.assertLess(paste.index("await flushSave();"), paste.index("confirm(L.pasteConfirm("))
         self.assertIn("const GRID_EMPTY = '這個資料夾沒有支援的照片（JPEG／PNG／TIFF／HEIC）';", read("logic.js"))   # (j)
         self.assertIn("e.textContent = L.GRID_EMPTY;", js)
-        self.assertRegex(css, r"#grid-count \{[^}]*white-space: nowrap;")                        # (k)
+        self.assertRegex(css, r"#grid-count(?:, #grid-pending)? \{[^}]*white-space: nowrap;")    # (k)
         self.assertIn('<link rel="icon" href="/static/logo.svg" type="image/svg+xml">', html)    # (l)
         with open(os.path.join(STATIC, "logo.svg"), "rb") as f, \
                 open(os.path.join(_util.REPO, "docs", "assets", "logo.svg"), "rb") as g:
@@ -476,6 +476,67 @@ class TestPageStructure(unittest.TestCase):
         self.assertIn("await gridEach('DELETE', '/api/edit', targets, L.resetDone, 'plain');", g)
         self.assertIn("await gridEach('POST', '/api/edit/restore', targets, L.restoreDone, 'edited');", g)
         self.assertIn("gridBatchDone(summaryFn, targets, results);", js)       # failures listed per photo
+
+    def test_css_palette_is_neutral(self):  # S16: grey interface, four muted semantic colours on small marks only
+        css = re.sub(r"/\*.*?\*/", "", read("app.css"), flags=re.S)
+        root = css[css.index(":root {"):css.index("}", css.index(":root {"))]
+        for token in ("--bg0: #121212", "--bg1: #191919", "--bg2: #202020", "--bg3: #2a2a2a",
+                      "--line: rgba(255,255,255,.07)", "--line-2: rgba(255,255,255,.12)",
+                      "--text: #e6e6e6", "--text-2: #a9a9a9", "--text-3: #8a8a8a",
+                      "--tweak: #d9a85b", "--clamp: #d27a7a", "--err: #e06b6b", "--ok: #8fbf93", "--canvas: #151515"):
+            self.assertIn(token, root, token)
+        self.assertIn('body[data-canvas="black"] { --canvas: #000000; }', css)
+        self.assertIn('body[data-canvas="mid"] { --canvas: #4a4a4a; }', css)
+        semantic = {"#d9a85b", "#d27a7a", "#e06b6b", "#8fbf93"}
+        for m in re.finditer(r"#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})\b", css):
+            h = m.group(1).lower()
+            full = "".join(c * 2 for c in h) if len(h) == 3 else h
+            if "#" + full in semantic:
+                continue
+            self.assertTrue(full[0:2] == full[2:4] == full[4:6], f"coloured hex {m.group(0)} in app.css")
+        for m in re.finditer(r"rgba?\((\d+),\s*(\d+),\s*(\d+)", css):
+            r, g, b = (int(m.group(i)) for i in (1, 2, 3))
+            self.assertEqual((r == g == b) or (r, g, b) == (217, 168, 91), True, m.group(0))
+        for blue in ("#4a9eff", "#2f6fbf", "#29466b", "#3b82d6", "#33404f", "#8fb6df"):
+            self.assertNotIn(blue, css, blue)
+        self.assertIn(".tnode.preset.active { color: #ffffff; background: rgba(255,255,255,.07); border-left-color: #e6e6e6; }", css)
+        self.assertIn('button.on, button[aria-pressed="true"], #grid-btn[aria-pressed="true"] { background: #e6e6e6; color: #141414; border-color: #e6e6e6; }', css)
+        self.assertIn("#preview-img[hidden] { display: none; }", css)
+        self.assertNotRegex(css, r"#preview-img[^{]*\{[^}]*transition")   # the preview image never animates
+        self.assertIn("@media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; } }", css)
+        self.assertIn('--font: "Segoe UI Variable Text", "Segoe UI", "Noto Sans TC", "Microsoft JhengHei UI", system-ui, sans-serif;', css)
+        self.assertIn('--num: "Bahnschrift", "Segoe UI Variable Small", "Segoe UI", system-ui, sans-serif;', css)
+        self.assertNotIn("@import", css); self.assertNotIn("url(", css)     # no downloaded fonts or assets
+
+    def test_slider_vars_structure(self):  # S17: drawn sliders, dial, hue dots, canvas, icons
+        html, js, css = read("index.html"), read("app.js"), read("app.css")
+        row = js[js.index("function updateRow"):js.index("function sliderRow")]
+        self.assertIn("const vars = L.sliderVars(s, v);", row)
+        self.assertIn("inp.style.setProperty('--base', vars.base); inp.style.setProperty('--lo', vars.lo); inp.style.setProperty('--hi', vars.hi);", row)
+        self.assertIn("row.classList.toggle('at-min', v.clamped === 'min');", row)
+        sr = js[js.index("function sliderRow"):js.index("function curveBox")]
+        self.assertIn("row.className = 'sl' + (L.bipolar(s) ? ' bipolar' : '');", sr)
+        self.assertIn("const dot = L.hueDot(s.key);", sr)
+        st = js[js.index("function renderStrength"):js.index("function setCanvas")]
+        self.assertIn("const vars = L.strengthVars(on ? ed.strength : 100);", st)
+        self.assertIn("acc.querySelector('.tc').textContent = n ? `微調 ${n} 項` : '';", js)
+        self.assertIn("setStatus('已更新', 'mute', `預覽已更新：後端 ${(+ms).toFixed(0)} ms，往返 ${rt.toFixed(0)} ms`);", js)
+        self.assertIn("setCanvas(loadPref('canvas', 'dark'));", js)
+        self.assertRegex(css, r"input\[type=range\] \{ -webkit-appearance: none; appearance: none;")
+        self.assertIn("--lo: 50%; --hi: 50%; --base: 50%;", css)
+        self.assertIn(".sl.bipolar input[type=range] {", css)
+        self.assertIn(".sl.clamped input[type=range]::-webkit-slider-thumb { border-radius: 1px;", css)
+        self.assertRegex(html, r'<div class="canvas-pick" role="group" aria-label="預覽底色">')
+        for c in ("dark", "black", "mid"):
+            self.assertRegex(html, r'<button class="c-%s" data-canvas="%s" title="[^"]+" aria-pressed="(true|false)"></button>' % (c, c))
+        self.assertIn('<span class="ticks" aria-hidden="true"></span>', html)
+        self.assertEqual(html.count('class="scale-num"'), 3)
+        for ident in ("toggle-lib", "toggle-sl", "undo", "redo", "prev", "next"):   # inline SVG, no Unicode glyphs
+            tag = re.search(r'<button id="%s"[^>]*>(.*?)</button>' % ident, html, re.S).group(1)
+            self.assertIn("<svg", tag, ident)
+        for glyph in ("☰", "⚙", "↶", "↷", "⟲", "▦", "◀", "▶"):
+            self.assertNotIn(glyph, html, glyph)
+        self.assertEqual(html.count('<span class="seg">'), 3)                 # browse, history, views
 
     def test_toasts_go_through_explain(self):  # S14: every toast shows the explained sentence
         js = read("app.js")
