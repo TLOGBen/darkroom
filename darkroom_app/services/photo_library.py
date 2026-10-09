@@ -380,34 +380,38 @@ class _ThumbQueue:
                     self.cv.wait()
                 job = heapq.heappop(self.heap)
                 stale = job.priority and self.generation.get(job.folder, 0) != job.generation   # never a direct request
+                self.busy += 1                      # also for a stale job: its index flush counts as work
                 if stale:
                     self.inflight.pop(job.key, None)
-                    self._bg_done(job, locked=True)
+                    idle = self._bg_done(job, locked=True)
                     job.future.set(None)
-                    self.cv.notify_all()
-                    continue
-                self.busy += 1
-            try:
-                result, error = self.work(job.path), None
-            except BaseException as e:          # DarkroomError, SafeWriteRefused, ...: handed to every waiter
-                result, error = None, e
-                if job.priority and not isinstance(e, DarkroomError):   # nobody waits for a background job
-                    _log(f"background thumbnail of {job.path} failed: {type(e).__name__}: {_one_line(e)}")
+            if not stale:
+                try:
+                    result, error = self.work(job.path), None
+                except BaseException as e:          # DarkroomError, SafeWriteRefused, ...: handed to every waiter
+                    result, error = None, e
+                    if job.priority and not isinstance(e, DarkroomError):   # nobody waits for a background job
+                        _log(f"background thumbnail of {job.path} failed: {type(e).__name__}: {_one_line(e)}")
+                with self.cv:
+                    self.inflight.pop(job.key, None)
+                    idle = self._bg_done(job, locked=True)
+                    job.future.set(result, error)
+            if idle:
+                self.on_folder_idle(job.folder)      # disk I/O outside the queue lock (seal F10)
             with self.cv:
-                self.inflight.pop(job.key, None)
-                self.busy -= 1
-                self._bg_done(job, locked=True)
-                job.future.set(result, error)
+                self.busy -= 1                      # idle only once the folder's index is written
                 self.cv.notify_all()
 
     def _bg_done(self, job, locked):
-        if job.background:
-            left = self.pending_bg.get(job.folder, 0) - 1
-            if left <= 0:
-                self.pending_bg.pop(job.folder, None)
-                self.on_folder_idle(job.folder)
-            else:
-                self.pending_bg[job.folder] = left
+        """Count a background job as finished; True when its folder has no background work left."""
+        if not job.background:
+            return False
+        left = self.pending_bg.get(job.folder, 0) - 1
+        if left <= 0:
+            self.pending_bg.pop(job.folder, None)
+            return True
+        self.pending_bg[job.folder] = left
+        return False
 
     def on_folder_idle(self, folder):      # replaced by the service (flush the index)
         pass
@@ -460,16 +464,28 @@ class PhotoLibraryService:
     def _guard(self, photo_path):
         self._guard_folder(os.path.dirname(os.path.abspath(photo_path)))
 
+    def _cannot_write(self, reason):
+        return DarkroomError("unavailable", M.PL_CANNOT_WRITE.format(data_dir=self.data_dir, reason=reason))
+
     def _make_dirs(self, folder):
         if not os.path.isdir(folder):
-            self._sw(safe_write.make_dirs, folder, self.data_dir)
+            try:
+                self._sw(safe_write.make_dirs, folder, self.data_dir)
+            except OSError as e:                     # read-only disk, permissions: PL9 unavailable
+                raise self._cannot_write(_one_line(e)) from None
 
     def _root(self):
-        """data_dir itself (safe_write's root must exist): created by the first write only."""
+        """data_dir itself (safe_write's root must exist): created by the first write only (PL9: a data_dir whose
+        parent does not exist cannot be created and is unavailable, not an unexpected error - seal F1)."""
         d = self.data_dir
         if not os.path.isdir(d):
             parent = os.path.dirname(os.path.abspath(d))
-            self._sw(safe_write.make_dirs, d, parent)
+            if not os.path.isdir(parent):
+                raise self._cannot_write(M.PL_PARENT_MISSING.format(parent=parent))
+            try:
+                self._sw(safe_write.make_dirs, d, parent)
+            except OSError as e:
+                raise self._cannot_write(_one_line(e)) from None
         return d
 
     # ------------------------------------------------------------------ reading and writing JSON (PLP3)

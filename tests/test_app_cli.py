@@ -146,6 +146,43 @@ class TestCliExitCodes(CliCase):
             self.assertEqual((rc, out, err),
                              (2, "", CONFIG_ERROR.format(e=f"preset folder not found: {missing}") + "\n"), extra)
 
+    def test_cli_edit_paste_human_lines_and_exit_6(self):  # CONTRACT-photo-library PLP4 (seal F5)
+        from _fakes import FakeDarkroom
+        fake = FakeDarkroom()
+        rc, out, err = call(["edit", "paste", "--from", "s.jpg", "a.jpg", "b.jpg"], fake)
+        self.assertEqual((rc, out, err), (6, "已貼上：a.jpg\nphoto not found: b.jpg\n", ""))
+        self.assertEqual(fake.calls, [("paste_edit", (["a.jpg", "b.jpg"], "s.jpg", None))])
+        rc, out, err = call(["edit", "paste", "--from", "s.jpg", "a.jpg"], fake)
+        self.assertEqual((rc, out, err), (0, "已貼上：a.jpg\n", ""))
+        rc, out, err = call(["edit", "paste", "--from", "s.jpg", "a.jpg", "b.jpg", "--json"], fake)
+        self.assertEqual((rc, err), (6, ""))
+        self.assertEqual(json.loads(out)["result"]["results"][1], {"ok": False, "target": "b.jpg", "error": "photo not found: b.jpg"})
+
+    def test_cli_thumbnail_refuses_tty(self):  # PL13 / PLP8: same rule and sentence as preview (seal F5)
+        from darkroom_app.composition import build_facade
+        f = build_facade(self.presets, data_dir=os.path.join(self.tmp, "data"))
+        out, err = io.StringIO(), io.StringIO()
+        out.isatty = lambda: True
+        from darkroom_app import cli
+        with mock.patch.object(f, "thumbnail") as thumb, contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            rc = cli.main(["thumbnail", self.photo], facade=f)
+        self.assertEqual((rc, out.getvalue(), err.getvalue()), (2, "", TTY_REFUSAL + "\n"))
+        thumb.assert_not_called()
+        rc, out, err = call(["thumbnail", self.photo, "--json"], f)
+        self.assertEqual((rc, err), (0, ""))
+        res = json.loads(out)["result"]
+        self.assertEqual(sorted(res), ["edited", "fingerprint", "height", "jpeg_base64", "width"])
+        self.assertEqual((res["edited"], res["width"], res["height"]), (False, 256, 160))
+
+    def test_cli_data_dir_config_error_is_exit_2(self):  # PLP8: data_dir resolved on first use (seal F5)
+        from darkroom_app import config
+        with mock.patch.object(config, "data_dir", side_effect=config.ConfigError(config.DATA_DIR_ERROR)):
+            for extra in ([], ["--json"]):
+                rc, out, err = call(["--preset-dir", self.presets, "edit", "get", self.photo, *extra])
+                self.assertEqual((rc, out, err), (2, "", CONFIG_ERROR.format(e=config.DATA_DIR_ERROR) + "\n"), extra)
+            rc, out, err = call(["--preset-dir", self.presets, "presets", "flags", "--json"])   # not needed: fine
+            self.assertEqual((rc, err), (0, ""))
+
     def test_cli_preview_refuses_tty(self):
         from darkroom_app.composition import build_facade
         f = build_facade(self.presets)

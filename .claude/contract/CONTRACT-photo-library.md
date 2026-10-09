@@ -62,7 +62,7 @@ not_found：這張照片沒有編輯：{file_name} ｜ 找不到照片資料夾�
 invalid：source 與 edit 要恰好給一個 ｜ edit 不是 darkroom-edit/1 編輯：{reason} ｜ targets 要是 1～500 個照片路徑 ｜ 縮圖產生失敗：{file_name}：{reason}
 conflict：編輯檔版本不支援：{schema}（{file_name}）
 unavailable：照片庫的編輯檔損壞：{edit_file} ｜ 無法寫入照片庫：{data_dir}：{reason}
-縮圖：長邊 256 ｜ JPEG q80 ｜ 內嵌縮圖門檻：轉正後長邊 ≥ 160、長寬比差 ≤ 1% ｜ 執行緒前綴 darkroom-thumb ｜ 數量 max(1, min(4, os.cpu_count()//2))
+縮圖：長邊 256 ｜ JPEG q80 ｜ 內嵌縮圖門檻：轉正後長邊 ≥ 160、長寬比差 ≤ 1% ｜ 執行緒前綴 darkroom-thumb ｜ 數量 max(1, min(4, (os.cpu_count() or 2) // 2))（PLP17）
 自動存檔：停 500 ms 後送出
 前端：preset 已變更，這份編輯用的是當時的 preset 快照 ｜ preset 已不在庫裡，這份編輯用的是當時的 preset 快照
 前端：已複製 {source_name} 的編輯 ｜ 要用 {source_name} 的編輯取代 {n} 張照片的編輯嗎？ ｜ 已貼上 {ok} 張，失敗 {failed} 張 ｜ 已匯出 {ok} 張，失敗 {failed} 張
@@ -147,3 +147,21 @@ PLP12：四條路徑 GET 以 allow_head=False 登記 ｜ X-Darkroom 檢查涵蓋
   - `tests/test_app_frontend.py`：`PROTECTED` 與 `hidden` 清單加四項；新增 `test_photo_library_controls`、`test_photo_library_sentences_same_in_page_and_contract`；`tests/js/test_logic.cjs` 加 PL15／PLP9 一支（`restoreEdit` 清空歷史、`editBody`、`gridSelect`、`exportItems`、句子）。
   - `darkroom_app/services/photos.py`：`_photo_ext` 改從 `formats` 取 `PHOTO_EXT`（同一個 tuple；原本 import `engine` 會把 torch 帶進 `edit *` 指令）；L3 的路徑檢查抽成 `checked_photo_path`（`open_photo` 與照片庫共用，順序與句子不變）。
   - 新增：`tests/test_photo_library.py`、`tools/bench_photo_library.py`、`darkroom_app/services/photo_library.py`；`tools/bench_preview.py` 加 `--with-thumbnails` 與固定傳暫存 `--data-dir`。
+
+## 封緘第 1 次派遣處置紀錄（2026-10-09；依 Loose-Criterion Escalation／R10，與條文同等效力）
+三支探針（刪 `_generate` 開頭的 `_guard_folder`；`restore()` 拿掉 `{restore: true}`；`Sec-Fetch-Site` 拒絕清單縮成只剩 `cross-site`）全部各有測試變紅、逐位元組還原；條文與常數 108 個比對 107 個相同（F8 一個漂移）。findings 處置：
+- PLP17（F1，PL9 違反，已修）：data_dir 的上層資料夾不存在時 `safe_write.make_dirs(data_dir, root=parent)` 丟 `SafeWriteRefused`（根不存在），走到入口是未預期錯誤（HTTP 500／CLI 1）而不是 PL9 的 unavailable。改為：`_root()` 先查上層資料夾存在，不存在 → unavailable「無法寫入照片庫：{data_dir}：上層資料夾不存在：{parent}」（不接 `SafeWriteRefused`，是預檢；G8 照舊）；`make_dirs` 的 `OSError`（唯讀、權限）在 `_root`／`_make_dirs` 翻成同句 unavailable。釘死：`test_data_dir_parent_missing_is_unavailable`（set／thumbnail／paste 單筆同句、讀取照常、不建任何資料夾；`OSError` 版）。PL9 與 PLP1 的邊界：`SafeWriteRefused` 仍是「寫到不該寫的地方」，不翻譯；「寫不進該寫的地方」才是 unavailable。
+- F2（測試靠時間差，已修）：`test_reads_create_nothing` 改成先對空資料夾呼叫 `folder_thumbnails` 斷言不建任何東西，再對有照片的資料夾呼叫並 `wait_thumbnails` 後斷言只出現 `thumbs/`、`index/`（PL12 的背景預產本來就會寫）。
+- F3（PL15／PLP9 條文太鬆，已修）：`beforeunload` 的 `flushSave()` 只保證呼叫、不保證送達（瀏覽器會取消沒有 keepalive 的 fetch）。改為 `sendSave` 以 `fetch(..., {keepalive: true})` 送出（body 遠小於 64 KB）；條文修訂為「離開頁面前以 keepalive 送出未送的那筆」。釘死：`test_photo_library_controls` 的 `api('PUT', '/api/edit', body, {keepalive: true})`。
+- F4（PLP6／PL15 條文太鬆，已修）：沿用狀態（開 B、B 沒有編輯、畫面沿用 A 的 preset、尚未變動）下按「存成 preset」會 404「這張照片沒有編輯」。改為：`flushSave()` 之後 `st.edit` 仍為 null → 走既有 `save_user_preset`（用目前編輯器狀態，不把沿用狀態寫成 B 的編輯）；`st.edit` 非 null 才走 `/api/edit/save-preset`。條文補：「已開啟照片且照片庫有這張的編輯時」才以編輯為來源。釘死：`test_photo_library_controls`（`if (st.image && st.edit) {` 與兩條路徑順序）。
+- F5（PLP4 未釘，已修）：`test_app_cli` 加 `test_cli_edit_paste_human_lines_and_exit_6`（「已貼上：a.jpg」＋失敗句、exit 6、stderr 空、`--json` 同結果）、`test_cli_thumbnail_refuses_tty`（同 L9 句、exit 2、facade 未被呼叫；`--json` result 五鍵）、`test_cli_data_dir_config_error_is_exit_2`（延遲解析的 `ConfigError` → stderr「darkroom：{e}」、exit 2，不碰 data_dir 的指令照常）。
+- F6（PLP9 違反，已修）：三句 toast 搬進 `logic.js`：`saveEditFailed(reason)`＝「儲存編輯失敗：{reason}」、`loadEditFailed`＝「讀取編輯失敗：{reason}」、`loadFolderFailed`＝「讀取資料夾失敗：{reason}」（常數見下）；`app.js` 不得再出現這三個字面字串。釘死：`tests/js/test_logic.cjs` PLP17、`test_photo_library_sentences_same_in_page_and_contract`、`test_photo_library_controls`。
+- F7（PLP13 未釘，已修）：`test_background_failures_are_logged_to_stderr`（背景 `SafeWriteRefused` → stderr 每張一行 `[darkroom-photo-library] background thumbnail of {path} failed: SafeWriteRefused: …`，不留任何檔；直接請求照樣往外拋；索引 `replace_into` 失敗 → `[darkroom-photo-library] index not written: 無法寫入照片庫：…`）。
+- F8（G3 漂移，條文改）：`THUMB_WORKERS` 常數改為 `max(1, min(4, (os.cpu_count() or 2) // 2))`（`os.cpu_count()` 可能回 None；實作與 `test_thumbs_not_on_gpu_executor` 一致），PL12 與常數區以此為準。
+- F9（PLP5 字句落後於自身要求，R10 條文改）：`library.params`／`library.get(` 允許出現的位置改為 `photo_library.py` 的 `_resolve`（`resolve_params` 的本體）、`_status`（PL4 的 `preset_status` 要查 `Library.params`）、`set_edit`（換 id 時取 `Library.get` 新快照，PLP5 自己要求）與 preset 庫的 `save_user_preset`；`test_resolve_params_is_the_only_rule` 釘的就是這四個。
+- F10（穩定性觀察，已修）：索引寫檔（`on_folder_idle` → `_flush_index`）移到佇列鎖外執行；worker 在索引寫完前仍算忙碌（`wait_idle` 要等到索引落檔），釘死由 `test_index_file`、`test_direct_request_jumps_the_queue_and_stale_folders_are_dropped` 原有斷言涵蓋。
+- F11（bench 零測試層，已修一項）：`stage_split` 改傳真實 `config.preset_dir()`；`gpu_skip` 在 nvidia-smi 偵測不到時跳過是 R1 (c) 的規定（「無法判斷也跳過並印出原因」），不改。
+- 記錄、不修：`index.html` 新按鈕的 `title` 提示文字沒有測試（UI/UX，低）；探針 B 是靜態字串釘，對「把 `restore()` 內聯、直接呼叫 `dispatch`」的重構不會叫（該情境實害只是多一次相同寫入）。
+```text
+PLP17 常數：無法寫入照片庫的 reason（上層不存在）：上層資料夾不存在：{parent} ｜ 前端：儲存編輯失敗：{reason} ｜ 讀取編輯失敗：{reason} ｜ 讀取資料夾失敗：{reason} ｜ THUMB_WORKERS：max(1, min(4, (os.cpu_count() or 2) // 2)) ｜ sendSave：fetch keepalive true
+```

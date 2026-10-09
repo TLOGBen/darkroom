@@ -35,11 +35,11 @@ function setStatus(msg, cls, detail) {
   const s = $('#status'); s.textContent = msg; s.className = cls || 'mute'; s.title = detail || msg;
 }
 
-async function api(method, url, body) {
+async function api(method, url, body, extra) {
   // X-Darkroom on every request (PLP11): an <img src> / <script src> from another page cannot add it, and a
   // cross-site fetch that adds it needs a CORS preflight the server never answers.
-  const r = await fetch(url, {method, headers: Object.assign({'X-Darkroom': '1'}, body ? {'Content-Type': 'application/json'} : {}),
-                              body: body ? JSON.stringify(body) : undefined});
+  const r = await fetch(url, Object.assign({method, headers: Object.assign({'X-Darkroom': '1'}, body ? {'Content-Type': 'application/json'} : {}),
+                                            body: body ? JSON.stringify(body) : undefined}, extra || {}));
   if (!r.ok) {
     let msg = r.status + '';
     try { msg = (await r.json()).error || msg; } catch (e) { /* not JSON */ }
@@ -572,8 +572,9 @@ async function savePreset() {
   if (name === null) return;
   const group = prompt('群組（用「 - 」分層）', L.USER_GROUP);
   if (group === null) return;
-  if (st.image) {                       // PLP6: the photo library's edit (its snapshot) is the source
-    await flushSave();
+  if (st.image) await flushSave();
+  if (st.image && st.edit) {            // PLP6: the photo library's edit (its snapshot) is the source
+    // (a photo whose state is only carried over, never changed, has no edit yet: the library flow below, seal F4)
     try {
       const r = await (await api('POST', '/api/edit/save-preset', {path: st.image.path, name, group: group || L.USER_GROUP})).json();
       await reloadLibrary();
@@ -620,9 +621,10 @@ function scheduleSave() {
 
 async function sendSave(path, body) {
   try {
-    const res = await (await api('PUT', '/api/edit', body)).json();
+    // keepalive: a save sent from beforeunload survives the page going away (seal F3)
+    const res = await (await api('PUT', '/api/edit', body, {keepalive: true})).json();
     if (st.image && st.image.path === path) applyEditInfo(res);
-  } catch (e) { toast('儲存編輯失敗：' + e.message, true); }
+  } catch (e) { toast(L.saveEditFailed(e.message), true); }
 }
 
 async function flushSave() {            // sends what is pending and waits until nothing is in flight
@@ -651,7 +653,7 @@ function restore(res) {                 // a saved edit comes back: through the 
 
 async function loadEdit(path) {         // after opening: restore the saved edit, else keep today's state (R5)
   try { restore(await (await api('GET', '/api/edit?path=' + encodeURIComponent(path))).json()); }
-  catch (e) { applyEditInfo({edit: null, preset_status: null}); toast('讀取編輯失敗：' + e.message, true); }
+  catch (e) { applyEditInfo({edit: null, preset_status: null}); toast(L.loadEditFailed(e.message), true); }
 }
 
 // ------------------------------------------------------------------ photo library: the grid (PL15 / PLP9)
@@ -674,7 +676,7 @@ async function loadGrid(folder) {
   if (!folder) return;
   let res;
   try { res = await (await api('GET', '/api/folder/thumbnails?folder=' + encodeURIComponent(folder))).json(); }
-  catch (e) { toast('讀取資料夾失敗：' + e.message, true); return; }
+  catch (e) { toast(L.loadFolderFailed(e.message), true); return; }
   st.grid = {folder: res.folder, items: res.items, sel: new Set(), anchor: 0};
   $('#grid-path').value = res.folder;
   renderGrid();

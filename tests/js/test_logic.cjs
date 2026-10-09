@@ -353,3 +353,9 @@ test('PL15 / PLP9: restoring a saved edit, autosave body, grid selection, export
   assert.equal(L.exportSelectedDone(3, 0), '已匯出 3 張，失敗 0 張');
   assert.equal(L.gridCount(2, 10), '已選 2／10 張');
 });
+
+test('PLP17: the three failure toasts are helpers', () => {
+  assert.equal(L.saveEditFailed('500'), '儲存編輯失敗：500');
+  assert.equal(L.loadEditFailed('x'), '讀取編輯失敗：x');
+  assert.equal(L.loadFolderFailed('找不到照片資料夾：D:/x'), '讀取資料夾失敗：找不到照片資料夾：D:/x');
+});

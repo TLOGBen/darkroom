@@ -275,6 +275,9 @@
   const pasteDone = (ok, failed) => `已貼上 ${ok} 張，失敗 ${failed} 張`;
   const exportSelectedDone = (ok, failed) => `已匯出 ${ok} 張，失敗 ${failed} 張`;
   const gridCount = (n, total) => `已選 ${n}／${total} 張`;
+  const saveEditFailed = (reason) => `儲存編輯失敗：${reason}`;
+  const loadEditFailed = (reason) => `讀取編輯失敗：${reason}`;
+  const loadFolderFailed = (reason) => `讀取資料夾失敗：${reason}`;
 
   function editBody(ed, path) {         // PUT /api/edit: the open photo's edit as the editor shows it
     const overrides = {};
@@ -314,5 +317,6 @@
           USER_GROUP, FAV_EMPTY, UPLOAD_BATCH_CHARS, presetSaved, importSummary, importedLine, canSavePreset, favMark,
           groupCreated, saveBody, uploadBatches, importReport,
           AUTOSAVE_MS, PRESET_CHANGED, PRESET_MISSING, presetStatusText, copied, pasteConfirm, pasteDone,
-          exportSelectedDone, gridCount, editBody, gridSelect, exportItems};
+          exportSelectedDone, gridCount, editBody, gridSelect, exportItems, saveEditFailed, loadEditFailed,
+          loadFolderFailed};
 });

@@ -314,7 +314,10 @@ class TestPageStructure(unittest.TestCase):
         self.assertIn("if (!(opts && opts.restore)) scheduleSave();", js)
         self.assertEqual(js.count("api('PUT'"), 1)
         send = js[js.index("async function sendSave"):js.index("async function flushSave")]
-        self.assertIn("api('PUT', '/api/edit', body)", send)
+        self.assertIn("api('PUT', '/api/edit', body, {keepalive: true})", send)      # seal F3: survives unload
+        self.assertIn("toast(L.saveEditFailed(e.message), true);", send)
+        self.assertIn("window.addEventListener('beforeunload', () => { if (save.dirty) flushSave(); });", js)
+        self.assertIn("fetch(url, Object.assign({method, headers:", js)
         self.assertIn("save.timer = setTimeout(flushSave, L.AUTOSAVE_MS);", js)
         # restoring a saved edit goes through the reducer with {restore: true} and never schedules a save
         restore = js[js.index("function restore(res)"):js.index("async function loadEdit")]
@@ -323,7 +326,10 @@ class TestPageStructure(unittest.TestCase):
         self.assertNotRegex(restore, r"(?<![\w.$])ed\s*=(?!=)")
         load = js[js.index("async function loadEdit"):js.index("// ------------------------------------------------------------------ photo library: the grid")]
         self.assertNotIn("scheduleSave", load)                      # get_edit failed: never saved over
-        self.assertIn("applyEditInfo({edit: null, preset_status: null})", load)
+        self.assertIn("applyEditInfo({edit: null, preset_status: null}); toast(L.loadEditFailed(e.message), true);", load)
+        self.assertIn("catch (e) { toast(L.loadFolderFailed(e.message), true); return; }", js)
+        for raw in ("'儲存編輯失敗：'", "'讀取編輯失敗：'", "'讀取資料夾失敗：'"):   # seal F6: sentences live in logic.js
+            self.assertNotIn(raw, js, raw)
         opened = js[js.index("async function openPhoto"):js.index("// ------------------------------------------------------------------ photo library: autosave")]
         self.assertLess(opened.index("await flushSave();"), opened.index("api('POST', '/api/open'"))
         self.assertLess(opened.index("await loadEdit(path);"), opened.index("requestPreview();"))
@@ -350,6 +356,9 @@ class TestPageStructure(unittest.TestCase):
         save = js[js.index("async function savePreset"):js.index("// ------------------------------------------------------------------ photo library: autosave")]
         self.assertIn("api('POST', '/api/edit/save-preset', {path: st.image.path, name, group: group || L.USER_GROUP})", save)
         self.assertLess(save.index("await flushSave();"), save.index("/api/edit/save-preset"))
+        # seal F4: a carried-over state that was never changed has no edit; the library flow saves it instead
+        self.assertIn("if (st.image && st.edit) {", save)
+        self.assertLess(save.index("/api/edit/save-preset"), save.index("libraryCall('save', L.saveBody(req, name, group)"))
 
     def test_photo_library_sentences_same_in_page_and_contract(self):  # PL15 / PLP9 constants
         logic = read("logic.js")
@@ -361,6 +370,9 @@ class TestPageStructure(unittest.TestCase):
         self.assertIn("const pasteDone = (ok, failed) => `已貼上 ${ok} 張，失敗 ${failed} 張`;", logic)
         self.assertIn("const exportSelectedDone = (ok, failed) => `已匯出 ${ok} 張，失敗 ${failed} 張`;", logic)
         self.assertIn("const gridCount = (n, total) => `已選 ${n}／${total} 張`;", logic)
+        self.assertIn("const saveEditFailed = (reason) => `儲存編輯失敗：${reason}`;", logic)          # PLP17
+        self.assertIn("const loadEditFailed = (reason) => `讀取編輯失敗：${reason}`;", logic)
+        self.assertIn("const loadFolderFailed = (reason) => `讀取資料夾失敗：${reason}`;", logic)
 
     def test_section_headers_are_buttons(self):  # R6
         js = read("app.js")

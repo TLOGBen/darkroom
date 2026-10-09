@@ -110,8 +110,9 @@ def cold_run(facade, folder, n, first=FIRST_SCREEN):
 def stage_split(paths, data_dir):
     """Median seconds of read / hash / decode+encode / write for the first 20 files (for a miss)."""
     import statistics
-    from darkroom_app import safe_write
+    from darkroom_app import config, safe_write
     from darkroom_app.services import photo_library as pl
+    preset_dir = config.preset_dir()                  # the real preset folder in use (seal F11)
     out_dir = os.path.join(data_dir, "profile-split")
     os.makedirs(out_dir, exist_ok=True)
     rows = {"read": [], "hash": [], "decode+encode": [], "write": []}
@@ -127,7 +128,7 @@ def stage_split(paths, data_dir):
         jpeg = pl.make_thumbnail(data, os.path.splitext(p)[1].lower())
         rows["decode+encode"].append(time.perf_counter() - t)
         t = time.perf_counter()
-        safe_write.create_new(os.path.join(out_dir, f"{k}.jpg"), out_dir, jpeg, preset_dir=os.path.dirname(data_dir))
+        safe_write.create_new(os.path.join(out_dir, f"{k}.jpg"), out_dir, jpeg, preset_dir=preset_dir)
         rows["write"].append(time.perf_counter() - t)
     return {k: statistics.median(v) * 1000 for k, v in rows.items()}
 

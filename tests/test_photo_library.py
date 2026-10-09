@@ -185,8 +185,34 @@ class TestDataDirAndFingerprint(PhotoLibCase):
         r = self.f.get_edit(a)
         self.assertEqual((r["edit"], r["preset_status"]), (None, None))
         self.f.clear_edit(a)
-        self.f.folder_thumbnails(self.photos)
+        empty = os.path.join(self.tmp, "empty")
+        os.makedirs(empty)
+        self.f.folder_thumbnails(empty)                       # nothing to thumbnail: no background write either
+        self.assertTrue(self.lib.wait_thumbnails(30))
         self.assertFalse(os.path.exists(self.data))
+        self.f.folder_thumbnails(self.photos)                 # PL12: the background pre-generation writes (seal F2)
+        self.assertTrue(self.lib.wait_thumbnails(30))
+        self.assertEqual(sorted(os.listdir(self.data)), ["index", "thumbs"])
+
+    def test_data_dir_parent_missing_is_unavailable(self):  # PL9 / PLP17 (seal F1)
+        from darkroom_app.composition import build_facade
+        a = self.photo()
+        parent = os.path.join(self.tmp, "no-such-parent")
+        bad = os.path.join(parent, "darkroom")
+        f = build_facade(self.presets, data_dir=bad)
+        self.addCleanup(f._photo_library.wait_thumbnails, 60)
+        want = ("unavailable", CANNOT_WRITE.format(data_dir=bad, reason=f"上層資料夾不存在：{parent}"))
+        self.assertEqual(self.err(f.set_edit, a, "p-expo"), want)
+        self.assertEqual(self.err(f.thumbnail, a), want)
+        self.assertEqual(f.paste_edit([a], edit=self.f.set_edit(a, "p-expo")["edit"])["results"],
+                         [{"ok": False, "target": "a.jpg", "error": want[1]}])
+        self.assertEqual(f.get_edit(a)["edit"], None)          # reads still work
+        self.assertFalse(os.path.exists(parent))
+        with mock.patch.object(safe_write, "make_dirs", side_effect=OSError("read-only")):
+            g = build_facade(self.presets, data_dir=os.path.join(self.tmp, "fresh"))
+            self.assertEqual(self.err(g.set_edit, a, "p-expo"),
+                             ("unavailable", CANNOT_WRITE.format(data_dir=os.path.join(self.tmp, "fresh"),
+                                                                 reason="read-only")))
 
     def test_fingerprint_content_only(self):  # PL2
         a = self.photo("a.jpg")
@@ -791,6 +817,37 @@ class TestThumbnails(PhotoLibCase):
         self.assertTrue(msg.startswith(THUMB_FAILED.format(file_name="half.heic", reason="")), msg)
         self.f.folder_thumbnails(self.photos)
         self.assertTrue(self.lib.wait_thumbnails(30))                           # failures never hang the queue
+
+    def test_background_failures_are_logged_to_stderr(self):  # PLP13 (seal F7)
+        import io
+        from darkroom_app.safe_write import SafeWriteRefused
+        self.sources()
+        err = io.StringIO()
+        with mock.patch.object(safe_write, "create_new", side_effect=SafeWriteRefused("refused: nope")), \
+                mock.patch("sys.stderr", err):
+            self.f.folder_thumbnails(self.photos)
+            self.assertTrue(self.lib.wait_thumbnails(60))
+        lines = [ln for ln in err.getvalue().splitlines() if ln]
+        self.assertTrue(lines)
+        self.assertTrue(all(ln.startswith("[darkroom-photo-library] background thumbnail of ") and
+                            ln.endswith(" failed: SafeWriteRefused: refused: nope") for ln in lines), lines)
+        self.assertEqual([f for _, _, fs in os.walk(self.data) for f in fs], [])   # no thumbnail, no index
+        with self.assertRaises(SafeWriteRefused):            # a direct request still raises it (G8)
+            with mock.patch.object(safe_write, "create_new", side_effect=SafeWriteRefused("refused: nope")):
+                self.f.thumbnail(self.sources()["plain.jpg"])
+        err = io.StringIO()
+        real = safe_write.replace_into
+
+        def no_index(tmp, dest, root, **kw):
+            if os.sep + "index" + os.sep in dest:
+                raise OSError("index disk full")
+            return real(tmp, dest, root, **kw)
+        with mock.patch.object(safe_write, "replace_into", no_index), mock.patch("sys.stderr", err):
+            self.f.thumbnail(self.sources()["plain.jpg"])
+            self.assertTrue(self.lib.wait_thumbnails(60))
+        self.assertIn("[darkroom-photo-library] index not written: " + CANNOT_WRITE.format(data_dir=self.data,
+                                                                                           reason="index disk full"),
+                      err.getvalue())
 
     def test_thumbs_not_on_gpu_executor(self):  # PL12
         self.sources()

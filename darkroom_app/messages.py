@@ -69,3 +69,4 @@ PL_EDIT_KEYS = "keys must be exactly schema, fingerprint, preset, strength, over
 PL_EDIT_SCHEMA = "schema is {schema!r}, not darkroom-edit/1"
 PL_EDIT_PRESET = "preset must be null or {id, name, group, params}"
 PL_EDIT_PARAMS = "params: {reason}"
+PL_PARENT_MISSING = "上層資料夾不存在：{parent}"      # the reason inside PL_CANNOT_WRITE (PLP17, seal F1)
