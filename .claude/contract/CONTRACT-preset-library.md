@@ -77,3 +77,4 @@ G10 寫檔白名單（SAFE_WRITE_USERS）：("services/export.py", "services/pre
 快取鍵：(st_ino, st_mtime_ns, st_size) ｜ LOCK_WAIT_S = 5.0 ｜ 前端每批上傳 base64 ≤ 700000 字元
 結束碼 6：匯入批次裡有任一筆 ok:false ｜ MCP 部分失敗：{"results":[…],"failed":n}
 ```
+- [ ] KP11（L9 輕量匯入與副檔名表的位置）：`safe_write` 的 `replace_into`／`remove` 原本為了 `PHOTO_EXT` 延遲 import `engine`（頂層 import torch、cv2），會讓會寫庫的 `presets *` CLI 子指令載入 torch，違反 L9「`presets *` 跑完 `sys.modules` 不得有 torch、cv2」。改為：唯一一份副檔名表搬到新模組 `darkroom_app/formats.py`（不 import 任何東西），`engine.py` 以 `from .formats import PHOTO_EXT` 重新匯出（`engine.PHOTO_EXT` 是同一個 tuple，L3「不得新增第三份副檔名表」照舊成立），`safe_write` 直接從 `formats` import。行為與內容零改變；釘死：`test_app_cli.test_presets_and_sliders_never_import_torch_or_cv2` 擴充到 rename／favorite／save 等寫庫子指令。
