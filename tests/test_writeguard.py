@@ -65,6 +65,7 @@ PROBES_HANDOFF = [
     ("shutil.copyfile(a,p)", "import shutil\nshutil.copyfile(a, p)", "shutil.copyfile"),
     ("os.replace(a,p)", "import os\nos.replace(a, p)", "os.rename"),
     ("os.mkdir(p)", "import os\nos.mkdir(p)", "os.mkdir"),
+    ("os.link(p, inside)", "import os\nos.link(p, a + '.lnk')", "os.link"),     # patch WG12: hard link in
     ("_winapi.CreateFile", "import _winapi\nh = _winapi.CreateFile(p, 0x40000000, 0, 0, 2, 0x80, 0)\n"
      "_winapi.CloseHandle(h)", "_winapi.CreateFile"),
     ("_winapi.CreateJunction", "import _winapi\n_winapi.CreateJunction(os.path.dirname(a), p)",
@@ -114,7 +115,7 @@ class TestWriteGuardProbes(unittest.TestCase):  # G2, G3, G11
                 with open(a, "wb") as f:
                     f.write(b"a")
                 p = os.path.join(root, f"p-{secrets.token_hex(4)}.bin")
-                if name == "os.utime":
+                if name in ("os.utime", "os.link(p, inside)"):   # these need an existing p
                     with open(p, "wb"):
                         pass
                 events = event if isinstance(event, tuple) else (event,)
@@ -203,9 +204,9 @@ class TestWriteGuardProbes(unittest.TestCase):  # G2, G3, G11
         open(f, "wb").close()
         with self.assertRaises(ValueError):
             subprocess.Popen(["taskkill", "/?"], cwd="a\0b", stdout=subprocess.DEVNULL)
-        self.assertTrue(_writeguard._tl.approved_popen)            # the leftover a ValueError leaves
+        self.assertFalse(_writeguard.popen_permit())               # a failed approved Popen leaves no permit
         os.remove(f)
-        self.assertFalse(_writeguard._tl.approved_popen)
+        self.assertFalse(_writeguard.popen_permit())
         with self.assertRaises(ValueError):
             subprocess.Popen(["taskkill", "/?"], cwd="a\0b", stdout=subprocess.DEVNULL)
         with _writeguard.expect_violation() as ev:
@@ -224,9 +225,9 @@ class TestWriteGuardProbes(unittest.TestCase):  # G2, G3, G11
                 subprocess.Popen(["taskkill", "/?"], cwd="a\0b", stdout=subprocess.DEVNULL)
             except ValueError:
                 pass
-            permit_left = _writeguard._tl.approved_popen    # leftover permit, nothing watched in between
+            permit_left = _writeguard.popen_permit()        # nothing watched in between, and still no permit
             ns["_execute_child"]()
-        self.assertTrue(permit_left)
+        self.assertFalse(permit_left)
         self.assertEqual(ev.caught[0]["event"], "_winapi.CreateProcess")
         r = subprocess.run(["taskkill", "/?"], capture_output=True)          # a normal approved Popen still works
         self.assertEqual(r.returncode, 0)
@@ -239,6 +240,12 @@ class TestWriteGuardProbes(unittest.TestCase):  # G2, G3, G11
         with _writeguard.expect_violation():                       # the parent may not write there either
             open(os.path.join(report, "x.bin"), "wb").close()
         self.assertFalse(os.path.exists(os.path.join(report, "x.bin")))
+        # a forged cleanup (same name, __file__ claiming to be the guard) does not count: code object check
+        forged = {"__name__": "_writeguard", "__file__": _writeguard.__file__, "_writeguard": _writeguard,
+                  "report": report}
+        exec(compile("def _cleanup_report_dir():\n    return _writeguard.judge('os.rmdir', (report, None))\n",
+                     _writeguard.__file__, "exec"), forged)
+        self.assertIsNotNone(forged["_cleanup_report_dir"]())
         # only the guard's own atexit cleanup may delete there (WG4); any other initiator is blocked
         self.assertIsNotNone(_writeguard.judge("os.remove", (os.path.join(report, "123.jsonl"), None)))
         self.assertIsNotNone(_writeguard.judge("os.rmdir", (report, None)))

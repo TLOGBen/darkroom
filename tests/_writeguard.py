@@ -41,7 +41,7 @@ PHOTOS = os.path.join(REPO, ".claude", "wayfinder", "darkroom", "prototypes", "l
 
 PATH_EVENTS = {     # event -> indexes of the target arguments (G2; patch WG2 adds the _winapi events)
     "open": (0,), "os.rename": (0, 1), "os.remove": (0,), "os.rmdir": (0,), "os.mkdir": (0,), "os.chmod": (0,),
-    "os.utime": (0,), "os.truncate": (0,), "os.link": (1,), "os.symlink": (1,), "shutil.copyfile": (1,),
+    "os.utime": (0,), "os.truncate": (0,), "os.link": (0, 1), "os.symlink": (1,), "shutil.copyfile": (1,),
     "shutil.copytree": (1,), "shutil.move": (0, 1), "shutil.rmtree": (0,), "shutil.make_archive": (0,),
     "shutil.unpack_archive": (1,), "tempfile.mkstemp": (0,), "tempfile.mkdtemp": (0,), "sqlite3.connect": (0,),
     "dbm.open": (0,), "_winapi.CopyFile2": (1,), "_winapi.CreateJunction": (1,), "_winapi.CreateFile": (0,),
@@ -207,7 +207,23 @@ def _from_cleanup():
     f = _caller_frame()
     while f is not None and _category(_frame_file(f)) == "stdlib":
         f = f.f_back
-    return f is not None and os.path.normcase(_frame_file(f)) == _HERE and f.f_code.co_name == "_cleanup_report_dir"
+    return f is not None and f.f_code is _cleanup_report_dir.__code__      # code object, not name / __file__
+
+
+def _execute_child_code():
+    import subprocess                   # already imported by whoever starts a process
+    return subprocess.Popen._execute_child.__code__
+
+
+def popen_permit():
+    """WG9: True only while the approved Popen's _execute_child frame is still on this thread's stack."""
+    permit = getattr(_tl, "permit_frame", None)
+    f = sys._getframe(1)
+    while f is not None:
+        if f is permit:
+            return True
+        f = f.f_back
+    return False
 
 
 def _cleanup_report_dir():
@@ -269,7 +285,7 @@ def _popen_allowed(executable, args, who):
 def judge(event, args):
     """None, or the target string of a violation."""
     if event not in PROCESS_EVENTS:
-        _tl.approved_popen = False      # WG9: any other watched event clears the CreateProcess permit
+        _tl.permit_frame = None         # WG9: any other watched event clears the CreateProcess permit
     if event in PATH_EVENTS:
         if event == "open":
             path, mode, flags = args
@@ -298,17 +314,19 @@ def judge(event, args):
     who = initiator()
     if event == "subprocess.Popen":
         executable, cmd = args[0], args[1]
-        _tl.approved_popen = False
+        _tl.permit_frame = None
         ok = _popen_allowed(executable, cmd, who)
-        _tl.approved_popen = ok         # consumed by the _winapi.CreateProcess this Popen makes next (WG9)
+        if ok:                          # WG9: the permit is this very _execute_child frame, nothing else
+            f = _caller_frame()
+            if f is not None and f.f_code is _execute_child_code():
+                _tl.permit_frame = f
         return None if ok else str(cmd)
     if event == "_winapi.CreateProcess":
         # patch WG9: multiprocessing goes straight here. CPython 3.13 hands this event a garbled command line,
         # so the only process start allowed is the one a just-approved subprocess.Popen on this thread makes.
-        ok, _tl.approved_popen = getattr(_tl, "approved_popen", False), False
-        f = _caller_frame()             # WG9 (1): must be the very CreateProcess call inside Popen._execute_child
-        import subprocess as _sp         # already imported by whoever started a process
-        ok = ok and f is not None and f.f_code is _sp.Popen._execute_child.__code__
+        permit, _tl.permit_frame = getattr(_tl, "permit_frame", None), None
+        f = _caller_frame()             # WG9: the same _execute_child frame the approved Popen event came from
+        ok = permit is not None and f is permit and f.f_code is _execute_child_code()
         return None if ok else f"{args[0] or '（命令列不可讀）'}（發起者 {who[1]}）"
     if event in ("ctypes.dlopen", "ctypes.dlsym"):      # G3: third-party only (patch WG2: also dlsym)
         return None if who[0] == "third-party" else f"{args[-1]}（發起者 {who[1]}）"
