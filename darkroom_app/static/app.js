@@ -1174,7 +1174,7 @@ function toggleLib() {
 }
 
 // ------------------------------------------------------------------ wiring
-const typing = (el) => el && (el.matches('input[type=text], input[type=search], input[type=number]') || el.isContentEditable);
+const typing = (el) => !!(el && el.matches && (el.matches('input[type=text], input[type=search], input[type=number]') || el.isContentEditable));
 const inField = (el) => !!(el && el.matches && el.matches('input, select, textarea'));   // S13 (c): arrows stay there
 
 async function init() {
