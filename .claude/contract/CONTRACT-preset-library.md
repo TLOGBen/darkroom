@@ -109,3 +109,16 @@ G10 寫檔白名單（SAFE_WRITE_USERS）：("services/export.py", "services/pre
 ## 封緘第 2 次派遣（複驗）處置紀錄（2026-10-09）
 - 第 1 輪 F1～F4 在原引用處回歸皆符合；第 1 輪咬到的 3 支探針（HTTP 收 paths、`_sw` 漏 `preset_dir=`、`num_text` 用 `repr`）重發仍各自讓整套變紅；本輪新判官 4 支各自出生證明全紅；全部逐位元組還原，`git status` 空。
 - N1（記錄、不修，低嚴重度、只影響量測工具輸出）：`tools/bench_preset_library.py` 未達標時的 profile 路徑與量測路徑有偏差——「import 20」重匯同一批會走重複拒絕路徑、`save_user_preset` 的 profile 沒帶 strength／overrides、「外部變更」把另一個 facade 的寫入也算進去。今天 K20 全部達標、不會觸發；之後若有未達標，先修這三個 profile 的輸入再看結果。
+
+## 封緘後修補（2026-10-09，主 session 全套實測偶發；與條文同等效力）
+- KP21（K15 寫者的 `PermissionError` 重試預算太小，修訂 K15 常數：10 次 × 0.1 秒 → 200 次 × 0.01 秒、共約 2 秒；KP12 讀者端不動；`safe_write` 零改動）：
+  - 現象：全套 `unittest discover` 負載下 `test_index_atomic_reader_never_fails` 偶發 ERROR：`rename_preset → _mutate → _write_index` 丟 unavailable，reason `[WinError 5] 存取被拒: library.json.tmp-… -> library.json`——寫者 10 次 `replace_into` 全部撞到讀者開著 `library.json`。單獨跑 5 次全過。
+  - 根因（scratchpad `repro.py` 實測：一條執行緒緊迴圈 `open/read/close` 同一個 `library.json`，寫者反覆 `create_new` tmp 再 `os.replace`，各組 2000～10000 次寫入，分別在閒置與 8 個 CPU 滿載程序下量）：
+    1. Windows 上 Python `open()` 以 `FILE_SHARE_READ|FILE_SHARE_WRITE`（沒有 `FILE_SHARE_DELETE`）開檔，讀者 handle 開著的瞬間 `MoveFileEx(REPLACE_EXISTING)` 一律 WinError 5；`os.replace` 沒有 POSIX rename 語意可用，而且就算有也要讀者端帶 `FILE_SHARE_DELETE`。讀者（`Library.read_index` 與測試的 `read_index_like_the_app`）已經是讀完立刻關檔、沒有多餘動作，**讀者端沒有能讓 replace 不被拒的改法**。
+    2. 撞檔不是獨立隨機事件，是和 GIL 交接相位耦合的：讀者在 open → read → close 之間每個 syscall 都放開 GIL，寫者睡醒後常常正好在這些點拿到 GIL、接著 `os.replace`，此時 3 個放開點有 2 個檔案是開著的。量到：單次撞檔機率只有 4～18%，但連撞的尾巴很肥——間隔 0.1 秒時 2000 次寫入最長連撞 7 次；0.01 秒時最長 10 次；0.02 秒、10000 次寫入最長 12 次（直方圖 1:221、2:113、3:51、4:31、5:14、6:5、7:4、8:3、9:1、10:1、12:1）；有無負載差不多；重試間隔 0.005／0.01／0.02／0.1 秒都量到 ≥5 連撞，**間隔長短不改變連撞長度，只有次數有用**。
+    3. 所以 K15 的「10 次」正好落在實測連撞尾巴上，是寫者端預算太小，不是讀者端開太久；全套負載只是讓尾巴更容易被抽到。
+  - 修法：`services/preset_library.py` 的 `REPLACE_RETRIES, REPLACE_RETRY_S = 200, 0.01`（共約 2 秒，仍 < `LOCK_WAIT_S` 5 秒；是實測最長連撞 12 的 16 倍以上；沒撞到時零成本）。其他一律不變：還失敗 → unavailable 同一句、tmp 一定移除、`safe_write.replace_into` 一個位元組不動（不放寬）、讀者 KP12 的 10 × 0.1 秒不動（讀者撞到的是 replace 在飛行中的那一瞬間，微秒級，10 次綽綽有餘）。不加 skip、不放寬斷言、不拉長測試逾時。
+  - 釘死：`test_lock_wait_constant_and_conflict` 的常數改為 `(200, 0.01)`；`test_replace_retry_then_unavailable` 的 `replace_into` 呼叫次數改為 200（該測試把 `REPLACE_RETRY_S` patch 成 0.001）。驗收：全套 3 次＋單支 30 次（4 個程序並行、同時跑全套製造負載）全綠。
+```text
+KP21 常數：REPLACE_RETRIES, REPLACE_RETRY_S = 200, 0.01（共約 2 秒）
+```
