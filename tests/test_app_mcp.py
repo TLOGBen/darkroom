@@ -131,6 +131,8 @@ class TestMcpProtocol(McpCase):
         self.assertEqual(codes, [(None, -32700), (None, -32600), (None, -32600), (1, -32600), (2, -32600),
                                  (3, -32601), (4, -32602), (5, -32602), (6, -32602), (7, "ok")])
         self.assertEqual(res[6]["error"]["message"], "Unknown tool: darkroom_bogus")
+        self.assertEqual(res[7]["error"]["message"], "arguments must be an object")     # verbatim (seal patch S3)
+        self.assertEqual(res[8]["error"]["message"], "arguments must be an object")
         self.assertIn("sliders", res[9]["result"]["structuredContent"])
 
     def test_mcp_unexpected_error_is_32603(self):
@@ -141,6 +143,17 @@ class TestMcpProtocol(McpCase):
             res = self.exchange(req(1, "tools/call", {"name": "darkroom_preset_flags", "arguments": {}}),
                                 req(2, "ping"), facade=f)
         self.assertEqual(res[0]["error"]["code"], -32603)
+        self.assertEqual(res[1]["result"], {})
+
+    def test_mcp_missing_preset_folder_is_32603(self):  # seal patch S5
+        from darkroom_app.mcp_server import serve
+        missing = os.path.join(self.tmp, "no-such-presets")
+        out = io.BytesIO()
+        serve(io.BytesIO(lines(req(1, "tools/call", {"name": "darkroom_sliders", "arguments": {}}), req(2, "ping"))),
+              out, preset_dir=missing)
+        res = [json.loads(x) for x in out.getvalue().decode("utf-8").splitlines()]
+        self.assertEqual(res[0]["error"], {"code": -32603, "message": f"Internal error: FileNotFoundError: "
+                                                                      f"preset folder not found: {missing}"})
         self.assertEqual(res[1]["result"], {})
 
     def test_mcp_preview_image_and_defaults(self):

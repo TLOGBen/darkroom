@@ -80,6 +80,7 @@ class CliDriver:
 
     def __init__(self, test, facade):
         self.t, self.f = test, facade
+        self.totals = []
 
     def _run(self, argv):
         from darkroom_app import cli
@@ -108,7 +109,9 @@ class CliDriver:
             argv += ["--query", query]
         if limit is not None:
             argv += ["--limit", str(limit)]
-        return self._run(argv)[0]
+        o, res = self._run(argv)
+        self.totals.append(res["total"] if o.ok else None)
+        return o
 
     async def preview(self, path, preset_id=None, strength=None, overrides=None):
         argv = ["preview", path]
@@ -128,6 +131,7 @@ class McpDriver:
     def __init__(self, test, facade):
         self.t, self.f = test, facade
         self.n = 0
+        self.totals = []
 
     def _call(self, tool, arguments):
         from darkroom_app.mcp_server import serve
@@ -154,7 +158,9 @@ class McpDriver:
 
     async def presets(self, query=None, limit=None):
         args = {k: v for k, v in (("query", query), ("limit", limit)) if v is not None}
-        return self._call("darkroom_presets_list", args)[0]
+        o, r = self._call("darkroom_presets_list", args)
+        self.totals.append(r[1]["total"] if o.ok else None)
+        return o
 
     async def preview_id(self, image_id, **args):
         o, r = self._call("darkroom_preview", {"image_id": image_id, **args})
@@ -270,6 +276,12 @@ class TestInterfaceParity(unittest.IsolatedAsyncioTestCase):
                 self.assertTrue(one.message.startswith("照片讀取失敗：half.heic：HEIC 解碼失敗："), one.message)
             else:
                 self.assertEqual(one, expected[name], name)
+            if name == "query hit":         # seal patch S4: the same filtered total on CLI and MCP
+                cli, mcp = self.drivers[1], self.drivers[2]
+                for d in (cli, mcp):
+                    self.assertEqual(await d.presets(query="海邊"), OK)
+                self.assertEqual(cli.totals[-1], mcp.totals[-1])
+                self.assertEqual(cli.totals[-1], 1)
             if name == "preview success":
                 sizes = {k: v[1] for k, v in got.items()}
                 self.assertEqual(len(set(sizes.values())), 1, sizes)

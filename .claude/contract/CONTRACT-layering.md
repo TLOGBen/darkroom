@@ -29,6 +29,19 @@ ADR-0001 落地：`server.py` 裡的規則搬進 `darkroom_app/services/`，HTTP
 - [ ] L14（範圍）：依 ADR-0003，這一片不用 Rust、pyo3、maturin，也不新增任何依賴（MCP 手寫，不裝 `mcp` 套件）；不提交 `.mcp.json`，註冊指令只寫進 CLAUDE.md。以下都不做，記成待決：英文句子翻成中文、500 HTML 改成 JSON、image_id 被擠掉後自動重讀、核心 CLI 改成 facade 的 shim、apply／export、RemoteFacade、跨程序 GPU 鎖、`resolve_params`。
 - [ ] L15（匯出合約要先補丁再實作）：`CONTRACT-export.md` 開工前要補：`/api/export` 透過 facade 操作 `export` 進 service；新增 CLI `export` 子指令與 MCP 工具 `darkroom_export`（`destructiveHint:false`）；撞名或同檔用 conflict（409／4／isError）；X1 形狀不變；X14 要同時修訂 `test_app_has_no_write_path` 與 L13 的寫檔掃描，只放行匯出 service。本片不改 `CONTRACT-export.md`。
 
+## 封緘第 1 輪處置紀錄（2026-10-09）
+條文本文不動；以下是封緘流程依 Loose-Criterion Escalation／R10 記下的補丁，與條文同等效力。
+- S1（L12／L13，不可逆／資料，已修）：探針「CLI 加 `preview --out` 用 `open(...,"wb")` 寫檔」全套 219 個測試沒有一個攔到。補：`darkroom_app/**` 遞迴 AST 禁寫入模式的 `open`、`os.open／remove／unlink／rename／replace／rmdir／mkdir／makedirs／truncate／link／symlink／fdopen`、`io.FileIO`、`.write_bytes／.write_text／.touch／.unlink／.rmdir／.save／.tofile`、import `shutil`／`tempfile`；唯一豁免是 MCP 協定串流 `os.fdopen(protocol_fd, "wb")`（`protocol_fd = os.dup(1)`）。釘死：`test_layering.test_no_file_write_path_anywhere`（重放該探針即紅）。匯出切片要放行時依 L15 改這支守門。
+- S2（L7 對 L9，條文互相矛盾，記錄）：`--json` 的「stdout 恰一行信封、stderr 空」只涵蓋 DarkroomError；未預期錯誤（結束碼 1）、ConfigError／preset 資料夾不存在（2）、argparse 用法錯誤（2）一律 stderr 一行、stdout 空（信封 kind 只有 invalid／not_found）。釘死：`test_cli_unexpected_error`、`test_cli_config_error`、`test_cli_missing_preset_folder`、`test_cli_exit_codes`。
+- S3（L10，入口協定句，已釘）：tools/call 的 arguments 有 facade 簽名以外的鍵 → -32602「Unknown argument for {tool}: {key}」；arguments 不是物件 → -32602「arguments must be an object」（不進 service，否則會變 TypeError／-32603）。釘死：`test_mcp_protocol_errors`、`TestMcpControllerWithFake.test_error_translation` 比對全文。
+- S4（L11 對 L4，條文互相矛盾，已釘）：L4 規定 HTTP 永遠不傳 query／offset／limit，所以「limit 0」「query 命中」只跑 CLI 與 MCP；另加「list, no filter」三邊都跑；「query 命中」另比 CLI 與 MCP 的 `total` 相同。釘死：`test_interface_parity`。
+- S5（L9／L10，低嚴重度，已釘）：preset 資料夾不存在時 CLI 與 ConfigError 同句型「darkroom：preset folder not found: {dir}」、結束碼 2；MCP 在第一次 tools/call 回 -32603「Internal error: FileNotFoundError: preset folder not found: {dir}」，伺服器繼續服務。釘死：`test_cli_missing_preset_folder`、`test_mcp_missing_preset_folder_is_32603`。
+- S6（L10，R10 有證據的偏離）：2026-07-28 規格 caching 頁（modelcontextprotocol.io/specification/2026-07-28/server/utilities/caching）：「Servers MUST include caching hints on results with resultType "complete" returned by … server/discover, tools/list」。真實連線第一手證據（Claude Code 2.1.295 debug log，modern runtime）：`MCP server "darkroom" Failed to fetch tools: Invalid result for tools/list: … "path": ["ttlMs"] … expected number, received undefined … "path": ["cacheScope"] … expected one of "public"|"private"`；補上後同一指令連上並成功呼叫 `darkroom_presets_list`（total 1466）。所以 `server/discover` 結果與 modern `tools/list` 結果加 `ttlMs`、`cacheScope`；legacy 結果不加。釘死：`test_mcp_discover_flow`（全物件相等）、`test_mcp_legacy_flow`（assertNotIn ttlMs）。
+- 記錄、不修（範圍外）：`CONTRACT-export.md`（8819442）、`CONTRACT-photo-library.md`、`CONTRACT-preset-library.md` 的提交落在本片 diff 區間，但不是本片的實作提交（另一個文件工作），不算違反 L15；本片的程式提交沒有碰它們。
+```text
+補丁常數：Unknown argument for {tool}: {key} ｜ arguments must be an object ｜ Internal error: {type_name}: {e} ｜ caching hints {"ttlMs":3600000,"cacheScope":"public"}
+```
+
 ## 錯不起表面（Surface Inventory）
 | 表面 | 格式 | 影響（資產 → 後果｜類別） | 釘死測試 |
 |------|------|--------------------------|----------|

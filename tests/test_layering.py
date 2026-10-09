@@ -121,6 +121,45 @@ class TestLayering(unittest.TestCase):
             for needle in ("0.0.0.0", "--host", "torch.cuda.synchronize", "write_image", "imwrite"):
                 self.assertNotIn(needle, src, path)
 
+    def test_no_file_write_path_anywhere(self):  # L12 / L13 (seal patch S1): no code path in darkroom_app writes
+        """Photos and presets must never be overwritten: no write-mode open, no file mutation calls at all.
+
+        The one exemption is the MCP protocol stream: os.fdopen(protocol_fd, "wb") on the os.dup(1) copy of stdout.
+        """
+        banned_calls = {"os.open", "os.remove", "os.unlink", "os.rename", "os.renames", "os.replace", "os.rmdir",
+                        "os.removedirs", "os.mkdir", "os.makedirs", "os.truncate", "os.link", "os.symlink",
+                        "os.fdopen", "io.FileIO"}
+        banned_attrs = {"write_bytes", "write_text", "touch", "unlink", "rmdir", "symlink_to", "hardlink_to",
+                        "imwrite", "write_image", "tofile", "save"}
+        offenders = []
+        for path in py_files():
+            rel = os.path.relpath(path, APP).replace("\\", "/")
+            tree = parse(path)
+            for node in ast.walk(tree):
+                if isinstance(node, (ast.Import, ast.ImportFrom)):
+                    for mod in imported_modules(path):
+                        if mod.split(".")[0] in ("shutil", "tempfile"):
+                            offenders.append((rel, node.lineno, mod))
+                if not isinstance(node, ast.Call):
+                    continue
+                name = dotted(node.func)
+                if name in ("open", "io.open", "builtins.open"):
+                    mode = node.args[1] if len(node.args) > 1 else next(
+                        (k.value for k in node.keywords if k.arg == "mode"), None)
+                    if mode is not None and not (isinstance(mode, ast.Constant) and isinstance(mode.value, str)
+                                                 and not set(mode.value) & set("wax+")):
+                        offenders.append((rel, node.lineno, name))
+                elif name == "os.fdopen" and rel == "mcp_server/__init__.py" and len(node.args) >= 1 \
+                        and isinstance(node.args[0], ast.Name) and node.args[0].id == "protocol_fd":
+                    continue
+                elif name in banned_calls:
+                    offenders.append((rel, node.lineno, name))
+                elif isinstance(node.func, ast.Attribute) and node.func.attr in banned_attrs:
+                    offenders.append((rel, node.lineno, node.func.attr))
+        self.assertEqual(offenders, [])
+        src = open(os.path.join(APP, "mcp_server", "__init__.py"), encoding="utf-8").read()
+        self.assertIn("protocol_fd = os.dup(1)", src)     # the exemption is only for the dup of stdout
+
     def test_facade_methods_forward_once(self):  # L2
         from darkroom_app.facade import DarkroomFacade, Facade
         from darkroom_app.operations import OPERATIONS
@@ -309,6 +348,7 @@ class TestMcpControllerWithFake(unittest.TestCase):  # L7 / L10 / L13
         res = self.exchange(fake, ("darkroom_open_photo", {"path": "p"}), ("darkroom_open_photo", {"bogus": 1}))
         self.assertEqual(res[0]["error"]["code"], -32603)
         self.assertEqual(res[1]["error"]["code"], -32602)
+        self.assertEqual(res[1]["error"]["message"], "Unknown argument for darkroom_open_photo: bogus")   # S3
 
 
 if __name__ == "__main__":

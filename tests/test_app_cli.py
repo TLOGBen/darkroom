@@ -127,6 +127,13 @@ class TestCliExitCodes(CliCase):
             rc, out, err = call(["presets", "list"])
         self.assertEqual((rc, out, err), (2, "", CONFIG_ERROR.format(e="no preset folder") + "\n"))
 
+    def test_cli_missing_preset_folder(self):  # seal patch S5: same sentence form as ConfigError
+        missing = os.path.join(self.tmp, "no-such-presets")
+        for extra in ([], ["--json"]):
+            rc, out, err = call(["--preset-dir", missing, "sliders", *extra])
+            self.assertEqual((rc, out, err),
+                             (2, "", CONFIG_ERROR.format(e=f"preset folder not found: {missing}") + "\n"), extra)
+
     def test_cli_preview_refuses_tty(self):
         from darkroom_app.composition import build_facade
         f = build_facade(self.presets)
