@@ -307,7 +307,8 @@ def judge(event, args):
         # so the only process start allowed is the one a just-approved subprocess.Popen on this thread makes.
         ok, _tl.approved_popen = getattr(_tl, "approved_popen", False), False
         f = _caller_frame()             # WG9 (1): must be the very CreateProcess call inside Popen._execute_child
-        ok = ok and f is not None and f.f_code.co_name == "_execute_child" and f.f_globals.get("__name__") == "subprocess"
+        import subprocess as _sp         # already imported by whoever started a process
+        ok = ok and f is not None and f.f_code is _sp.Popen._execute_child.__code__
         return None if ok else f"{args[0] or '（命令列不可讀）'}（發起者 {who[1]}）"
     if event in ("ctypes.dlopen", "ctypes.dlsym"):      # G3: third-party only (patch WG2: also dlsym)
         return None if who[0] == "third-party" else f"{args[-1]}（發起者 {who[1]}）"

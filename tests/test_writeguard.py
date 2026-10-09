@@ -212,6 +212,22 @@ class TestWriteGuardProbes(unittest.TestCase):  # G2, G3, G11
             run_as_product("import os\ntry:\n    os.remove(a)\nexcept OSError:\n    pass\n" + mp, p=p,
                            a=os.path.join(root, "missing"))
         self.assertEqual(ev.caught[0]["event"], "_winapi.CreateProcess")
+        # a forged _execute_child (same name, globals claiming to be subprocess) does not count: code object check
+        forged = ("import _winapi, subprocess\n"
+                  "def _execute_child():\n"
+                  "    return _winapi.CreateProcess(None, 'cmd /c exit 0', None, None, False, 0, None, None,\n"
+                  "                                 subprocess.STARTUPINFO())\n")
+        ns = {"__name__": "subprocess"}
+        exec(compile(forged, os.path.join(sys.base_prefix, "Lib", "subprocess.py"), "exec"), ns)
+        with _writeguard.expect_violation() as ev:
+            try:
+                subprocess.Popen(["taskkill", "/?"], cwd="a\0b", stdout=subprocess.DEVNULL)
+            except ValueError:
+                pass
+            permit_left = _writeguard._tl.approved_popen    # leftover permit, nothing watched in between
+            ns["_execute_child"]()
+        self.assertTrue(permit_left)
+        self.assertEqual(ev.caught[0]["event"], "_winapi.CreateProcess")
         r = subprocess.run(["taskkill", "/?"], capture_output=True)          # a normal approved Popen still works
         self.assertEqual(r.returncode, 0)
 
