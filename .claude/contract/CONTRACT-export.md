@@ -89,3 +89,20 @@ CLI 人看成功行：已匯出：{output_path}
 管線上限：GPU executor 內匯出工作 ≤ 1 ｜ 在途全解析度影像 ≤ 3 ｜ 整批後 memory_reserved ≤ 匯出前 + 256 MiB
 核心補丁 K2：K2（2026-10-09，匯出合約 X6／XP9）`read_image` 讀 JPEG／TIFF 時依 EXIF Orientation 轉正像素（3／6／8 等於 PIL `ImageOps.exif_transpose`）；PNG 與 HEIC 行為不變；取代 K1 中「忽略 EXIF 方向」對 JPEG／TIFF 的部分。
 ```
+
+## 條文補丁第 2 批（2026-10-09，主 session 裁決，開工前補；與條文同等效力，劃線與「取代」處以本批為準）
+- [ ] XP10（寫檔，取代 XP5 的寫檔部分；依 `CONTRACT-write-guard.md` G8／G10 與其「後續三片」XP5 列）：`darkroom_app/services/export.py` 是 G10 白名單（`tests/test_layering.py` `SAFE_WRITE_USERS`）上唯一新增的模組（0 → 1，常數見下）；只有它可以 import `safe_write`。匯出一律先在記憶體裡編碼成位元組——JPEG：`cv2.imencode`，sRGB 描述檔（APP2 `ICC_PROFILE`）與 EXIF（APP1 `Exif`）插進位元組；TIFF 16-bit：自組 TIFF 位元組（像素、ICC 34675、Exif 子 IFD 34665、GPS 子 IFD 34853）——再呼叫 `safe_write.create_new(path, root=目的資料夾, data)`；`darkroom 匯出` 資料夾以 `safe_write.make_dirs(path, root=照片所在資料夾)` 建立；撞名靠 `create_new` 原樣拋出的 `FileExistsError` 換下一個序號（X9）。`darkroom_app/**` 禁用核心 `write_image`、`cv2.imwrite`、`.save(`、`.tofile(`，白名單模組也一樣（G10 原文不改；所以 PIL 寫進 `BytesIO` 也不用，JPEG 走 `cv2.imencode`）。**撤銷**：XP5「`services/export.py` 可用 `write_image`／`imwrite`」「`test_app_has_no_write_path` 與 L13 掃描放行 `services/export.py`」「只有 `services/export.py` 可出現寫入模式開檔、`os.replace`…」三句全部撤銷——`test_app_has_no_write_path`、L13 的 `write_image`／`imwrite` 掃描照舊不放行任何檔；`services/export.py` 自己也不得開檔寫入，`test_no_file_write_path_anywhere` 照樣掃它（G10：只有 `safe_write.py` 不掃）；XP5 的 `test_only_export_service_writes` 由 G10 的 `test_only_safe_write_writes` 取代。X10／X14 的「暫存檔」：本片不用暫存檔（`create_new` 直接建最終檔名，寫失敗時由它刪掉半份檔）。
+- [ ] XP11（部分失敗，修訂 XP2／XP3／XP4）：批次裡只要有任何一筆 `ok:false`：CLI 結束碼 6，stdout 照樣輸出完整結果（`--json`：恰一行 `{"ok":true,"result":{"results":[…]}}`；不帶 `--json`：每筆一行），stderr 空；MCP `structuredContent` 恰為 `{"results":[…],"failed":n}`（n＝`ok:false` 的筆數，全部成功時也帶 `"failed":0`），`content` 的 text＝`structuredContent` 的 JSON，`isError` 仍為 false（不帶 `isError` 鍵）；HTTP 照舊 200 `{"results":[…]}`（形狀同 X1，不加 `failed`）。全部成功 → CLI 0。`failed` 只是從 `results` 數出來的格式欄位，由 MCP 入口計數，不進 service。請求層錯誤（XP2 invalid）照舊 400／2／`isError:true`。
+- [ ] XP12（WG10(b) 收斂，修訂 G8）：`safe_write` 五個函式各加一個僅限關鍵字的參數 `preset_dir=None`（G8「公開恰 5 個函式」不變）。`ExportService` 由 composition 傳入「這次實際使用中的 preset 資料夾」（`build_facade` 用的那個 `Library.preset_dir`，CLI／MCP 的 `--preset-dir` 也一樣），每次呼叫 `safe_write` 都帶上；寫到它底下一律 `SafeWriteRefused`「refused: {path} is inside the preset folder」。`config.preset_dir()` 解析得到時也照查（兩個都查，只收緊）。`preset_dir` 沒傳、`config.preset_dir()` 又丟 `ConfigError` → `SafeWriteRefused`（句子見常數），不是 `ConfigError`。`SafeWriteRefused` 照 G8 不被 service 接住：整個 `export` 以未預期錯誤結束（HTTP 500／CLI 1／MCP -32603），已寫完的前面幾筆保留、不留半份檔。釘死：`test_safe_write_refusals` 加「config 指 A、傳入 B，寫到 B 底下被拒」「缺設定且沒傳 → SafeWriteRefused」；`test_export_refuses_preset_folder`（`dest_dir`＝使用中的 preset 資料夾 → 被拒、資料夾內容不變）。
+- [ ] XP13（必要情境，加進 XP6 `tests/test_interface_parity.py`）：目的資料夾＝照片所在資料夾、而且同名檔已存在（`dest_dir`＝照片的資料夾，照片本身就是 `{stem}.jpg`）→ 新檔命名 `{stem} (2).jpg`，三個入口結果相同；匯出前後照片原檔 SHA-256 不變。每個 driver 各用自己的照片資料夾（XP6「各用自己的空 dest_dir」在本情境改為各用自己的照片資料夾）。
+- [ ] XP14（ride-along，WG10 (c) ④，只收緊）：`tests/test_writeguard.py` 加一支釘死探針：以產品身分對**根目錄外的既有檔**呼叫 `_winapi.CreateFile(p, GENERIC_READ 0x80000000, 7, 0, OPEN_EXISTING 3, FILE_FLAG_DELETE_ON_CLOSE 0x04000000, 0)`（不帶 DELETE 位元）→ 必須被攔（違規表多一筆 `_winapi.CreateFile`），而且斷言檔案仍在、內容 SHA-256 不變。根目錄外的既有檔由 fixture 根內建好後暫時註銷那個根取得（只縮小可寫範圍，不是暫停守門），探針後重新登記再釋放。拿掉 `_writeguard.py` 的 `flags_attrs & _DELETE_ON_CLOSE` 判斷時這支必須變紅。
+- [ ] XP15（重申 XP9）：X6 的 JPEG／TIFF 轉正改核心 `darkroom/_io.py` `read_image`；實作的那個 commit 同時在 `CONTRACT-core-library.md` 補丁區加「核心補丁 K2」一行（常數照抄 XP9 區塊）。
+
+```text
+G10 寫檔白名單（SAFE_WRITE_USERS）：("services/export.py",)
+編碼：JPEG＝cv2.imencode＋APP1 Exif＋APP2 ICC_PROFILE ｜ TIFF＝自組 16-bit RGB（34675 ICC、34665 Exif、34853 GPS）｜ 寫檔＝safe_write.create_new(path, root=目的資料夾, data, preset_dir=使用中的 preset 資料夾)
+結束碼：6 部分失敗（批次裡有任一筆 ok:false；stdout 照樣是完整結果，stderr 空）
+MCP 部分失敗：structuredContent {"results":[…],"failed":n}（全部成功 failed 0）｜ isError false
+SafeWriteRefused 新句（XP12）：refused: no preset folder is known, cannot protect it
+XP14 探針：_winapi.CreateFile(p, 0x80000000, 7, 0, 3, 0x04000000, 0) 對根目錄外既有檔 → 攔、檔在、SHA-256 不變
+```
