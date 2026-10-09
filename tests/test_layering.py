@@ -352,12 +352,15 @@ class TestHttpControllerWithFake(AioHTTPTestCase):  # L7 / L13: HTTP translation
 
     async def test_export_translation(self):  # CONTRACT-export XP1 / XP11: 200 with results, no failed count
         items = [{"path": "a.jpg"}, {"path": "b.jpg", "preset_id": "p"}]
-        r = await self.client.post("/api/export", json={"items": items, "format": "tiff", "quality": 80,
-                                                         "dest_dir": "D:\\x"})
+        r = await self.client.post("/api/export", json={"items": items, "format": "tiff", "quality": 80})
         self.assertEqual(r.status, 200)
         self.assertEqual(await r.json(), {"results": RESULTS})
         r = await self.client.post("/api/export", json={"items": items[:1]})
-        self.assertEqual(self.fake.calls, [("export", (items, "tiff", 80, "D:\\x")),
+        for dest in ("D:\\x", None):          # XP16: no dest_dir over HTTP, refused before the facade
+            r = await self.client.post("/api/export", json={"items": items, "format": "jpeg", "dest_dir": dest})
+            self.assertEqual((r.status, await r.json()),
+                             (400, {"error": "dest_dir is not accepted over HTTP (use the CLI or MCP)"}))
+        self.assertEqual(self.fake.calls, [("export", (items, "tiff", 80, None)),
                                            ("export", (items[:1], None, None, None))])
         self.fake.fail["export"] = DarkroomError("invalid", "沒有要匯出的照片")
         r = await self.client.post("/api/export", json={"items": []})

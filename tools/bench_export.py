@@ -161,8 +161,8 @@ def measure(folder, n=N_PHOTOS, width=WIDTH, height=HEIGHT, log=print):
            "median": {k: statistics.median(v) for k, v in stages.items()}}
     m = out["median"]
     log(f"[XP8] 每段中位數：讀檔 {m['read']:.3f} 秒、渲染 {m['render']:.3f} 秒、編碼寫檔 {m['write']:.3f} 秒")
-    log(f"[XP8] 牆鐘 {wall:.2f} 秒（{out['per_photo']:.3f} 秒／張，門檻 ≤ {PER_PHOTO_LIMIT_S}）；"
-        f"分段加總 {total:.2f} 秒，重疊比 {out['overlap']:.3f}（門檻 ≤ {OVERLAP_LIMIT}）")
+    log(f"[XP8] 牆鐘 {wall:.2f} 秒（{out['per_photo']:.3f} 秒／張，門檻 <= {PER_PHOTO_LIMIT_S}）；"
+        f"分段加總 {total:.2f} 秒，重疊比 {out['overlap']:.3f}（門檻 <= {OVERLAP_LIMIT}）")
     out["ok"] = out["per_photo"] <= PER_PHOTO_LIMIT_S and out["overlap"] <= OVERLAP_LIMIT
     return out
 

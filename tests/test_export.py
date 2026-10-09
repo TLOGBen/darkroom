@@ -7,6 +7,7 @@ import hashlib
 import io
 import os
 import struct
+import sys
 import threading
 import time
 import unittest
@@ -601,10 +602,12 @@ class TestThroughput(unittest.TestCase):  # XP8 (ADR-0003): the numbers of tools
         self.assertEqual((bench.N_PHOTOS, bench.WIDTH, bench.HEIGHT, bench.QUALITY, bench.PER_PHOTO_LIMIT_S,
                           bench.OVERLAP_LIMIT), (20, 6000, 4000, 92, 0.8, 0.7))          # verbatim (XP8)
         skip, msg = bench.gpu_check()
-        print(msg)
+        enc = sys.stdout.encoding or "utf-8"
+        print(msg.encode(enc, "replace").decode(enc))
         if skip:
             self.skipTest(msg)              # R1: only while the GPU is really busy, or without CUDA (reason shown)
-        out = bench.measure(_util.tmpdir(self), log=print)
+        enc = sys.stdout.encoding or "utf-8"
+        out = bench.measure(_util.tmpdir(self), log=lambda s: print(s.encode(enc, "replace").decode(enc)))
         self.assertLessEqual(out["per_photo"], 0.8, out)
         self.assertLessEqual(out["overlap"], 0.7, out)
 
@@ -620,25 +623,27 @@ class TestHttpExport(AioHTTPTestCase):  # X1 shape over HTTP, XP5 writes only in
         os.makedirs(self.photos)
         return make_app(self.presets)
 
-    async def test_api_export_shape(self):
+    async def test_api_export_shape(self):  # over HTTP only the default folder (XP16)
         photo = write_jpeg(os.path.join(self.photos, "a.jpg"), pattern(20, 30))
-        dest = os.path.join(self.tmp, "dest")
-        os.makedirs(dest)
+        dest = os.path.join(self.photos, EXPORT_DIR)
         before = snapshot(self.photos, self.presets)
         r = await self.client.post("/api/export", json={"items": [{"path": photo, "preset_id": "p-expo",
                                                                     "strength": 50},
                                                                    {"path": photo, "preset_id": "nope"}],
-                                                         "format": "jpeg", "dest_dir": dest})
+                                                         "format": "jpeg"})
         self.assertEqual(r.status, 200)
         body = await r.json()
         self.assertEqual(body, {"results": [{"ok": True, "source": "a.jpg", "output": os.path.join(dest, "a.jpg")},
                                             {"ok": False, "source": "a.jpg",
                                              "error": "匯出失敗：a.jpg：unknown or unsupported preset nope"}]})
-        self.assertEqual(snapshot(self.photos, self.presets), before)
+        after = snapshot(self.photos, self.presets)
+        self.assertEqual({k: v for k, v in after.items() if not k.startswith(dest + os.sep)}, before)
         self.assertEqual(os.listdir(dest), ["a.jpg"])
         for body, err in (({"items": [], "format": "jpeg"}, "沒有要匯出的照片"),
                           ({"items": [{"path": photo}], "format": "jpeg", "quality": True},
-                           "JPEG 品質要在 1～100 之間：True")):
+                           "JPEG 品質要在 1～100 之間：True"),
+                          ({"items": [{"path": photo}], "format": "jpeg", "dest_dir": self.tmp},
+                           "dest_dir is not accepted over HTTP (use the CLI or MCP)")):
             r = await self.client.post("/api/export", json=body)
             self.assertEqual((r.status, await r.json()), (400, {"error": err}))
         r = await self.client.post("/api/open", json={"path": photo})

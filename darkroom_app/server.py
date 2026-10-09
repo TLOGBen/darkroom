@@ -3,6 +3,11 @@
 Handlers only translate HTTP <-> facade calls (ADR-0001, CONTRACT-layering): the rules and every error
 sentence live in darkroom_app.services. Photos and presets are only read; the one operation that writes is the
 facade's `export` (POST /api/export: new files in the export folder only, CONTRACT-export X14).
+
+Cross-site protection (CONTRACT-export XP16, app shell R10): every request first passes `_local_only`: the Host
+header must be 127.0.0.1:{port} or localhost:{port} (DNS rebinding), an Origin header must be the page's own origin,
+and a POST body must be declared application/json (so a cross-site fetch always needs a CORS preflight, which this
+server never answers). Over HTTP, export takes no dest_dir (the editor never picks a folder; CLI / MCP only).
 """
 import asyncio
 import os
@@ -26,6 +31,26 @@ ENGINE = web.AppKey("engine", engine_mod.Engine)
 FACADE = web.AppKey("facade", Facade)
 
 STATUS = {"invalid": 400, "not_found": 404, "conflict": 409, "unavailable": 503}
+HOST_REFUSED = "request refused: Host must be 127.0.0.1:{port} or localhost:{port}"   # verbatim (XP16), 421
+ORIGIN_REFUSED = "request refused: cross-site Origin {origin}"                        # verbatim (XP16), 403
+CONTENT_TYPE_REFUSED = "request refused: POST body must be application/json"          # verbatim (XP16), 415
+DEST_DIR_REFUSED = "dest_dir is not accepted over HTTP (use the CLI or MCP)"           # verbatim (XP16), 400
+
+
+@web.middleware
+async def _local_only(request, handler):
+    """Host -> Origin -> Content-Type, before any route (XP16)."""
+    sock = request.transport.get_extra_info("sockname") if request.transport is not None else None
+    port = sock[1] if sock else None
+    allowed = (f"127.0.0.1:{port}", f"localhost:{port}")
+    if request.headers.get("Host", "").lower() not in allowed:
+        return web.json_response({"error": HOST_REFUSED.format(port=port)}, status=421)
+    origin = request.headers.get("Origin")
+    if origin is not None and origin.lower() not in tuple("http://" + a for a in allowed):
+        return web.json_response({"error": ORIGIN_REFUSED.format(origin=origin)}, status=403)
+    if request.method == "POST" and request.content_type != "application/json":
+        return web.json_response({"error": CONTENT_TYPE_REFUSED}, status=415)
+    return await handler(request)
 
 
 def _error(e):
@@ -101,8 +126,9 @@ async def api_preview(request):
 
 async def api_export(request):
     body = await _json_body(request)
-    return await _json(request, "export", body.get("items"), body.get("format"), body.get("quality"),
-                       body.get("dest_dir"))
+    if "dest_dir" in body:                 # an interface rule (XP16): the editor never picks a folder
+        return web.json_response({"error": DEST_DIR_REFUSED}, status=400)
+    return await _json(request, "export", body.get("items"), body.get("format"), body.get("quality"), None)
 
 
 async def api_folder(request):
@@ -114,7 +140,7 @@ async def _on_cleanup(app):
 
 
 def make_app(preset_dir, engine=None):
-    app = web.Application(client_max_size=1 << 20)
+    app = web.Application(client_max_size=1 << 20, middlewares=[_local_only])
     app[LIBRARY] = Library(preset_dir)
     app[ENGINE] = engine or engine_mod.Engine()
     app[FACADE] = build_facade(library=app[LIBRARY], engine=app[ENGINE])

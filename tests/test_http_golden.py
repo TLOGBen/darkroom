@@ -219,6 +219,18 @@ class TestGoldenFolder(GoldenCase):
         await self.err("GET", "/api/folder?image_id=", 404, "unknown image_id")
 
 
+class TestGoldenCrossSite(GoldenCase):  # CONTRACT-export XP16 / app shell R10: the only assertions added here
+    async def test_refusals(self):
+        port = self.client.port
+        await self.err("GET", "/api/presets", 421,
+                       f"request refused: Host must be 127.0.0.1:{port} or localhost:{port}",
+                       headers={"Host": "evil.example"})
+        await self.err("GET", "/api/presets", 403, "request refused: cross-site Origin http://evil.example",
+                       headers={"Origin": "http://evil.example"})
+        await self.err("POST", "/api/open", 415, "request refused: POST body must be application/json",
+                       data=b'{"path": "x"}', headers={"Content-Type": "text/plain"})
+
+
 class TestGoldenRoutes(GoldenCase):
     async def test_exactly_ten_routes(self):  # nine of L8 + POST /api/export (CONTRACT-export X1 / XP1)
         routes = sorted((r.method, r.resource.canonical) for r in self.app.router.routes()

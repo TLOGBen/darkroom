@@ -1,0 +1,147 @@
+"""CONTRACT-export XP16 / app shell R10: cross-site requests and DNS rebinding are refused before any route.
+
+Host must be 127.0.0.1:{port} or localhost:{port}; an Origin must be the page's own; a POST body must be declared
+application/json; over HTTP, export takes no dest_dir. A refused request never reaches the facade.
+"""
+import json
+import os
+import unittest
+
+from aiohttp.test_utils import AioHTTPTestCase
+
+import _util
+from _fakes import FakeDarkroom
+from test_app_server import make_presets, snapshot, write_photo
+
+HOST_REFUSED = "request refused: Host must be 127.0.0.1:{port} or localhost:{port}"   # verbatim (XP16)
+ORIGIN_REFUSED = "request refused: cross-site Origin {origin}"                        # verbatim (XP16)
+CONTENT_TYPE_REFUSED = "request refused: POST body must be application/json"          # verbatim (XP16)
+DEST_DIR_REFUSED = "dest_dir is not accepted over HTTP (use the CLI or MCP)"           # verbatim (XP16)
+ROUTES = [("GET", "/"), ("GET", "/api/health"), ("GET", "/api/presets"), ("GET", "/api/preset_flags"),
+          ("GET", "/api/presets/x"), ("GET", "/api/sliders"), ("GET", "/api/folder?image_id=i"),
+          ("GET", "/static/app.js"), ("POST", "/api/open"), ("POST", "/api/preview"), ("POST", "/api/export")]
+
+
+class _NoEngine:
+    images = {}
+
+    def shutdown(self):
+        pass
+
+
+class SecurityCase(AioHTTPTestCase):
+    async def get_application(self):
+        from darkroom_app.server import FACADE, make_app
+        self.tmp = _util.tmpdir(self)
+        d = os.path.join(self.tmp, "p")
+        os.makedirs(d)
+        app = make_app(make_presets(d), engine=_NoEngine())
+        self.fake = FakeDarkroom()
+        app[FACADE] = self.fake
+        return app
+
+    @property
+    def port(self):
+        return self.client.port
+
+    async def send(self, method, path, headers=None, body=b'{"items": [{"path": "a.jpg"}], "format": "jpeg"}'):
+        h = {"Content-Type": "application/json", **(headers or {})} if method == "POST" else dict(headers or {})
+        r = await self.client.request(method, path, headers=h, data=body if method == "POST" else None)
+        return r.status, await r.text()
+
+
+class TestRefused(SecurityCase):
+    async def test_wrong_host(self):  # DNS rebinding: the page's Host is the attacker's name
+        for host in ("evil.example", f"evil.example:{self.port}", f"127.0.0.1:{self.port + 1}", "127.0.0.1",
+                     f"localhost.evil.example:{self.port}", f"0.0.0.0:{self.port}"):
+            for method, path in ROUTES:
+                status, text = await self.send(method, path, {"Host": host})
+                self.assertEqual((status, json.loads(text)), (421, {"error": HOST_REFUSED.format(port=self.port)}),
+                                 (host, path))
+        self.assertEqual(self.fake.calls, [])
+
+    async def test_cross_site_origin(self):
+        for origin in ("http://evil.example", "null", f"http://127.0.0.1:{self.port + 1}", f"https://127.0.0.1:{self.port}",
+                       f"http://evil.example:{self.port}"):
+            for method, path in ROUTES:
+                status, text = await self.send(method, path, {"Origin": origin})
+                self.assertEqual((status, json.loads(text)), (403, {"error": ORIGIN_REFUSED.format(origin=origin)}),
+                                 (origin, path))
+        self.assertEqual(self.fake.calls, [])
+
+    async def test_post_needs_json_content_type(self):  # a simple (no-preflight) cross-site POST is refused
+        for ctype in ("text/plain", "text/plain;charset=UTF-8", "application/x-www-form-urlencoded",
+                      "multipart/form-data; boundary=x", None):
+            for path in ("/api/export", "/api/open", "/api/preview"):
+                h = {"Content-Type": ctype} if ctype else {}
+                r = await self.client.post(path, data=b'{"items": [], "format": "jpeg", "path": "x"}', headers=h,
+                                           skip_auto_headers=["Content-Type"])
+                self.assertEqual((r.status, await r.json()), (415, {"error": CONTENT_TYPE_REFUSED}), (ctype, path))
+        self.assertEqual(self.fake.calls, [])
+
+    async def test_http_export_takes_no_dest_dir(self):
+        for dest in (self.tmp, "relative", None, ""):
+            r = await self.client.post("/api/export", json={"items": [{"path": "a.jpg"}], "format": "jpeg",
+                                                            "dest_dir": dest})
+            self.assertEqual((r.status, await r.json()), (400, {"error": DEST_DIR_REFUSED}), dest)
+        self.assertEqual(self.fake.calls, [])
+
+    async def test_check_order(self):  # Host -> Origin -> Content-Type -> route
+        status, _ = await self.send("POST", "/api/export", {"Host": "evil.example", "Origin": "http://evil.example",
+                                                            "Content-Type": "text/plain"})
+        self.assertEqual(status, 421)
+        status, _ = await self.send("POST", "/api/export", {"Origin": "http://evil.example",
+                                                            "Content-Type": "text/plain"})
+        self.assertEqual(status, 403)
+
+
+class TestAllowed(SecurityCase):
+    async def test_same_origin_requests_pass(self):
+        for host in (f"127.0.0.1:{self.port}", f"localhost:{self.port}", f"LOCALHOST:{self.port}"):
+            for origin in (None, f"http://127.0.0.1:{self.port}", f"http://localhost:{self.port}"):
+                h = {"Host": host, **({"Origin": origin} if origin else {})}
+                for method, path in (("GET", "/"), ("GET", "/api/presets"), ("GET", "/static/app.js")):
+                    status, _ = await self.send(method, path, h)
+                    self.assertEqual(status, 200, (host, origin, path))
+                status, _ = await self.send("POST", "/api/export",
+                                            {**h, "Content-Type": "application/json; charset=utf-8"})
+                self.assertEqual(status, 200, (host, origin))
+        self.assertEqual(sum(1 for c in self.fake.calls if c[0] == "export"), 9)
+
+    def test_front_end_posts_json(self):  # XP16 (5): api() declares the body as JSON
+        with open(os.path.join(_util.REPO, "darkroom_app", "static", "app.js"), encoding="utf-8") as f:
+            js = f.read()
+        self.assertIn("headers: body ? {'Content-Type': 'application/json'} : {}", js)
+        self.assertEqual(js.count("fetch("), 1)                         # every request goes through api()
+
+
+class TestRealFacadeUntouched(AioHTTPTestCase):  # a refused export reads and writes nothing
+    async def get_application(self):
+        from darkroom_app.server import make_app
+        self.tmp = _util.tmpdir(self)
+        self.presets = os.path.join(self.tmp, "presets")
+        os.makedirs(self.presets)
+        make_presets(self.presets)
+        self.photos = os.path.join(self.tmp, "photos")
+        os.makedirs(self.photos)
+        return make_app(self.presets)
+
+    async def test_no_cors_export_writes_nothing(self):
+        photo = write_photo(os.path.join(self.photos, "a.jpg"), 64, 48)
+        dest = os.path.join(self.tmp, "attacker")
+        os.makedirs(dest)
+        before = snapshot(self.photos, self.presets)
+        body = json.dumps({"items": [{"path": photo}], "format": "jpeg", "dest_dir": dest}).encode()
+        for headers in ({"Content-Type": "text/plain;charset=UTF-8", "Origin": f"http://127.0.0.1:{self.client.port}"},
+                        {"Content-Type": "application/json", "Origin": "http://evil.example"},
+                        {"Content-Type": "application/json", "Host": "evil.example"},
+                        {"Content-Type": "application/json"}):
+            r = await self.client.post("/api/export", data=body, headers=headers)
+            self.assertIn(r.status, (400, 403, 415, 421), headers)
+        self.assertEqual(os.listdir(dest), [])
+        self.assertEqual(snapshot(self.photos, self.presets), before)
+        self.assertEqual(sorted(os.listdir(self.photos)), ["a.jpg"])
+
+
+if __name__ == "__main__":
+    unittest.main()

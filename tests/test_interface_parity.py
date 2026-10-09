@@ -12,6 +12,7 @@ import contextlib
 import io
 import json
 import os
+import shutil
 import subprocess
 import sys
 import unittest
@@ -76,12 +77,22 @@ class HttpDriver:
     async def folder(self, image_id):
         return (await self._out(await self.c.get("/api/folder", params={"image_id": image_id})))[0]
 
-    async def export(self, items, format, quality=None, dest_dir=None, raw_quality=None):
+    async def export(self, items, format, quality=None, dest_dir=None, raw_quality=None, send_dest=False):
+        """HTTP takes no dest_dir (XP16): the export goes to '<photos>/darkroom 匯出', which is emptied and given
+        the same existing files as `dest_dir` first, so the names come out as in the other interfaces."""
         body = {"items": items, "format": format}
         if quality is not None or raw_quality is not None:
             body["quality"] = raw_quality if raw_quality is not None else quality
-        if dest_dir is not None:
+        if send_dest:
             body["dest_dir"] = dest_dir
+        elif dest_dir is not None:
+            if not os.path.isdir(dest_dir) or os.path.normcase(dest_dir) == os.path.normcase(self.t.photos):
+                return None                  # only the CLI and MCP can name a folder
+            default = os.path.join(self.t.photos, "darkroom 匯出")
+            shutil.rmtree(default, ignore_errors=True)
+            os.makedirs(default)
+            for n in os.listdir(dest_dir):
+                shutil.copyfile(os.path.join(dest_dir, n), os.path.join(default, n))
         o, r = await self._out(await self.c.post("/api/export", json=body))
         if not o.ok:
             return o, None
@@ -453,13 +464,19 @@ class TestInterfaceParity(unittest.IsolatedAsyncioTestCase):
                 r = await fn(d)
                 if r is not None:
                     got[d.name] = r
-            want_drivers = {"http", "mcp"} if name == "quality true" else {"http", "cli", "mcp"}
+            want_drivers = {"http", "mcp"} if name == "quality true" else (
+                {"cli", "mcp"} if name.startswith("dest_dir") else {"http", "cli", "mcp"})   # XP16
             self.assertEqual(set(got), want_drivers, name)
             for dname, (o, res) in got.items():
                 self.assertEqual(o, outcome, (name, dname))
                 self.assertEqual(res, results, (name, dname))
-        # XP13: dest_dir = the photo's own folder, where the photo itself is the same name
-        for d in self.drivers:
+        # XP16: over HTTP a dest_dir is refused (an interface rule), whatever it is
+        http = self.drivers[0]
+        o, _ = await http.export([{"path": jpeg}], "jpeg", dest_dir=fresh(), send_dest=True)
+        self.assertEqual(o, Outcome(False, "invalid", "dest_dir is not accepted over HTTP (use the CLI or MCP)"))
+        shutil.rmtree(os.path.join(self.photos, "darkroom 匯出"))
+        # XP13: dest_dir = the photo's own folder, where the photo itself is the same name (CLI and MCP, XP16)
+        for d in self.drivers[1:]:
             folder = os.path.join(self.tmp, f"own-{d.name}")
             os.makedirs(folder)
             same = os.path.join(folder, "same.jpg")
