@@ -47,12 +47,31 @@
 
 > 作者的環境是把上面的套件裝在一份獨立的可攜 Python 裡，跟其他 AI 工具（llama.cpp、ComfyUI）放在同一個資料夾；你用一般的 venv 也可以。
 
+## 貼給你的 Agent
+
+用 Claude Code、Codex 或 Cursor 的話，把下面這段整段貼給它，它會照 [安裝教學](docs/agent-install.md) 一步一步裝好、驗證，遇到要你決定的地方（preset 放哪、要不要下載 PyTorch）會先問你：
+
+```text
+請幫我安裝 darkroom（https://github.com/TLOGBen/darkroom），一個在本機用 Lightroom XMP preset 修照片的工具。
+照 repo 裡的 docs/agent-install.md 從頭做到尾，每一步的 check 通過才往下。
+規則：不要寫入或搬動我的照片資料夾和 preset 資料夾；不要動系統的 Python，用 repo 裡的 .venv；
+下載大型套件前先問我；preset 資料夾在哪請問我，不要猜。
+最後告訴我：裝在哪、Python 與 PyTorch 版本、找到幾個 preset、測試結果、怎麼啟動，以及有沒有註冊 MCP。
+```
+
 ## 安裝與設定
+
+自己動手的話：
 
 ```powershell
 git clone https://github.com/TLOGBen/darkroom.git
 cd darkroom
+py -3.13 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install torch==2.14.0 --index-url https://download.pytorch.org/whl/cu130
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
+
+（PyTorch 請選你的顯示卡驅動支援的 CUDA 版本；完整步驟與檢查見 [`docs/agent-install.md`](docs/agent-install.md)。）
 
 在 repo 根目錄建一個 `config.local.json`（不進 git），至少告訴 darkroom 你的 preset 在哪：
 
@@ -74,8 +93,8 @@ cd darkroom
 ## 啟動
 
 ```powershell
-# 用你的 Python 啟動（只綁 127.0.0.1，預設埠 8765），開瀏覽器到 http://127.0.0.1:8765/
-python -s -m darkroom_app
+# 只綁 127.0.0.1，預設埠 8765，開瀏覽器到 http://127.0.0.1:8765/
+.\.venv\Scripts\python.exe -s -m darkroom_app
 
 # 作者環境：tools/start.ps1 會從 config.local.json 找到專用 Python、等伺服器就緒再開瀏覽器
 pwsh -File tools/start.ps1

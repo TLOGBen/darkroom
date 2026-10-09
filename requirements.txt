@@ -1,0 +1,11 @@
+# darkroom runtime dependencies (Python 3.13).
+# torch is NOT listed here: install the CUDA build first, from PyTorch's own index, e.g.
+#   python -m pip install torch==2.14.0 --index-url https://download.pytorch.org/whl/cu130
+# Versions below are the ones darkroom is developed and tested with.
+aiohttp==3.14.3
+numpy==2.5.3
+opencv-python-headless==5.0.0.93
+pillow==12.3.0
+tifffile==2026.9.20
+# optional: HEIC / HEIF (iPhone photos). Without it HEIC files are refused with a clear message.
+pillow-heif==1.8.0
