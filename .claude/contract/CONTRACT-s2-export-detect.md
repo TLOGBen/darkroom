@@ -1,5 +1,5 @@
 # CONTRACT — darkroom S2「匯出完整版與能力偵測」（格式／尺寸／中繼資料／輸出銳利化／匯出預設、preset 匯出成 .xmp、export 預設用已存編輯、資料區位置、能力偵測）
-> STATUS: decided（2026-10-10 04:05 +0800）— 決定由主 session 裁決（2026-10-10）；D1～D15 全部採草稿建議，見「主 session 裁決」一節；條文裡「（Dn 已裁決）」處以該節為準；實作中
+> STATUS: sealed（2026-10-10）— 決定由主 session 裁決（2026-10-10）；E1～E34＋IP1～IP13＋E12a／E15a 符合；2 次派遣：第 1 次 7 項 findings（F1 單張匯出存檔失敗會默默匯出原圖、F2 一筆壞預設清空全部、F3 勾選框未釘、F4 群組下載超過 500、F6 版本不支援無判官已修並各附釘死測試，F5 IP3／IP4／IP10 依 R10 判符合，F7 備註）；複驗 3 支舊探針重發仍攔、13 支新判官出生證明各紅，探針 19/19 被攔、全數逐位元組還原；常數零漂移；複驗新發現 3 項只記錄
 <!-- 基準數字（主 session 2026-10-10 確認：S1 已合併 main 0f55a67）：facade 操作 27、MCP 工具 27、HTTP 路由 29、G10 白名單 4；本合約一律寫成實數 -->
 
 ## 目標
@@ -262,3 +262,7 @@ preset 合併雜湊：15C015CC0C080FF9 ｜ 數量：1466
 - F5（R10 裁決）：IP3（跳過暫存資料夾本身）、IP4（E21／E23 只看 preset 資料夾）、IP10（資料區上層不存在／在 preset 資料夾時讀取照 PLP17）皆有第一手證據（`%TEMP%` 第一層實有 3 個相片副檔名檔；`safe_write._preset_folders` 只擋 preset 資料夾；`Library` 只掃 preset_dir／import／user），判**符合**，維持實作補丁。
 - F6（E15 第三種「讀不到」沒有判官，已補）：`test_export_saved_edit_library_unavailable` 加「編輯檔版本 darkroom-edit/99 → 該筆失敗、句子＝PL_SCHEMA_CONFLICT、不輸出原圖」。
 - F7（備註）：瀏覽器量測（IP13）為實作者第一手量測，派遣代理無瀏覽器工具；靜態 CSS 規則已有 regex 判官。
+
+## 封緘第 2 次派遣（複驗）處置紀錄（2026-10-10）
+- (a) F1～F6 回歸逐項符合；(b) 第 1 次派遣咬到的 3 支探針重發全部被攔；(c) 修正輪新判官 13 條各自出生證明紅（P4～P15），探針全數以自存複本寫回並 cmp 逐位元組確認。
+- 只記錄、不修（低嚴重度）：N1 foreign schema 段的 save／delete／export 與「檔案位元組不變」斷言沒有各自的紅（四個操作共用同一個 `_read`）；N2 F3 的 `metadata: $('#xd-metadata').value` 與 `dialogSettings` 兩條斷言沒有出生證明；N3 派遣 scratch 目錄 seal2 內有既存檔，代理改用子目錄 `seal2/d2/`，舊檔未動。
