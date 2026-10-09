@@ -1,4 +1,5 @@
 # CONTRACT — darkroom preset 庫（索引、群組、最愛、匯入、自存 preset）
+> STATUS: sealed（2026-10-09）— K1～K21＋KP1～KP20 符合；2 次派遣：第 1 次 4 項 findings（CLI 未走設定庫根、壞 XML 編碼中斷整批、bench 只 profile 部分項、新群組句未釘）全修並各附釘死測試；複驗 3 支既有探針＋4 支新判官全紅、逐位元組還原；N1（bench profile 路徑偏差）記錄不修
 
 ## 目標
 Preset 庫有一份索引 `library.json`：左欄可看群組樹、最愛、改 preset 顯示名稱、搬群組、建／改群組、匯入 xmp、把目前編輯存成自存 preset。整理只寫索引，買來的 xmp 一個位元都不變；索引刪掉也能從磁碟重建。App、CLI、MCP 同時用也不會掉資料。每個新操作走 ADR-0001 分層：一個 service 方法＋facade＋`OPERATIONS`＋HTTP＋CLI（`--json`）＋MCP。 <!-- 此處採預設：合約未經人工確認即釘死（2026-10-09，由工作流程子代理依指揮部已定決策撰寫） -->
@@ -105,3 +106,6 @@ G10 寫檔白名單（SAFE_WRITE_USERS）：("services/export.py", "services/pre
 封緘補丁常數：前端新群組：已建立群組：{group}
 ```
 
+## 封緘第 2 次派遣（複驗）處置紀錄（2026-10-09）
+- 第 1 輪 F1～F4 在原引用處回歸皆符合；第 1 輪咬到的 3 支探針（HTTP 收 paths、`_sw` 漏 `preset_dir=`、`num_text` 用 `repr`）重發仍各自讓整套變紅；本輪新判官 4 支各自出生證明全紅；全部逐位元組還原，`git status` 空。
+- N1（記錄、不修，低嚴重度、只影響量測工具輸出）：`tools/bench_preset_library.py` 未達標時的 profile 路徑與量測路徑有偏差——「import 20」重匯同一批會走重複拒絕路徑、`save_user_preset` 的 profile 沒帶 strength／overrides、「外部變更」把另一個 facade 的寫入也算進去。今天 K20 全部達標、不會觸發；之後若有未達標，先修這三個 profile 的輸入再看結果。
