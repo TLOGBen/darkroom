@@ -311,8 +311,13 @@ def _pixel_grid(H, W, device):
     return xs, ys
 
 
-def _shape_mask(s, H, W, device):
-    xs, ys = _pixel_grid(H, W, device)
+def _shape_mask(s, H, W, device, grid=None):
+    """grid: None = the image's own pixel centres; else (xs, ys, Hs, Ws) - every output pixel's point in an
+    Hs x Ws source (CONTRACT-s3-crop C8: a mask covers the same content after rotate / flip / straighten / crop)."""
+    if grid is None:
+        xs, ys = _pixel_grid(H, W, device)
+    else:
+        xs, ys, H, W = grid
     if s["type"] == "Mask/Gradient":
         zx, zy, fx, fy = s["ZeroX"] * W, s["ZeroY"] * H, s["FullX"] * W, s["FullY"] * H
         dx, dy = fx - zx, fy - zy
@@ -347,7 +352,7 @@ _LOCAL_MAP = (("LocalExposure2012", "Exposure2012", 4.0), ("LocalContrast2012", 
               ("LocalTint", "IncrementalTint", 100.0), ("LocalSaturation", "Saturation", 100.0))
 
 
-def _local(x, masks):
+def _local(x, masks, grid=None):
     H, W = x.shape[-2:]
     for m in masks:
         lv = {gk: m["values"].get(lk, 0.0) * sc for lk, gk, sc in _LOCAL_MAP}
@@ -355,7 +360,7 @@ def _local(x, masks):
             continue
         M = None
         for s in m["shapes"]:
-            sm = _shape_mask(s, H, W, x.device)
+            sm = _shape_mask(s, H, W, x.device, grid)
             M = sm if M is None else torch.maximum(M, sm)
         M = (M * m.get("amount", 1.0)).clamp(0, 1)
         g = lambda k: lv.get(k, 0.0)
@@ -594,7 +599,7 @@ def _sharpen(x, g):
 # --------------------------------------------------------------------------- driver
 
 
-def _pipeline(x, p):
+def _pipeline(x, p, grid=None):
     g = p.get
     x = x.clamp(0, 1)
     if any(g(k) for k in ("IncrementalTemperature", "IncrementalTint", "Exposure2012", "Dehaze", "ShadowTint",
@@ -602,7 +607,7 @@ def _pipeline(x, p):
         x = _color.linear_to_srgb(_linear_stage(_color.srgb_to_linear(x), g))
     x = _tone(x, g)
     if p.masks:
-        x = _local(x, p.masks)
+        x = _local(x, p.masks, grid)
     luts = _curve_luts(p)
     if luts is not None:
         x = _apply_luts(x, luts)
@@ -643,16 +648,68 @@ def _to_tensor(image, device):
     return t, restore
 
 
+# --------------------------------------------------------------------------- geometry (CONTRACT-s3-crop C2, C7-C9)
+
+RESAMPLE_MODE = "bicubic"     # verbatim (C9 / D12, kept after M2): grid_sample mode when angle != 0 or scaled
+PREFILTER = 1.5               # more than 1.5 image pixels per output pixel: the image is area-shrunk first
+
+
+def _warp(x, geometry, need_grid):
+    """The output picture of `geometry` sampled from the 1x3xHxW image x, plus every output pixel's point in x
+    (for the masks, C8) when need_grid: (out, (xs, ys, H, W) | None). angle 0 at the source's own scale is
+    rot90 / flip / slicing only (byte for byte, C2); anything else is grid_sample (C9)."""
+    H, W = x.shape[-2:]
+    _, _, ow, oh, frame, (L, T, R, B), exact = geometry.sampling(W, H)
+    k = geometry.rotate // 90
+    if exact:
+        def op(t):
+            if k:
+                t = torch.rot90(t, k=-k, dims=(2, 3))
+            if geometry.flip:
+                t = torch.flip(t, dims=(3,))
+            return t[..., T:B, L:R]
+        out = op(x).contiguous()
+        grid = None
+        if need_grid:
+            xs, ys = _pixel_grid(H, W, x.device)
+            grid = (op(xs.expand(1, 1, H, W)).contiguous(), op(ys.expand(1, 1, H, W)).contiguous(), H, W)
+        return out, grid
+    M = torch.tensor(geometry.matrix(W, H), dtype=torch.float64)
+    X = (torch.arange(ow, dtype=torch.float64) + 0.5).view(1, -1)
+    Y = (torch.arange(oh, dtype=torch.float64) + 0.5).view(-1, 1)
+    gx = (M[0, 0] * X + M[0, 1] * Y + M[0, 2]).to(torch.float32).to(x.device).view(1, 1, oh, ow)
+    gy = (M[1, 0] * X + M[1, 1] * Y + M[1, 2]).to(torch.float32).to(x.device).view(1, 1, oh, ow)
+    grid = (gx, gy, H, W) if need_grid else None
+    src = x
+    f = math.sqrt(abs(float(M[0, 0] * M[1, 1] - M[0, 1] * M[1, 0])))      # image pixels per output pixel
+    if f > PREFILTER:                                                      # shrink first: no aliasing
+        src = F.interpolate(x, size=(max(1, round(H / f)), max(1, round(W / f))), mode="area")
+    g = torch.stack([gx[0, 0] * (2.0 / W) - 1.0, gy[0, 0] * (2.0 / H) - 1.0], dim=-1)[None]
+    out = F.grid_sample(src, g, mode=RESAMPLE_MODE, padding_mode="zeros" if frame else "border",
+                        align_corners=False)
+    del g
+    return out.clamp(0, 1), grid
+
+
 @torch.no_grad()
-def render(image, params, strength=1.0, device=None):
+def render(image, params, strength=1.0, device=None, *, geometry=None):
     """Apply `params` at `strength` (0..2) to an sRGB image with values in 0..1.
 
     image: HxWx3 numpy array (float 0..1, or uint8/uint16) -> HxWx3 float32 array; or a 3xHxW / 1x3xHxW
     torch tensor -> tensor of the same shape on the same device. device: None = the tensor's device, or
     CUDA when available (CPU otherwise) for arrays.
+    geometry: None (the picture as it is), or a darkroom.Geometry: the output picture is decided first (rotate,
+    flip, straighten, crop), then the whole pipeline runs on it - the vignette and the detail effects belong to the
+    cropped picture, the gradient masks stay on the same content (CONTRACT-s3-crop C7, C8).
     """
     if not isinstance(params, Params):
         raise TypeError("params must be a darkroom.Params")
+    from ._geometry import Geometry
+    if geometry is not None and not isinstance(geometry, Geometry):
+        raise TypeError("geometry must be a darkroom.Geometry or None")
     p = params.at_strength(strength).clamped()
     x, restore = _to_tensor(image, device)
-    return restore(_pipeline(x, p))
+    if geometry is None or (geometry.identity and geometry._bind is None):
+        return restore(_pipeline(x, p))
+    x, grid = _warp(x, geometry, bool(p.masks))
+    return restore(_pipeline(x, p, grid))

@@ -74,14 +74,16 @@
   }
 
   // ---------------------------------------------------------------- R5 editor state (reducer)
-  // ed = {presetId, strength, tweaks, past: [snapshot], future: [snapshot], gesture: string|null}
-  // A snapshot is {presetId, strength, tweaks}. Every change records the state before it, except further
-  // steps of the same gesture (one drag = one step). Changes that change nothing record nothing.
+  // ed = {presetId, strength, tweaks, geometry, past: [snapshot], future: [snapshot], gesture: string|null}
+  // A snapshot is {presetId, strength, tweaks, geometry} (S3 C24: the crop / rotation is one more part of it).
+  // Every change records the state before it, except further steps of the same gesture (one drag = one step).
+  // Changes that change nothing record nothing.
   const HISTORY_LIMIT = 200;
-  const snap = (ed) => ({presetId: ed.presetId, strength: ed.strength, tweaks: Object.assign({}, ed.tweaks)});
+  const snap = (ed) => ({presetId: ed.presetId, strength: ed.strength, tweaks: Object.assign({}, ed.tweaks),
+                         geometry: ed.geometry ? JSON.parse(JSON.stringify(ed.geometry)) : null});
 
   function initialEditor() {
-    return {presetId: null, strength: 100, tweaks: {}, past: [], future: [], gesture: null};
+    return {presetId: null, strength: 100, tweaks: {}, geometry: null, past: [], future: [], gesture: null};
   }
 
   const strengthEnabled = (ed) => ed.presetId !== null;
@@ -127,14 +129,21 @@
       }
       case 'resetAll':
         return Object.keys(ed.tweaks).length ? change(ed, {tweaks: {}}) : ed;
-      case 'resetToOriginal':           // S10: no preset, no tweaks, one history step (strength kept for the next preset)
-        return change(ed, {presetId: null, tweaks: {}});
+      case 'resetToOriginal':           // S10 / S10': no preset, no tweaks, no geometry; one step (strength kept)
+        return change(ed, {presetId: null, tweaks: {}, geometry: null});
+      case 'setGeometry':               // S3 C22 / C24: the crop mode's result, or a rotate / flip outside it: one step
+        return change(ed, {geometry: normGeometry(a.geometry)});
+      case 'carry': {                   // C24: another photo opened - its crop is its own, never carried over
+        const g = carryGeometry();
+        const drop = (list) => list.map((x) => Object.assign({}, x, {geometry: g}));
+        return Object.assign({}, ed, {geometry: g, past: drop(ed.past), future: drop(ed.future), gesture: null});
+      }
       case 'endGesture':
         return ed.gesture ? Object.assign({}, ed, {gesture: null}) : ed;
       case 'restoreEdit': {             // PL15 / PLP9: a photo's saved edit comes back; history starts afresh
         const e = a.edit;
         return {presetId: e.preset ? e.preset.id : null, strength: e.strength, tweaks: Object.assign({}, e.overrides),
-                past: [], future: [], gesture: null};
+                geometry: normGeometry(e.geometry === undefined ? null : e.geometry), past: [], future: [], gesture: null};
       }
       case 'undo': {
         if (!canUndo(ed)) return ed;
@@ -375,9 +384,12 @@
   const BADGE_ONLY_TWEAKS = '只有微調';
   const BADGE_CHANGED = '（preset 已變更）';
   const BADGE_MISSING = '（preset 已不在庫裡）';
-  function badgeTitle(info) {             // info: {preset, strength, status} from X-Edit; null = edited, no detail
+  function badgeTitle(info) {             // info: X-Edit {preset, strength, status, geometry, tweaks}; null = no detail
     if (!info) return '已編輯';
-    const t = `${info.preset || BADGE_ONLY_TWEAKS}　${info.strength}%`;
+    // S8b (CONTRACT-s3-crop C18): the strength only with a preset; a geometry with colours adds 「・已裁切」
+    let t = info.preset ? `${info.preset}　${info.strength}%` : info.geometry && !info.tweaks ? BADGE_ONLY_GEOMETRY
+      : BADGE_ONLY_TWEAKS;
+    if (info.geometry && (info.preset || info.tweaks)) t += BADGE_CROPPED;
     return t + (info.status === 'changed' ? BADGE_CHANGED : info.status === 'missing' ? BADGE_MISSING : '');
   }
   const stale = (info) => !!info && (info.status === 'changed' || info.status === 'missing');
@@ -411,7 +423,8 @@
   function editBody(ed, path) {         // PUT /api/edit: the open photo's edit as the editor shows it
     const overrides = {};
     for (const [k, d] of Object.entries(ed.tweaks)) if (d) overrides[k] = d;
-    return {path, preset_id: ed.presetId, strength: strengthInEffect(ed), overrides};
+    // C24: the geometry always goes with it (null too: "none", never "keep what is saved")
+    return {path, preset_id: ed.presetId, strength: strengthInEffect(ed), overrides, geometry: normGeometry(ed.geometry)};
   }
 
   // S2 (CONTRACT-s1-experience): the autosave request for the state `ed` of the photo at `path`. When the page
@@ -421,9 +434,12 @@
     const body = editBody(ed, path);
     const snap = ed.presetId !== null && snapshots ? snapshots[ed.presetId] : null;
     if (!snap) return {method: 'PUT', body};
-    const edit = {schema: 'darkroom-edit/1', fingerprint: fingerprint || '', preset: snap,
-                  strength: body.strength, overrides: body.overrides};
-    return {method: 'PASTE', body: {targets: [path], edit}};
+    const edit = {schema: body.geometry ? 'darkroom-edit/2' : 'darkroom-edit/1', fingerprint: fingerprint || '',
+                  preset: snap, strength: body.strength, overrides: body.overrides};
+    if (body.geometry) edit.geometry = body.geometry;               // C12: /2 only with a geometry
+    // S2b (CONTRACT-s3-crop C14): the page's own save carries its geometry - a paste keeps the target's geometry
+    // unless with_geometry, and that would drop the box just cropped
+    return {method: 'PASTE', body: {targets: [path], edit, with_geometry: true}};
   }
 
   // S3: slider base values and curves come from the edit's snapshot, never from the library's current file;
@@ -618,7 +634,263 @@
     return {summary: downloadSummary(ok, files.length - ok), lines: files.map((f) => (f.ok ? downloadedLine(f.file_name) : f.error))};
   }
 
+  // ---------------------------------------------------------------- S3 geometry (CONTRACT-s3-crop C1-C4, C22-C26)
+  // The one rule is the core's Geometry (darkroom/_geometry.py); this mirrors it on the same case tables
+  // (tests/cases/s3_geometry_cases.json, s3_geometry_actions.json), so the box on screen is the box exported.
+  const GEOMETRY_IDENTITY = {rotate: 0, flip: false, angle: 0, aspect: 'original', crop: null};
+  const CROP_EDGES = ['left', 'top', 'right', 'bottom'];
+  const RATIO_TOL = 0.001;                                   // verbatim (C3 step 2)
+  const CROP_DRAFT_LIMIT = 50;                               // verbatim: the crop mode's own undo steps
+  const CROP_MIN_PX = 32;                                    // verbatim: the smallest box on screen
+  const CROP_KEY_STEP = 0.005, CROP_KEY_STEP_BIG = 0.05;     // verbatim: arrow keys 0.5 %, Shift 5 %
+  const ANGLE_STEP = 0.1;                                    // verbatim: the straighten slider
+  const CROP_LABEL = '裁切';
+  const CROP_HINT = '拖曳框或把手調整範圍；Enter 完成、Esc 取消';
+  const AB_DISABLED_CROP = '裁切模式中不能對照，完成或取消後再用';
+  const PASTE_GEOMETRY_LABEL = '連同裁切與旋轉';
+  const PASTE_GEOMETRY_NOTE = '（連同裁切與旋轉）';
+  const BADGE_ONLY_GEOMETRY = '只有裁切／旋轉';
+  const BADGE_CROPPED = '・已裁切';
+  const ORIENT_PORTRAIT = '直式', ORIENT_LANDSCAPE = '橫式';
+  // C23 constant "比例選單": the values as listed (portrait); a landscape draft shows each ratio turned (5:4, 7:5 ...)
+  const ASPECTS = [['original', '原始'], ['free', '自由'], ['1:1', '1:1'], ['4:5', '4:5（8×10）'], ['5:7', '5:7'],
+                   ['2:3', '2:3（4×6）'], ['3:4', '3:4'], ['16:9', '16:9']];
+
+  const gcd = (a, b) => { while (b) { [a, b] = [b, a % b]; } return a; };
+  function reduceAspect(a) {
+    const m = /^(\d+):(\d+)$/.exec(a || '');
+    if (!m) return a;
+    const w = parseInt(m[1], 10), h = parseInt(m[2], 10), k = gcd(w, h);
+    return `${w / k}:${h / k}`;
+  }
+  const turnAspect = (a) => (a === 'original' || a === 'free' ? a : a.split(':').reverse().join(':'));
+
+  function fullGeometry(g) {             // a complete object (the crop mode's draft never lacks a key)
+    if (!g) return copy(GEOMETRY_IDENTITY);
+    return {rotate: g.rotate || 0, flip: !!g.flip, angle: g.angle || 0, aspect: g.aspect || 'original',
+            crop: g.crop ? {left: g.crop.left, top: g.crop.top, right: g.crop.right, bottom: g.crop.bottom} : null};
+  }
+  const isIdentityGeometry = (g) => !g || (!(g.rotate) && !g.flip && !(g.angle) && !g.crop);
+  function normGeometry(g) {             // C1: identity -> null (aspect alone is nothing), the ratio reduced
+    if (isIdentityGeometry(g)) return null;
+    const f = fullGeometry(g);
+    f.aspect = reduceAspect(f.aspect);
+    return f;
+  }
+  const frameSize = (g, W, H) => ((g.rotate === 90 || g.rotate === 270) ? [H, W] : [W, H]);
+  function ratioOf(g, W, H) {
+    const [fw, fh] = frameSize(g, W, H);
+    if (g.aspect === 'original' || g.aspect === 'free') return fw / fh;
+    const [a, b] = g.aspect.split(':').map(Number);
+    return a / b;
+  }
+  const rad = (deg) => deg * (Math.PI / 180);                // as Python's math.radians: x * (pi / 180)
+  const rotv = (phi, x, y) => { const c = Math.cos(phi), s = Math.sin(phi); return [c * x - s * y, s * x + c * y]; };
+
+  function cropLimits(angle, m, e, fw, fh) {   // largest s: the box m +- s*e inside the canvas and the picture
+    const th = rad(angle), cx = fw / 2, cy = fh / 2;
+    const d = [m[0] - cx, m[1] - cy];
+    const a = rotv(-th, d[0], d[1]);
+    let best = Infinity;
+    for (const sx of [1, -1]) {
+      for (const sy of [1, -1]) {
+        const ek = [sx * e[0], sy * e[1]];
+        const bk = rotv(-th, ek[0], ek[1]);
+        for (const [val, half, pos] of [[bk[0], cx, a[0]], [bk[1], cy, a[1]], [ek[0], cx, d[0]], [ek[1], cy, d[1]]]) {
+          if (val !== 0) best = Math.min(best, (half - Math.sign(val) * pos) / Math.abs(val));
+        }
+      }
+    }
+    return Math.max(0, best);
+  }
+  function inPicture(angle, m, fw, fh) {
+    const a = rotv(-rad(angle), m[0] - fw / 2, m[1] - fh / 2);
+    return Math.abs(a[0]) <= fw / 2 && Math.abs(a[1]) <= fh / 2;
+  }
+
+  // C3: the crop box of geometry g on a W x H photo -> {left, top, right, bottom, width, height (pixels), box (0..1)}
+  function fitCrop(geometry, W, H) {
+    const g = fullGeometry(geometry);
+    const [fw, fh] = frameSize(g, W, H);
+    const rho = ratioOf(g, W, H);
+    let m, hw, hh;
+    if (!g.crop) {                                              // (1) the largest centred box
+      m = [fw / 2, fh / 2];
+      const e = [rho / 2, 0.5];
+      const s = cropLimits(g.angle, m, e, fw, fh);
+      hw = s * e[0]; hh = s * e[1];
+    } else {
+      const {left: l, top: t, right: r, bottom: b} = g.crop;
+      m = [(l + r) / 2 * fw, (t + b) / 2 * fh];
+      let w = (r - l) * fw, h = (b - t) * fh;
+      if (g.aspect !== 'free' && Math.abs(w / h - rho) / rho > RATIO_TOL) {   // (2) same centre and area
+        const area = w * h;
+        w = Math.sqrt(area * rho); h = Math.sqrt(area / rho);
+      }
+      if (!inPicture(g.angle, m, fw, fh)) m = [fw / 2, fh / 2];             // (3)
+      const s = Math.min(1, cropLimits(g.angle, m, [w / 2, h / 2], fw, fh));  // (4) shrink only
+      hw = s * w / 2; hh = s * h / 2;
+    }
+    const x0 = m[0] - hw, y0 = m[1] - hh, x1 = m[0] + hw, y1 = m[1] + hh;
+    const box = [x0 / fw, y0 / fh, x1 / fw, y1 / fh];
+    let L = Math.floor(x0 + 0.5), T = Math.floor(y0 + 0.5), R = Math.floor(x1 + 0.5), B = Math.floor(y1 + 0.5);   // (5)
+    L = Math.min(Math.max(L, 0), fw - 1); T = Math.min(Math.max(T, 0), fh - 1);
+    R = Math.min(Math.max(R, L + 1), fw); B = Math.min(Math.max(B, T + 1), fh);
+    return {left: L, top: T, right: R, bottom: B, width: R - L, height: B - T, box};
+  }
+  const boxCrop = (b) => ({left: b[0], top: b[1], right: b[2], bottom: b[3]});
+
+  // C4 constant "操作表": rotate / flip / orientation change only the geometry object (the box follows the picture)
+  function geometryAction(geometry, action, W, H) {
+    const g = fullGeometry(geometry);
+    const c = g.crop;
+    let box = c ? [c.left, c.top, c.right, c.bottom] : null;
+    if (action === 'rotate_right' || action === 'rotate_left') {
+      const plus = (action === 'rotate_right') !== g.flip;
+      g.rotate = (((g.rotate + (plus ? 90 : -90)) % 360) + 360) % 360;
+      if (box) { const [l, t, r, b] = box; box = action === 'rotate_right' ? [1 - b, l, 1 - t, r] : [t, 1 - r, b, 1 - l]; }
+      g.aspect = turnAspect(g.aspect);
+    } else if (action === 'flip_h' || action === 'flip_v') {
+      g.flip = !g.flip;
+      g.angle = g.angle ? -g.angle : 0;
+      if (action === 'flip_v') g.rotate = (g.rotate + 180) % 360;
+      if (box) { const [l, t, r, b] = box; box = action === 'flip_h' ? [1 - r, t, 1 - l, b] : [l, 1 - b, r, 1 - t]; }
+    } else if (action === 'orient') {
+      if (g.aspect === 'free' || g.aspect === '1:1') return g;
+      const [fw, fh] = frameSize(g, W, H);
+      const turned = g.aspect === 'original' ? `${fh / gcd(fw, fh)}:${fw / gcd(fw, fh)}` : turnAspect(g.aspect);
+      const start = fitCrop(g, W, H).box;
+      g.aspect = turned;
+      g.crop = boxCrop(start);
+      box = fitCrop(g, W, H).box;
+    } else {
+      throw new Error('unknown geometry action ' + action);
+    }
+    if (box) g.crop = boxCrop(box);
+    return g;
+  }
+
+  // the orientation the draft's ratio has now, and the ratio menu for it (C23)
+  function cropOrientation(g, W, H) {
+    const r = ratioOf(fullGeometry(g), W, H);
+    return r < 1 ? 'portrait' : r > 1 ? 'landscape' : 'square';
+  }
+  function aspectOptions(landscape) {
+    return ASPECTS.map(([v, label]) => {
+      if (!landscape || v === 'original' || v === 'free' || v === '1:1') return [v, label];
+      const t = turnAspect(v);
+      const m = /（(\d+)×(\d+)）/.exec(label);
+      return [t, t + (m ? `（${m[2]}×${m[1]}）` : '')];
+    });
+  }
+
+  // C23: dragging a handle (n, s, e, w, ne, nw, se, sw) or the box (move) by dx, dy (0..1 of the frame); a locked
+  // ratio holds; the box stops where the picture ends; the result always passes fitCrop (C3).
+  function cropBoxFits(g, box, W, H) {
+    const t = fullGeometry(g);
+    t.aspect = 'free'; t.crop = boxCrop(box);
+    if (!(box[0] >= 0 && box[1] >= 0 && box[2] <= 1 && box[3] <= 1 && box[0] < box[2] && box[1] < box[3])) return false;
+    const r = fitCrop(t, W, H).box;
+    return r.every((v, i) => Math.abs(v - box[i]) < 1e-9);
+  }
+  function resizedBox(box, handle, dx, dy, rn, minW, minH) {
+    let [l, t, r, b] = box;
+    if (handle === 'move') return [l + dx, t + dy, r + dx, b + dy];
+    const W_ = handle.includes('w'), E_ = handle.includes('e'), N_ = handle.includes('n'), S_ = handle.includes('s');
+    if (W_) l += dx; if (E_) r += dx; if (N_) t += dy; if (S_) b += dy;
+    let w = Math.max(r - l, minW), h = Math.max(b - t, minH);
+    if (rn) {
+      const horiz = W_ || E_, vert = N_ || S_;
+      if (horiz && vert) { if (w / rn >= h) h = w / rn; else w = h * rn; } else if (horiz) h = w / rn; else w = h * rn;
+      if (w < minW) { w = minW; h = w / rn; }
+      if (h < minH) { h = minH; w = h * rn; }
+      if (horiz && !vert) { const cy = (box[1] + box[3]) / 2; t = cy - h / 2; b = cy + h / 2; }
+      if (vert && !horiz) { const cx = (box[0] + box[2]) / 2; l = cx - w / 2; r = cx + w / 2; }
+    }
+    if (W_) l = r - w; else r = l + w;                         // the opposite edge stays where it was
+    if (N_) t = b - h; else b = t + h;
+    return [l, t, r, b];
+  }
+  function cropDrag(draft, size, handle, dx, dy) {
+    const W = size.width, H = size.height;
+    const g = fullGeometry(draft);
+    const start = fitCrop(g, W, H).box;
+    const [fw, fh] = frameSize(g, W, H);
+    const rn = g.aspect === 'free' ? null : ratioOf(g, W, H) * fh / fw;       // the ratio in 0..1 units
+    const at = (k) => resizedBox(start, handle, dx * k, dy * k, rn, size.minW || 0, size.minH || 0);
+    let box = at(1);
+    if (!cropBoxFits(g, box, W, H)) {                         // as far as the drag still fits
+      let lo = 0, hi = 1;
+      for (let i = 0; i < 40; i++) { const mid = (lo + hi) / 2; if (cropBoxFits(g, at(mid), W, H)) lo = mid; else hi = mid; }
+      box = at(lo);
+    }
+    g.crop = boxCrop(box);
+    g.crop = boxCrop(fitCrop(g, W, H).box);                    // C3 decides
+    return g;
+  }
+  function cropKeyMove(key, shift) {    // the focused box: arrows move it 0.5 % (Shift 5 %); null = not ours
+    const s = shift ? CROP_KEY_STEP_BIG : CROP_KEY_STEP;
+    return {ArrowLeft: [-s, 0], ArrowRight: [s, 0], ArrowUp: [0, -s], ArrowDown: [0, s]}[key] || null;
+  }
+
+  // C22: the crop mode's draft and its own undo (never the reducer). commit / cancel end it; result.changed says
+  // whether one setGeometry step is due. A crop null with a chosen ratio becomes the box itself on commit.
+  function commitGeometry(draft, W, H) {
+    const g = fullGeometry(draft);
+    if (!g.crop && g.aspect !== 'original' && g.aspect !== 'free') g.crop = boxCrop(fitCrop(g, W, H).box);
+    return normGeometry(g);
+  }
+  function cropSession(s, ev) {
+    switch (ev.type) {
+      case 'enter':
+        return {active: true, entry: normGeometry(ev.geometry), draft: fullGeometry(ev.geometry), past: [], future: [],
+                gesture: null, result: null};
+      case 'change': {
+        if (!s || !s.active) return s;
+        const next = fullGeometry(ev.draft);
+        const continuing = !!ev.gesture && s.gesture === ev.gesture;
+        if (same(next, s.draft)) return continuing ? s : Object.assign({}, s, {gesture: ev.gesture || null});
+        const past = continuing ? s.past : s.past.concat([s.draft]).slice(-CROP_DRAFT_LIMIT);
+        return Object.assign({}, s, {draft: next, past, future: [], gesture: ev.gesture || null});
+      }
+      case 'endGesture':
+        return s && s.gesture ? Object.assign({}, s, {gesture: null}) : s;
+      case 'undo':
+        if (!s || !s.active || !s.past.length) return s;
+        return Object.assign({}, s, {draft: s.past[s.past.length - 1], past: s.past.slice(0, -1),
+                                     future: s.future.concat([s.draft]), gesture: null});
+      case 'redo':
+        if (!s || !s.active || !s.future.length) return s;
+        return Object.assign({}, s, {draft: s.future[s.future.length - 1], future: s.future.slice(0, -1),
+                                     past: s.past.concat([s.draft]), gesture: null});
+      case 'reset':
+        return cropSession(s, {type: 'change', draft: null});
+      case 'commit': {
+        if (!s || !s.active) return s;
+        const g = commitGeometry(s.draft, ev.width, ev.height);
+        return {active: false, entry: s.entry, draft: null, past: [], future: [], gesture: null,
+                result: {changed: !same(g, s.entry), geometry: g}};
+      }
+      case 'cancel':
+        if (!s || !s.active) return s;
+        return {active: false, entry: s.entry, draft: null, past: [], future: [], gesture: null,
+                result: {changed: false, geometry: s.entry}};
+      default:
+        throw new Error('unknown crop event ' + ev.type);
+    }
+  }
+
+  const carryGeometry = () => null;     // C24: a photo switch never carries a crop over
+  // C25: the original's preview is cached per photo and geometry (and frame for the crop mode)
+  const originalKey = (imageId, geometry, frame) => `${imageId}|${JSON.stringify(normGeometry(geometry))}|${frame ? 1 : 0}`;
+  const pasteConfirmWith = (sourceName, n, withGeometry) => pasteConfirm(sourceName, n) + (withGeometry ? PASTE_GEOMETRY_NOTE : '');
+
   return {sliderView, tweakFor, sliderTooltip, clampNote, fmtNum, History, treeKey, matchPreset, presetTitle,
+          GEOMETRY_IDENTITY, CROP_EDGES, CROP_DRAFT_LIMIT, CROP_MIN_PX, CROP_KEY_STEP, CROP_KEY_STEP_BIG, ANGLE_STEP,
+          CROP_LABEL, CROP_HINT, AB_DISABLED_CROP, PASTE_GEOMETRY_LABEL, PASTE_GEOMETRY_NOTE, BADGE_ONLY_GEOMETRY,
+          BADGE_CROPPED, ORIENT_PORTRAIT, ORIENT_LANDSCAPE, ASPECTS, reduceAspect, fullGeometry, isIdentityGeometry,
+          normGeometry, frameSize, ratioOf, fitCrop, geometryAction, cropOrientation, aspectOptions, cropBoxFits,
+          cropDrag, cropKeyMove, commitGeometry, cropSession, carryGeometry, originalKey, pasteConfirmWith,
           EXPORT_SETTINGS_KEY, EXPORT_FORMATS, FORMAT_LABELS, RESIZE_MODES, RESIZE_LABELS, METADATA_LABELS, REMOVE_GPS_LABEL,
           SHARPEN_TARGETS, SHARPEN_TARGET_LABELS, SHARPEN_AMOUNTS, SHARPEN_AMOUNT_LABELS, NO_RESIZE_LABEL, NO_SHARPEN_LABEL,
           ORIGINAL_SIZE, CUSTOM_PRESET, EXPORT_DEFAULTS, defaultBitDepth, exportPresetSaved, exportPresetUpdated,

@@ -6,6 +6,21 @@ Each DarkroomFacade method is exactly one `return` forwarding to a service.
 from typing import Protocol, runtime_checkable
 
 
+class _Keep:
+    """The default of every `geometry` argument (CONTRACT-s3-crop C13, D4): left out = the photo's saved geometry.
+    Lives here, with the signatures every interface shares (an interface may import the facade, never the rules)."""
+    __slots__ = ()
+
+    def __repr__(self):
+        return "KEEP"
+
+    def __reduce__(self):
+        return "KEEP"
+
+
+KEEP = _Keep()
+
+
 @runtime_checkable
 class Facade(Protocol):
     def list_presets(self, query=None, offset=0, limit=None, favorites=False): ...
@@ -20,7 +35,8 @@ class Facade(Protocol):
 
     def list_folder(self, image_id): ...
 
-    def preview(self, image_id, preset_id=None, strength=100, overrides=None, max_pixels=None): ...
+    def preview(self, image_id, preset_id=None, strength=100, overrides=None, max_pixels=None, *, geometry=KEEP,
+                frame=False): ...
 
     def export(self, items, format=None, quality=None, dest_dir=None, *, bit_depth=None, max_kb=None, resize=None,
                metadata=None, remove_gps=None, sharpen=None, export_preset=None): ...
@@ -45,11 +61,11 @@ class Facade(Protocol):
 
     def get_edit(self, path): ...
 
-    def set_edit(self, path, preset_id=None, strength=100, overrides=None): ...
+    def set_edit(self, path, preset_id=None, strength=100, overrides=None, *, geometry=KEEP): ...
 
     def clear_edit(self, path): ...
 
-    def paste_edit(self, targets, source=None, edit=None): ...
+    def paste_edit(self, targets, source=None, edit=None, *, with_geometry=False): ...
 
     def folder_thumbnails(self, folder, offset=0, limit=None): ...
 
@@ -107,8 +123,9 @@ class DarkroomFacade:
     def list_folder(self, image_id):
         return self._photos.list_folder(image_id)
 
-    def preview(self, image_id, preset_id=None, strength=100, overrides=None, max_pixels=None):
-        return self._previews.preview(image_id, preset_id, strength, overrides, max_pixels)
+    def preview(self, image_id, preset_id=None, strength=100, overrides=None, max_pixels=None, *, geometry=KEEP,
+                frame=False):
+        return self._previews.preview(image_id, preset_id, strength, overrides, max_pixels, geometry=geometry, frame=frame)
 
     def export(self, items, format=None, quality=None, dest_dir=None, *, bit_depth=None, max_kb=None, resize=None,
                metadata=None, remove_gps=None, sharpen=None, export_preset=None):
@@ -147,14 +164,14 @@ class DarkroomFacade:
     def get_edit(self, path):
         return self._photo_library.get_edit(path)
 
-    def set_edit(self, path, preset_id=None, strength=100, overrides=None):
-        return self._photo_library.set_edit(path, preset_id, strength, overrides)
+    def set_edit(self, path, preset_id=None, strength=100, overrides=None, *, geometry=KEEP):
+        return self._photo_library.set_edit(path, preset_id, strength, overrides, geometry=geometry)
 
     def clear_edit(self, path):
         return self._photo_library.clear_edit(path)
 
-    def paste_edit(self, targets, source=None, edit=None):
-        return self._photo_library.paste_edit(targets, source, edit)
+    def paste_edit(self, targets, source=None, edit=None, *, with_geometry=False):
+        return self._photo_library.paste_edit(targets, source, edit, with_geometry=with_geometry)
 
     def folder_thumbnails(self, folder, offset=0, limit=None):
         return self._photo_library.folder_thumbnails(folder, offset, limit)

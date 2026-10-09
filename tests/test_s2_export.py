@@ -827,10 +827,14 @@ class TestSavedEdit(S2Case):
         with open(edit, "wb") as fh:
             fh.write(b"{broken")
         res = self.export([photo, photo], format="png")
-        res = self.f.export([{"path": photo}, {"path": photo, "preset_id": None}], "png", dest_dir=self.dest)["results"]
+        # XP35 (CONTRACT-s3-crop C19, D4): an item without "geometry" uses the saved one, so it reads the edit too;
+        # "geometry": null asks for none and needs no edit
+        res = self.f.export([{"path": photo}, {"path": photo, "preset_id": None, "geometry": None},
+                             {"path": photo, "preset_id": None}], "png", dest_dir=self.dest)["results"]
         self.assertEqual(res[0], {"ok": False, "source": "a.jpg",
                                   "error": f"匯出失敗：a.jpg：照片庫的編輯檔損壞：{edit}"})
         self.assertTrue(res[1]["ok"])
+        self.assertEqual(res[2], res[0])
         self.assertEqual(os.listdir(self.dest), ["a.png"])
         # seal F6: an edit file of another version is the third "cannot read" case - that item fails, never the original
         with open(edit, "w", encoding="utf-8") as fh:

@@ -10,6 +10,7 @@ Preset library (CONTRACT-preset-library K17): TestPresetLibraryParity, every sce
 import base64
 import builtins
 import contextlib
+import hashlib
 import io
 import json
 import os
@@ -1502,6 +1503,314 @@ class TestS2Parity(unittest.IsolatedAsyncioTestCase):  # CONTRACT-s2-export-dete
         self.assertEqual(got, dict.fromkeys(got, (want, None)))
         self.assertEqual(snapshot(ctx["lib"]), before)                           # nothing written
         self.assertFalse(os.path.exists(os.path.join(ctx["lib"], "library.json")))
+
+
+# ---------------------------------------------------------------- CONTRACT-s3-crop C21
+GEO_NOT_OBJECT = "幾何要是物件或 null：{geometry}"                                         # verbatim (C1)
+GEO_UNKNOWN_KEY = "幾何設定不認得的鍵：{key}（可用 rotate、flip、angle、aspect、crop）"
+GEO_ROTATE = "rotate 要是 0、90、180、270 其中之一：{rotate}"
+GEO_FLIP = "flip 必須是 true 或 false"
+GEO_ANGLE = "拉直角度要在 -45～45 度之間：{angle}"
+GEO_ASPECT = "不支援的裁切比例：{aspect}（可用 original、free，或「寬:高」兩個 1～65535 的整數）"
+GEO_CROP = '裁切框要是 {"left","top","right","bottom"}，而且 0 ≤ left < right ≤ 1、0 ≤ top < bottom ≤ 1：'
+GEO_FRAME = "frame 必須是 true 或 false"
+GEO_ONLY = "只有幾何不能只貼顏色：這份編輯只有裁切／旋轉，要貼上請連同幾何一起貼（with_geometry）"
+
+
+def geometry_flags(g):
+    """The CLI flags of a geometry object (C20), or None when a value cannot be typed as a flag."""
+    if g is None:
+        return ["--no-geometry"]
+    if not isinstance(g, dict) or set(g) - {"rotate", "flip", "angle", "aspect", "crop"} or \
+            not isinstance(g.get("flip", False), bool):
+        return None
+    argv = []
+    if "rotate" in g:
+        argv += ["--rotate", str(g["rotate"])]
+    if g.get("flip"):
+        argv += ["--flip"]
+    if "angle" in g:
+        argv += ["--angle", str(g["angle"])]
+    if "aspect" in g:
+        argv += ["--aspect", str(g["aspect"])]
+    if g.get("crop") is not None:
+        c = g["crop"]
+        argv += ["--crop", ",".join(str(c[k]) for k in ("left", "top", "right", "bottom"))]
+    return argv
+
+
+class TestS3GeometryParity(unittest.IsolatedAsyncioTestCase):
+    """C21: every driver has its own data_dir and its own copy of the photos (same bytes, same fingerprints)."""
+
+    @classmethod
+    def setUpClass(cls):
+        from darkroom_app import engine as engine_mod
+        cls.eng = engine_mod.Engine()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.eng.shutdown()
+
+    async def asyncSetUp(self):
+        from darkroom_app.composition import build_facade
+        from darkroom_app.server import FACADE, make_app
+        self.tmp = _util.tmpdir(self)
+        self.presets = os.path.join(self.tmp, "presets")
+        os.makedirs(self.presets)
+        make_presets(self.presets)
+        src = os.path.join(self.tmp, "src")
+        os.makedirs(src)
+        write_photo(os.path.join(src, "a.png"), 300, 200)
+        write_photo(os.path.join(src, "b.png"), 300, 200, seed=1)
+        write_photo(os.path.join(src, "c.png"), 300, 200, seed=2)
+        self.w = {}
+        for name in ("http", "cli", "mcp"):
+            photos, data = os.path.join(self.tmp, name, "photos"), os.path.join(self.tmp, name, "data")
+            shutil.copytree(src, photos)
+            os.makedirs(os.path.join(self.tmp, name, "dest"))
+            f = build_facade(self.presets, engine=self.eng, data_dir=data)
+            self.addCleanup(f._photo_library.wait_thumbnails, 60)
+            self.w[name] = {"photos": photos, "data": data, "f": f, "dest": os.path.join(self.tmp, name, "dest")}
+        from test_layering import _NoEngine
+        app = make_app(self.presets, engine=_NoEngine())      # the shared Engine outlives each test's server
+        app[FACADE] = self.w["http"]["f"]
+        self.client = TestClient(TestServer(app), headers=_util.HTTP_HEADERS)
+        await self.client.start_server()
+
+    async def asyncTearDown(self):
+        await self.client.close()
+
+    def ph(self, d, n):
+        return os.path.join(self.w[d]["photos"], n)
+
+    # ---- the three interfaces, each answering (Outcome, result)
+    async def http(self, method, url, body=None, params=None, raw=False):
+        r = await self.client.request(method, url, json=body, params=params)
+        if r.status != 200:
+            kind = {400: "invalid", 404: "not_found", 409: "conflict", 503: "unavailable"}[r.status]
+            return Outcome(False, kind, (await r.json())["error"]), None
+        return OK, (await r.read() if raw else await r.json())
+
+    def cli(self, d, argv):
+        from darkroom_app import cli
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            rc = cli.main(argv + ["--json"], facade=self.w[d]["f"])
+        self.assertEqual(err.getvalue(), "", argv)
+        env = json.loads(out.getvalue())
+        if env["ok"]:
+            self.assertIn(rc, (0, 6), argv)
+            return OK, env["result"]
+        self.assertEqual(rc, {"invalid": 2, "not_found": 3, "conflict": 4, "unavailable": 5}[env["error"]["kind"]])
+        return Outcome(False, env["error"]["kind"], env["error"]["message"]), None
+
+    def mcp(self, d, tool, args):
+        from darkroom_app.mcp_server import serve
+        line = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                           "params": {"name": tool, "arguments": args}}).encode("utf-8") + b"\n"
+        out = io.BytesIO()
+        serve(io.BytesIO(line), out, facade=self.w[d]["f"])
+        res = json.loads(out.getvalue())["result"]
+        sc = res["structuredContent"]
+        if res.get("isError"):
+            return Outcome(False, sc["kind"], sc["message"]), None
+        if "failed" in sc:                                    # PLP4 / XP11: MCP counts the failures as well
+            self.assertEqual(sc["failed"], sum(1 for r in sc["results"] if not r["ok"]))
+            sc = {k: v for k, v in sc.items() if k != "failed"}
+        return OK, sc
+
+    async def set_edit(self, d, name, preset=None, geometry="omit"):
+        path = self.ph(d, name)
+        if d == "http":
+            body = {"path": path, "preset_id": preset}
+            if geometry != "omit":
+                body["geometry"] = geometry
+            return await self.http("PUT", "/api/edit", body)
+        if d == "cli":
+            argv = ["edit", "set", path] + (["--preset", preset] if preset else [])
+            if geometry != "omit":
+                flags = geometry_flags(geometry)
+                if flags is None:
+                    return None
+                argv += flags
+            return self.cli(d, argv)
+        args = {"path": path, "preset_id": preset}
+        if geometry != "omit":
+            args["geometry"] = geometry
+        return self.mcp(d, "darkroom_edit_set", args)
+
+    async def get_edit(self, d, name):
+        path = self.ph(d, name)
+        if d == "http":
+            return await self.http("GET", "/api/edit", params={"path": path})
+        if d == "cli":
+            return self.cli(d, ["edit", "get", path])
+        return self.mcp(d, "darkroom_edit_get", {"path": path})
+
+    async def paste(self, d, source, targets, with_geometry=False):
+        s, t = self.ph(d, source), [self.ph(d, n) for n in targets]
+        if d == "http":
+            return await self.http("POST", "/api/edit/paste", {"targets": t, "source": s, "with_geometry": with_geometry})
+        if d == "cli":
+            return self.cli(d, ["edit", "paste", "--from", s, *t] + (["--with-geometry"] if with_geometry else []))
+        return self.mcp(d, "darkroom_edit_paste", {"targets": t, "source": s, "with_geometry": with_geometry})
+
+    async def preview(self, d, name, geometry="omit", frame=None):
+        path = self.ph(d, name)
+        if d == "cli":
+            argv = ["preview", path]
+            if geometry != "omit":
+                flags = geometry_flags(geometry)
+                if flags is None:
+                    return None
+                argv += flags
+            if frame is not None:
+                if frame is not True:
+                    return None                  # only --frame can be typed
+                argv += ["--frame"]
+            o, res = self.cli(d, argv)
+            return o, ((res["width"], res["height"]) if o.ok else None)
+        if d == "http":
+            o, info = await self.http("POST", "/api/open", {"path": path})
+            body = {"image_id": info["image_id"]}
+        else:
+            o, info = self.mcp(d, "darkroom_open_photo", {"path": path})
+            body = {"image_id": info["image_id"], "max_pixels": 1500000}
+        if geometry != "omit":
+            body["geometry"] = geometry
+        if frame is not None:
+            body["frame"] = frame
+        if d == "http":
+            o, data = await self.http("POST", "/api/preview", body, raw=True)
+            return o, (jpeg_size(data) if o.ok else None)
+        o, sc = self.mcp(d, "darkroom_preview", body)
+        return o, ((sc["width"], sc["height"]) if o.ok else None)
+
+    async def thumbnail(self, d, name):
+        path = self.ph(d, name)
+        if d == "http":
+            r = await self.client.get("/api/thumbnail", params={"path": path})
+            self.assertEqual(r.status, 200)
+            return OK, (jpeg_size(await r.read()), r.headers["X-Fingerprint"])
+        if d == "cli":
+            o, res = self.cli(d, ["thumbnail", path])
+        else:
+            o, res = self.mcp(d, "darkroom_thumbnail", {"path": path})
+        return o, ((res["width"], res["height"]), res["fingerprint"])
+
+    async def export(self, d, name, no_edit=False):
+        path = self.ph(d, name)
+        if d == "http":
+            item = {"path": path, **({"preset_id": None, "geometry": None} if no_edit else {})}
+            o, res = await self.http("POST", "/api/export", {"items": [item], "format": "png"})
+        elif d == "cli":
+            o, res = self.cli(d, ["export", path, "--format", "png", "--dest-dir", self.w[d]["dest"]]
+                              + (["--no-edit"] if no_edit else []))
+        else:
+            item = {"path": path, **({"preset_id": None, "geometry": None} if no_edit else {})}
+            o, res = self.mcp(d, "darkroom_export", {"items": [item], "format": "png", "dest_dir": self.w[d]["dest"]})
+        r = res["results"][0]
+        self.assertTrue(r["ok"], r)
+        with open(r["output"], "rb") as fh:
+            digest = hashlib.sha256(fh.read()).hexdigest()
+        os.remove(r["output"])
+        return o, ((r["used"]["width"], r["used"]["height"]), digest)
+
+    async def each(self, fn, *a, **kw):
+        out = {}
+        for d in ("http", "cli", "mcp"):
+            r = await fn(d, *a, **kw)
+            if r is not None:
+                out[d] = r
+        return out
+
+    def same(self, got, what, want=None):
+        self.assertGreaterEqual(len(got), 2, what)
+        first = next(iter(got.values()))
+        for d, v in got.items():
+            self.assertEqual(v, first, f"{what}: {d}")
+        if want is not None:
+            self.assertEqual(first[0], want, what)
+        return first
+
+    async def test_geometry_errors_parity(self):  # C21: every invalid geometry sentence, the same everywhere
+        crop_bad = {"left": 0.6, "top": 0, "right": 0.4, "bottom": 1}
+        cases = [({"rotate": 45, "flip": False, "angle": 0, "aspect": "original", "crop": None}, GEO_ROTATE.format(rotate="45")),
+                 ({"rotate": 0, "flip": False, "angle": 46, "aspect": "original", "crop": None}, GEO_ANGLE.format(angle="46")),
+                 ({"rotate": 0, "flip": False, "angle": 0, "aspect": "0:3", "crop": None}, GEO_ASPECT.format(aspect="0:3")),
+                 ({"rotate": 0, "flip": False, "angle": 0, "aspect": "free", "crop": crop_bad},
+                  GEO_CROP + '{"left": 0.6, "top": 0, "right": 0.4, "bottom": 1}'),
+                 ({"rotate": 0, "zoom": 2}, GEO_UNKNOWN_KEY.format(key="zoom")),
+                 ({"flip": "yes"}, GEO_FLIP),
+                 (7, GEO_NOT_OBJECT.format(geometry="7"))]
+        for g, sentence in cases:
+            got = await self.each(self.set_edit, "a.png", "p-expo", g)
+            self.same(got, f"set_edit {g}", Outcome(False, "invalid", sentence))
+            got = await self.each(self.preview, "a.png", g)
+            self.same(got, f"preview {g}", Outcome(False, "invalid", sentence))
+        got = await self.each(self.preview, "a.png", None, 1)
+        self.same(got, "frame 1", Outcome(False, "invalid", GEO_FRAME))
+        for d in self.w:                                                      # nothing was written anywhere
+            self.assertFalse(os.path.exists(os.path.join(self.w[d]["data"], "edits")), d)
+
+    async def test_geometry_edit_parity(self):  # C21: set / get / keep / clear / only geometry / paste / versions
+        g1 = {"rotate": 90, "flip": False, "angle": 3.5, "aspect": "4:5", "crop": None}
+        g2 = {"rotate": 0, "flip": True, "angle": 0, "aspect": "free",
+              "crop": {"left": 0.1, "top": 0.2, "right": 0.9, "bottom": 0.8}}
+        o, res = self.same(await self.each(self.set_edit, "a.png", "p-expo", g1), "set with geometry", OK)
+        self.assertEqual(res["edit"]["geometry"], g1)
+        _, res = self.same(await self.each(self.get_edit, "a.png"), "get", OK)
+        self.assertEqual((res["edit"]["schema"], res["edit"]["geometry"]), ("darkroom-edit/2", g1))
+        _, res = self.same(await self.each(self.set_edit, "a.png", "p-strong"), "set, geometry left out", OK)
+        self.assertEqual(res["edit"]["geometry"], g1)                         # kept
+        _, res = self.same(await self.each(self.set_edit, "b.png", None, g2), "only a geometry", OK)
+        self.assertEqual((res["edit"]["preset"], res["edit"]["geometry"]), (None, g2))
+        # preview with the saved geometry (left out) and an explicit one: the same sizes everywhere
+        from darkroom import Geometry
+        from darkroom_app.engine import preview_size
+        _, size = self.same(await self.each(self.preview, "a.png"), "preview, saved geometry", OK)
+        self.assertEqual(size, preview_size(*Geometry.from_dict(g1).output_size(300, 200)))
+        _, size = self.same(await self.each(self.preview, "a.png", g2), "preview, given geometry", OK)
+        self.assertEqual(size, Geometry.from_dict(g2).output_size(300, 200))
+        _, size = self.same(await self.each(self.preview, "a.png", None, True), "preview, frame", OK)
+        self.assertEqual(size, (300, 200))
+        # thumbnail with a geometry: the same size and fingerprint
+        _, (tsize, fp) = self.same(await self.each(self.thumbnail, "a.png"), "thumbnail", OK)
+        self.assertEqual(tsize, Geometry.from_dict(g1).output_size(256, 171))
+        # export of the saved edit: the same size and the same bytes; --no-edit: the photo as it is
+        _, (esize, _) = self.same(await self.each(self.export, "a.png"), "export saved", OK)
+        self.assertEqual(esize, Geometry.from_dict(g1).output_size(300, 200))
+        _, (nsize, _) = self.same(await self.each(self.export, "a.png", True), "export --no-edit", OK)
+        self.assertEqual(nsize, (300, 200))
+        # paste: colours only by default (the target keeps its own geometry), with_geometry carries it
+        self.same(await self.each(self.paste, "a.png", ["b.png", "c.png"]), "paste", OK)
+        got = await self.each(self.get_edit, "b.png")
+        _, res = self.same(got, "b after paste", OK)
+        self.assertEqual((res["edit"]["preset"]["id"], res["edit"]["geometry"]), ("p-strong", g2))
+        _, res = self.same(await self.each(self.get_edit, "c.png"), "c after paste", OK)
+        self.assertNotIn("geometry", res["edit"])
+        self.same(await self.each(self.paste, "a.png", ["c.png"], True), "paste with geometry", OK)
+        _, res = self.same(await self.each(self.get_edit, "c.png"), "c after with_geometry", OK)
+        self.assertEqual(res["edit"]["geometry"], g1)
+        # a source with only a geometry cannot paste colours only
+        _, res = self.same(await self.each(self.set_edit, "b.png", None, g2), "b only geometry again", OK)
+        self.same(await self.each(self.paste, "b.png", ["c.png"]), "geometry-only source", Outcome(False, "invalid", GEO_ONLY))
+        # null clears; then nothing at all removes the edit
+        _, res = self.same(await self.each(self.set_edit, "a.png", "p-expo", None), "clear geometry", OK)
+        self.assertNotIn("geometry", res["edit"])
+        _, res = self.same(await self.each(self.set_edit, "b.png", None, None), "nothing left", OK)
+        self.assertIsNone(res["edit"])
+        # a darkroom-edit/3 file: conflict everywhere, never overwritten
+        for d in self.w:
+            fp = self.w[d]["f"].get_edit(self.ph(d, "a.png"))["fingerprint"]
+            path = os.path.join(self.w[d]["data"], "edits", fp[:2], fp + ".json")
+            with open(path, encoding="utf-8") as fh:
+                obj = json.load(fh)
+            with open(path, "w", encoding="utf-8") as fh:
+                json.dump(dict(obj, schema="darkroom-edit/3"), fh)
+        conflict = Outcome(False, "conflict", "編輯檔版本不支援：darkroom-edit/3（a.png）")
+        self.same(await self.each(self.get_edit, "a.png"), "v3 get", conflict)
+        self.same(await self.each(self.set_edit, "a.png", "p-expo", g1), "v3 set", conflict)
 
 
 if __name__ == "__main__":

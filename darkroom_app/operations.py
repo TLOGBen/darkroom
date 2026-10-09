@@ -56,6 +56,20 @@ _SETTINGS = {   # CONTRACT-s2-export-detect E1 / E27: the export settings (descr
 }
 _PRESET_IDS = {"type": "array", "minItems": 1, "maxItems": 500, "items": _STR,
                "description": "ids from darkroom_presets_list"}
+# CONTRACT-s3-crop C20 (verbatim "MCP geometry schema"; a description for the agent, the service judges)
+GEOMETRY_SCHEMA = {"type": ["object", "null"],
+                   "properties": {"rotate": {"enum": [0, 90, 180, 270]}, "flip": {"type": "boolean"},
+                                  "angle": {"type": "number", "minimum": -45, "maximum": 45},
+                                  "aspect": {"type": "string"},
+                                  "crop": {"type": ["object", "null"],
+                                           "properties": {"left": {"type": "number"}, "top": {"type": "number"},
+                                                          "right": {"type": "number"}, "bottom": {"type": "number"}},
+                                           "additionalProperties": False}},
+                   "additionalProperties": False}
+GEOMETRY_TEXT = (" geometry: rotate (0/90/180/270, clockwise), flip (horizontal, after rotate), angle (straighten, "
+                 "-45..45 degrees, positive = clockwise), aspect (original, free or 'W:H'), crop ({left, top, right, "
+                 "bottom} in 0..1 of the turned frame; null = the largest box of that aspect); left out = the photo's "
+                 "saved geometry, null = none.")
 
 OPERATIONS = {
     "list_presets": {
@@ -124,7 +138,8 @@ OPERATIONS = {
         "mcp": "darkroom_preview",
         "description": "Render a JPEG preview of an opened photo: preset (optional) at strength 0..200 percent, "
                        "plus overrides {slider key: difference added after strength}. max_pixels limits the "
-                       "returned image size (65536..1500000).",
+                       "returned image size (65536..1500000); frame true shows the whole straightened frame (crop "
+                       "ignored)." + GEOMETRY_TEXT,
         "input_schema": _schema({
             "image_id": dict(_STR, description="from darkroom_open_photo"),
             "preset_id": {"type": ["string", "null"], "description": "id from darkroom_presets_list; null = none"},
@@ -133,6 +148,8 @@ OPERATIONS = {
                           "description": "{slider key from darkroom_sliders: difference}"},
             "max_pixels": {"type": "integer", "minimum": 65536, "maximum": 1500000,
                            "default": MCP_DEFAULT_MAX_PIXELS},
+            "geometry": GEOMETRY_SCHEMA,
+            "frame": {"type": "boolean", "default": False},
         }, ["image_id"]),
         "mcp_defaults": {"max_pixels": MCP_DEFAULT_MAX_PIXELS},
     },
@@ -150,7 +167,7 @@ OPERATIONS = {
                        "匯出' or dest_dir (an existing absolute folder); an existing file is never overwritten (a "
                        "numbered name is used instead) and the photo is never changed. results has one entry per "
                        "item, in order: {ok, source, output, used: {params_from: edit | original | request, quality, "
-                       "width, height}} or {ok: false, source, error}; failed counts the failures.",
+                       "width, height}} or {ok: false, source, error}; failed counts the failures. Item" + GEOMETRY_TEXT,
         "input_schema": _schema({
             "items": {"type": "array", "minItems": 1, "items": {
                 "type": "object", "additionalProperties": False, "properties": {
@@ -159,7 +176,8 @@ OPERATIONS = {
                     "preset_id": {"type": ["string", "null"], "description": "id from darkroom_presets_list"},
                     "strength": {"type": "number", "minimum": 0, "maximum": 200, "default": 100},
                     "overrides": {"type": "object", "additionalProperties": {"type": "number"},
-                                  "description": "{slider key from darkroom_sliders: difference}"}}}},
+                                  "description": "{slider key from darkroom_sliders: difference}"},
+                    "geometry": GEOMETRY_SCHEMA}}},
             "format": _SETTINGS["format"],
             "quality": _SETTINGS["quality"],
             "dest_dir": dict(_STR, description="existing absolute folder; default '<photo folder>/darkroom 匯出'"),
@@ -292,14 +310,16 @@ OPERATIONS = {
         "cli": "edit set",
         "mcp": "darkroom_edit_set",
         "description": "Replace a photo's edit: preset (its parameters are snapshotted now; a later change of the "
-                       "preset file never changes this edit), strength 0..200 and overrides as in darkroom_preview. "
-                       "No preset and no overrides removes the edit. The photo itself is never written.",
+                       "preset file never changes this edit), strength 0..200 and overrides as in darkroom_preview, "
+                       "and its geometry. No preset, no overrides and no geometry removes the edit. The photo itself "
+                       "is never written." + GEOMETRY_TEXT,
         "input_schema": _schema({
             "path": dict(_STR, description="absolute path of the photo"),
             "preset_id": {"type": ["string", "null"], "description": "id from darkroom_presets_list; null = none"},
             "strength": {"type": "number", "minimum": 0, "maximum": 200, "default": 100},
             "overrides": {"type": "object", "additionalProperties": {"type": "number"},
                           "description": "{slider key from darkroom_sliders: difference}"},
+            "geometry": GEOMETRY_SCHEMA,
         }, ["path"]),
         "mcp_defaults": {},
         "mcp_annotations": _edits(),
@@ -318,14 +338,16 @@ OPERATIONS = {
         "cli": "edit paste",
         "mcp": "darkroom_edit_paste",
         "description": "Copy one edit (from the photo `source`, or the `edit` object of darkroom_edit_get) onto "
-                       "1..500 target photos, replacing their edits (snapshot, strength and overrides as they are). "
-                       "results has one entry per target, in order: {ok, target} or {ok: false, target, error}; "
-                       "failed counts the failures.",
+                       "1..500 target photos, replacing their colours (snapshot, strength and overrides as they are); "
+                       "each target keeps its own crop / rotation unless with_geometry is true (then the source's "
+                       "geometry replaces it too). results has one entry per target, in order: {ok, target} or "
+                       "{ok: false, target, error}; failed counts the failures.",
         "input_schema": _schema({
             "targets": {"type": "array", "minItems": 1, "maxItems": 500, "items": _STR,
                         "description": "absolute paths of the photos to paste onto"},
             "source": dict(_STR, description="absolute path of the photo whose edit is copied"),
-            "edit": {"type": "object", "description": "a darkroom-edit/1 object (instead of source)"},
+            "edit": {"type": "object", "description": "a darkroom-edit/1 or /2 object (instead of source)"},
+            "with_geometry": {"type": "boolean", "default": False},
         }, ["targets"]),
         "mcp_defaults": {},
         "mcp_annotations": _edits(),

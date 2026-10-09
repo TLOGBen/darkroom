@@ -4,7 +4,9 @@ Everything the library knows lives under data_dir (edits/, thumbs/, index/; ADR-
 A photo is identified by its fingerprint, the SHA-256 of the whole file (PL2): the same content shares one edit,
 a moved or renamed file keeps it, a file changed by another program is a new photo (the old edit stays, PL10).
 An edit (`darkroom-edit/1`) holds the preset snapshot (name, group, Params) taken when it was chosen, the strength
-and the overrides (PL3, PL4); a preset changed later never changes an edit already applied.
+and the overrides (PL3, PL4); a preset changed later never changes an edit already applied. An edit with a geometry
+(rotate / flip / straighten / crop, CONTRACT-s3-crop C12) is written as `darkroom-edit/2` with one more key,
+`geometry`; an edit without one is still `darkroom-edit/1`, byte for byte.
 `resolve_params` is the one rule deciding which Params a preview, an export or set_edit uses (PL5, PLP5).
 
 Every write goes through `safe_write` with data_dir as root and the preset folder in use as `preset_dir=`
@@ -29,19 +31,22 @@ import threading
 import time
 from dataclasses import dataclass
 
-from darkroom import Params
+from darkroom import Geometry, Params
 
 from .. import config
 from .. import messages as M
 from .. import preview as semantics
 from .. import safe_write
 from ..errors import DarkroomError
+from ..facade import KEEP
 from .photos import checked_photo_path, list_photos, read_error
 
 EDIT_SCHEMA = "darkroom-edit/1"                          # verbatim (PL3)
+EDIT_SCHEMA_V2 = "darkroom-edit/2"                       # verbatim (CONTRACT-s3-crop C12): an edit with a geometry
 INDEX_SCHEMA = "darkroom-thumb-index/1"                  # verbatim (PLP8)
 EDITS_DIR, THUMBS_DIR, INDEX_DIR = "edits", "thumbs", "index"   # verbatim (PL1)
 EDIT_KEYS = ("schema", "fingerprint", "preset", "strength", "overrides")      # verbatim order (PL3)
+EDIT_KEYS_V2 = EDIT_KEYS + ("geometry",)                 # verbatim order (C12)
 PREV_SUFFIX = ".prev.json"                               # verbatim (CONTRACT-s1-experience S4): edits/{fp[0:2]}/{fp}.prev.json
 ANSWER_KEYS = ("fingerprint", "edit", "preset_status", "previous")   # verbatim order (S4, revising PL7)
 PRESET_KEYS = ("id", "name", "group", "params")
@@ -94,13 +99,19 @@ def _norm_strength(strength):
 
 
 def edit_problem(obj):
-    """None when obj is a well-formed darkroom-edit/1 object, else the first reason (PLP8 constants)."""
+    """None when obj is a well-formed darkroom-edit/1 or /2 object, else the first reason (PLP8 constants; C12)."""
     if not isinstance(obj, dict):
         return M.PL_EDIT_NOT_OBJECT
-    if set(obj) != set(EDIT_KEYS):
-        return M.PL_EDIT_KEYS
-    if obj["schema"] != EDIT_SCHEMA:
+    v2 = obj.get("schema") == EDIT_SCHEMA_V2
+    if set(obj) != set(EDIT_KEYS_V2 if v2 else EDIT_KEYS):
+        return M.PL_EDIT_KEYS_V2 if v2 else M.PL_EDIT_KEYS
+    if not v2 and obj["schema"] != EDIT_SCHEMA:
         return M.PL_EDIT_SCHEMA.format(schema=obj["schema"])
+    if v2:
+        try:
+            Geometry.from_dict(obj["geometry"])
+        except ValueError as e:
+            return str(e)
     p = obj["preset"]
     if p is not None:
         if not isinstance(p, dict) or set(p) != set(PRESET_KEYS) or not all(isinstance(p[k], str)
@@ -118,11 +129,27 @@ def edit_problem(obj):
     return None
 
 
-def canonical_edit(fp, preset, strength, overrides):
-    """The edit object with the constant keys in order (PL3)."""
+def canonical_edit(fp, preset, strength, overrides, geometry=None):
+    """The edit object with the constant keys in order (PL3): darkroom-edit/1 without a geometry (byte for byte as
+    before), darkroom-edit/2 with the normalised geometry as its last key (CONTRACT-s3-crop C12)."""
     p = None if preset is None else {k: preset[k] for k in PRESET_KEYS}
-    return {"schema": EDIT_SCHEMA, "fingerprint": fp, "preset": p, "strength": _norm_strength(strength),
-            "overrides": semantics.validate_overrides(overrides)}
+    g = Geometry.from_dict(geometry)
+    g = None if g is None else g.to_dict()
+    edit = {"schema": EDIT_SCHEMA if g is None else EDIT_SCHEMA_V2, "fingerprint": fp, "preset": p,
+            "strength": _norm_strength(strength), "overrides": semantics.validate_overrides(overrides)}
+    if g is not None:
+        edit["geometry"] = g
+    return edit
+
+
+def edit_geometry(edit):
+    """The geometry object of an edit (None: no edit, a darkroom-edit/1 edit, or no geometry)."""
+    return None if edit is None else edit.get("geometry")
+
+
+def _colourless(edit):
+    """An edit that changes no colour: no preset and no override (C14)."""
+    return edit["preset"] is None and not edit["overrides"]
 
 
 def _is_int(v):
@@ -136,7 +163,7 @@ class ThumbnailResult:
     edited: bool
     width: int
     height: int
-    edit: object = None      # S8: {"preset": name|None, "strength": n, "status": ...} when edited (HTTP X-Edit), else None
+    edit: object = None      # S8 / S8b: {"preset", "strength", "status", "geometry", "tweaks"} when edited (X-Edit), else None
 
 
 # ---------------------------------------------------------------------- image helpers (lazy cv2)
@@ -284,6 +311,18 @@ def make_thumbnail(data, ext):
     if not ok:
         raise ValueError("JPEG encoding failed")
     return buf.tobytes()
+
+
+def apply_geometry(jpeg, geometry):
+    """CONTRACT-s3-crop C18: the photo's geometry on a 256 px thumbnail (CPU, never enlarged), JPEG q80 again."""
+    import cv2
+    import numpy as np
+    a = cv2.imdecode(np.frombuffer(jpeg, np.uint8), cv2.IMREAD_COLOR)
+    if a is None:
+        return jpeg
+    out = Geometry.from_dict(geometry).apply(a)
+    ok, buf = cv2.imencode(".jpg", np.ascontiguousarray(out), [cv2.IMWRITE_JPEG_QUALITY, THUMB_QUALITY])
+    return buf.tobytes() if ok else jpeg
 
 
 # ---------------------------------------------------------------------- the thumbnail queue (PL12)
@@ -587,7 +626,7 @@ class PhotoLibraryService:
             obj = json.loads(raw.decode("utf-8"))
         except (UnicodeDecodeError, ValueError):
             raise DarkroomError("unavailable", M.PL_EDIT_CORRUPT.format(edit_file=p)) from None
-        if isinstance(obj, dict) and "schema" in obj and obj["schema"] != EDIT_SCHEMA:
+        if isinstance(obj, dict) and "schema" in obj and obj["schema"] not in (EDIT_SCHEMA, EDIT_SCHEMA_V2):
             raise DarkroomError("conflict", M.PL_SCHEMA_CONFLICT.format(schema=obj.get("schema"),
                                                                          file_name=file_name))
         if edit_problem(obj) is not None:
@@ -649,18 +688,21 @@ class PhotoLibraryService:
                 "previous": self._has_previous(fp)}
 
     def _edit_summary(self, fp):
-        """S8: what the thumbnail grid shows about an edit: {"preset": name|None, "strength", "status"}; None when
-        the photo has no edit or its file cannot be read (the badge then only says "edited")."""
+        """S8 / S8b: what the thumbnail grid shows about an edit: ({"preset": name|None, "strength", "status",
+        "geometry": bool, "tweaks": bool}, the geometry object | None); (None, None) when the photo has no edit or its
+        file cannot be read (the badge then only says "edited")."""
         try:
             raw = self._read_retry(self._edit_path(fp))
             obj = json.loads(raw.decode("utf-8")) if raw else None
         except (OSError, ValueError, UnicodeDecodeError):
-            return None
+            return None, None
         if not isinstance(obj, dict) or edit_problem(obj) is not None:
-            return None
+            return None, None
         preset = obj["preset"]
+        geometry = edit_geometry(obj)
         return {"preset": preset["name"] if preset else None, "strength": obj["strength"],
-                "status": self._status(preset)}
+                "status": self._status(preset), "geometry": geometry is not None,
+                "tweaks": bool(obj["overrides"])}, geometry
 
     def _resolve(self, edit, preset_id):
         """PL5: the snapshot when the edit holds this preset id, else the library's Params (not_found otherwise)."""
@@ -678,12 +720,17 @@ class PhotoLibraryService:
             return None
         return self._resolve(self._read_edit(fingerprint, fingerprint), preset_id)
 
+    def saved_geometry(self, fingerprint):
+        """CONTRACT-s3-crop C17 / C19 (D4): the geometry object of the photo's saved edit, None when it has none;
+        conflict / unavailable as PLP5."""
+        return edit_geometry(self._read_edit(fingerprint, fingerprint))
+
     def get_edit(self, path):
         path = checked_photo_path(path)
         fp = self._fingerprint(path)
         return self._answer(fp, self._read_edit(fp, os.path.basename(path)))
 
-    def set_edit(self, path, preset_id=None, strength=100, overrides=None):
+    def set_edit(self, path, preset_id=None, strength=100, overrides=None, *, geometry=KEEP):
         path = checked_photo_path(path)
         fp = self._fingerprint(path)
         existing = self._read_edit(fp, os.path.basename(path))
@@ -693,7 +740,12 @@ class PhotoLibraryService:
             o = semantics.validate_overrides(overrides)
         except ValueError as e:
             raise DarkroomError("invalid", str(e)) from None
-        if preset_id is None and not o:                                      # PL3: no edit at all
+        if geometry is KEEP:                                       # C13 (D4): left out = the saved one
+            g = edit_geometry(existing)
+        else:
+            g = semantics.validate_geometry(geometry)
+            g = None if g is None else g.to_dict()
+        if preset_id is None and not o and g is None:                        # PL3': no edit at all (C12)
             self._remove_edit(path, fp, keep=existing)
             return self._answer(fp, None)
         preset = None
@@ -704,7 +756,7 @@ class PhotoLibraryService:
                 row = self.library.by_id[preset_id]
                 preset = {"id": preset_id, "name": row["name"], "group": row["group"],
                           "params": self.library.get(preset_id).to_dict()}
-        edit = canonical_edit(fp, preset, strength, o)
+        edit = canonical_edit(fp, preset, strength, o, g)
         self._write_edit(path, edit)
         return self._answer(fp, edit)
 
@@ -723,21 +775,23 @@ class PhotoLibraryService:
         prev = self._read_previous(fp)
         if prev is None:
             raise DarkroomError("not_found", M.PL_NO_PREVIOUS.format(file_name=os.path.basename(path)))
-        edit = canonical_edit(fp, prev["preset"], prev["strength"], prev["overrides"])
-        # S4a: never over a different edit (it has no copy anywhere); the same edit again is a no-op success
+        edit = canonical_edit(fp, prev["preset"], prev["strength"], prev["overrides"], edit_geometry(prev))
+        # S4a / S4a': never over a different edit (it has no copy anywhere; the geometry counts too); the same edit
+        # again is a no-op success
         if current is not None and canonical_edit(fp, current["preset"], current["strength"],
-                                                  current["overrides"]) != edit:
+                                                  current["overrides"], edit_geometry(current)) != edit:
             raise DarkroomError("conflict", M.PL_RESTORE_OVER_EDIT.format(file_name=os.path.basename(path)))
         self._write_edit(path, edit)
         return self._answer(fp, edit)
 
     # ------------------------------------------------------------------ paste (PL8, PLP4)
-    def paste_edit(self, targets, source=None, edit=None):
+    def paste_edit(self, targets, source=None, edit=None, *, with_geometry=False):
         if (source is None) == (edit is None):
             raise DarkroomError("invalid", M.PL_SOURCE_OR_EDIT)
         if (not isinstance(targets, list) or not 1 <= len(targets) <= TARGETS_MAX
                 or not all(isinstance(t, str) for t in targets)):
             raise DarkroomError("invalid", M.PL_TARGETS_INVALID)
+        semantics.validate_flag(with_geometry, M.WITH_GEOMETRY_INVALID)      # C14
         if source is not None:
             spath = checked_photo_path(source)
             src = self._read_edit(self._fingerprint(spath), os.path.basename(spath))
@@ -748,6 +802,8 @@ class PhotoLibraryService:
             if reason is not None:
                 raise DarkroomError("invalid", M.PL_EDIT_INVALID.format(reason=reason))
             src = edit
+        if not with_geometry and _colourless(src):     # C14: only a geometry, and the geometry is not pasted
+            raise DarkroomError("invalid", M.PASTE_GEOMETRY_ONLY)
         results = []
         for t in targets:
             name = os.path.basename(t.strip().strip('"'))
@@ -755,8 +811,10 @@ class PhotoLibraryService:
                 tp = checked_photo_path(t)
                 name = os.path.basename(tp)
                 tfp = self._fingerprint(tp)
-                self._read_edit(tfp, name)                                   # conflict / unavailable: this item
-                self._write_edit(tp, canonical_edit(tfp, src["preset"], src["strength"], src["overrides"]))
+                current = self._read_edit(tfp, name)                         # conflict / unavailable: this item
+                # C14: the colours of the source; its geometry only with with_geometry, else the target keeps its own
+                g = edit_geometry(src) if with_geometry else edit_geometry(current)
+                self._write_edit(tp, canonical_edit(tfp, src["preset"], src["strength"], src["overrides"], g))
                 results.append({"ok": True, "target": name})
             except DarkroomError as e:
                 results.append({"ok": False, "target": name, "error": e.message})
@@ -779,14 +837,16 @@ class PhotoLibraryService:
                                           semantics.validate_overrides(edit["overrides"]))
 
     def saved_params(self, path, fp):
-        """S2 E15: (final Params, "edit" | "original") of the photo's saved edit (the snapshot first, as
-        edit_params); no edit -> the photo as it is. DarkroomError (unavailable, conflict) as the edit commands give."""
+        """S2 E15: (final Params, "edit" | "original", geometry object | None) of the photo's saved edit (the snapshot
+        first, as edit_params; its geometry, CONTRACT-s3-crop C19); no edit -> the photo as it is. DarkroomError
+        (unavailable, conflict) as the edit commands give."""
         edit = self._read_edit(fp, os.path.basename(path))
         if edit is None:
-            return semantics.effective_params(None, 100, {}), "original"
+            return semantics.effective_params(None, 100, {}), "original", None
         base = None if edit["preset"] is None else Params.from_dict(edit["preset"]["params"])
-        return semantics.effective_params(base, semantics.validate_strength(edit["strength"]),
-                                          semantics.validate_overrides(edit["overrides"])), "edit"
+        return (semantics.effective_params(base, semantics.validate_strength(edit["strength"]),
+                                           semantics.validate_overrides(edit["overrides"])), "edit",
+                edit_geometry(edit))
 
     # ------------------------------------------------------------------ index (PL13, PLP8)
     @staticmethod
@@ -930,9 +990,12 @@ class PhotoLibraryService:
                 jpeg = self._read_retry(tp)                  # warm: the photo file is not opened (PL16 b)
         if jpeg is None:
             fp, jpeg = self._queue.submit(path, folder, 0).wait()
-        w, h = _jpeg_size(jpeg)
         edited = self._edited(fp)
-        return ThumbnailResult(jpeg, fp, edited, w, h, self._edit_summary(fp) if edited else None)
+        summary, geometry = self._edit_summary(fp) if edited else (None, None)
+        if geometry is not None:                             # C18 (D7): the cached thumbnail is the original's
+            jpeg = apply_geometry(jpeg, geometry)
+        w, h = _jpeg_size(jpeg)
+        return ThumbnailResult(jpeg, fp, edited, w, h, summary)
 
     def wait_thumbnails(self, timeout=None):
         """Testing / bench helper: wait until the background queue is empty."""

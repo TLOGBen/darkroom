@@ -45,6 +45,9 @@ N_MAX = 9999                        # numbered names {stem} (n).xmp, n = 2..N_MA
 _UNSAFE = set('<>:"/\\|?*') | {chr(c) for c in range(32)}       # verbatim (K14)
 _RESERVED = {"con", "prn", "aux", "nul", *(f"com{i}" for i in range(1, 10)), *(f"lpt{i}" for i in range(1, 10))}
 _NO_WRITE = {"Temperature", "Tint", "WhiteBalance"}            # KP6 (P4)
+# CONTRACT-s3-crop C15: a saved preset is colour only - none of C10's crop attributes is ever written
+CROP_KEYS = frozenset(["HasCrop", "CropTop", "CropLeft", "CropBottom", "CropRight", "CropAngle", "CropConstrainToWarp",
+                       "CropConstrainAspectRatio", "CropWidth", "CropHeight", "CropUnit"])
 XMP_HEAD = ('<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">'
             '<rdf:Description xmlns:crs="http://ns.adobe.com/camera-raw-settings/1.0/" crs:PresetType="Normal" '
             'crs:ProcessVersion="15.4" crs:HasSettings="True"')   # verbatim (K13)
@@ -103,7 +106,7 @@ def xmp_bytes(params, name, group):
     """The user preset file (K13 constant "自存 xmp"): values as crs attributes, curves, masks, Name and Group."""
     out = [XMP_HEAD]
     for k in sorted(params.values):
-        if k in _NO_WRITE:
+        if k in _NO_WRITE or k in CROP_KEYS:
             continue
         v = params.values[k]
         out.append(_attr(k, ("True" if v else "False") if isinstance(v, bool) else num_text(v)))

@@ -22,7 +22,7 @@ const st = {
   holding: false, originalUrl: null, originalFor: null,
   caps: null, exportPresets: [],                                 // S2: GET /api/capabilities features; the export presets
 };
-let ed = L.initialEditor();   // {presetId, strength, tweaks, past, future, gesture}
+let ed = L.initialEditor();   // {presetId, strength, tweaks, geometry, past, future, gesture}
 
 function loadPref(k, dflt) {
   try { const v = localStorage.getItem('darkroom.' + k); return v ? JSON.parse(v) : dflt; } catch (e) { return dflt; }
@@ -123,7 +123,8 @@ async function dispatch(action, opts) {
   renderHint();
   refreshSavePreset();
   const sameState = prev.presetId === ed.presetId && prev.strength === ed.strength &&
-    JSON.stringify(prev.tweaks) === JSON.stringify(ed.tweaks);
+    JSON.stringify(prev.tweaks) === JSON.stringify(ed.tweaks) &&
+    JSON.stringify(prev.geometry) === JSON.stringify(ed.geometry);           // S3 C24: the geometry is state too
   if (sameState) return;
   if (!(opts && opts.restore)) scheduleSave();          // PL15: every change is saved; restoring one is not a change
   if (prev.presetId !== ed.presetId) {
@@ -137,8 +138,8 @@ async function dispatch(action, opts) {
   refreshBadges();
   requestPreview();
 }
-const undo = () => dispatch({type: 'undo'});
-const redo = () => dispatch({type: 'redo'});
+const undo = () => (cropActive() ? cropStep('undo') : dispatch({type: 'undo'}));   // C22: the draft has its own
+const redo = () => (cropActive() ? cropStep('redo') : dispatch({type: 'redo'}));
 
 // ------------------------------------------------------------------ slider values (R3)
 function presetValue(key) {
@@ -154,15 +155,17 @@ const setValue = (key, value, gesture) =>
 // Only the newest parameters wait to be sent; older ones are overwritten, never queued.
 const pv = {pending: null, inflight: false, seq: 0, shownSeq: 0, url: null};
 
-function currentRequest() {
+function currentRequest() {             // S3 C19 / C24: the geometry on screen always goes with it (null too)
   const overrides = {};
   for (const [k, d] of Object.entries(ed.tweaks)) if (d) overrides[k] = d;
-  return {image_id: st.image.image_id, preset_id: ed.presetId, strength: strengthNow(), overrides};
+  return {image_id: st.image.image_id, preset_id: ed.presetId, strength: strengthNow(), overrides,
+          geometry: L.normGeometry(ed.geometry)};
 }
 
 function requestPreview() {
   if (!st.image) return;
-  pv.pending = {body: currentRequest(), seq: ++pv.seq};
+  const frame = cropActive();           // C22: the crop mode shows the whole straightened frame
+  pv.pending = {body: frame ? frameRequest() : currentRequest(), seq: ++pv.seq, kind: frame ? 'frame' : 'edit'};
   if (!pv.inflight) pump();
 }
 
@@ -180,7 +183,8 @@ async function pump() {
       if (job.seq < pv.shownSeq) continue;
       pv.shownSeq = job.seq;
       const url = URL.createObjectURL(blob);
-      if (!st.holding) await swapImage($('#preview-img'), url);
+      pv.kind = job.kind;
+      if (!st.holding) { await swapImage($('#preview-img'), url); $('#preview-img').dataset.kind = job.kind; layoutCrop(); }
       if (pv.url) URL.revokeObjectURL(pv.url);
       pv.url = url;
       if (!pv.pending) {
@@ -202,16 +206,25 @@ function swapImage(img, url) {
   });
 }
 
+function originalRequest() {           // S7' (C25): the same geometry, no colour; the crop mode's own frame
+  const frame = cropActive();
+  const g = frame ? Object.assign({}, crop.s.draft, {crop: null}) : ed.geometry;
+  const body = {image_id: st.image.image_id, preset_id: null, strength: 100, overrides: {}, geometry: L.normGeometry(g)};
+  if (frame) body.frame = true;
+  return {body, key: L.originalKey(st.image.image_id, g, frame)};
+}
+
 async function ensureOriginal() {      // the untouched preview of the open photo (shared by hold and compare)
   if (!st.image) return false;
   const id = st.image.image_id;
-  if (st.originalFor === id) return true;
-  const r = await api('POST', '/api/preview', {image_id: id, preset_id: null, strength: 100, overrides: {}});
+  const {body, key} = originalRequest();
+  if (st.originalFor === key) return true;
+  const r = await api('POST', '/api/preview', body);
   const blob = await r.blob();
   if (!st.image || st.image.image_id !== id) return false;
   if (st.originalUrl) URL.revokeObjectURL(st.originalUrl);
   st.originalUrl = URL.createObjectURL(blob);
-  st.originalFor = id;
+  st.originalFor = key;
   return true;
 }
 
@@ -221,7 +234,7 @@ async function showOriginal(on) {
   $('#pv-label').hidden = !on;
   $('#hold').classList.toggle('on', on);
   const img = $('#preview-img');
-  if (!on) { if (pv.url) img.src = pv.url; return; }
+  if (!on) { if (pv.url) { img.src = pv.url; img.dataset.kind = pv.kind || 'edit'; } return; }
   if (!(await ensureOriginal())) return;
   if (st.holding) img.src = st.originalUrl;
 }
@@ -245,7 +258,7 @@ function abLayout() {
 
 async function abToggle(on) {
   const want = on === undefined ? !ab.on : !!on;
-  if (want && !st.image) return;
+  if (want && (!st.image || cropActive())) return;      // C25 (D9): never while cropping
   if (want) {
     if (!(await ensureOriginal())) return;
     const orig = $('#ab-orig');
@@ -269,10 +282,17 @@ function abMoveTo(clientX) {
   abSetSplit((clientX - r.left) / r.width);
 }
 
-function abRefresh() {                   // after a photo switch: the original is another picture now
+function abRefresh() {                   // after a photo switch or a new geometry: the original is another picture
   if (!ab.on) return;
   if (!st.image) { abToggle(false); return; }
-  if (st.originalFor !== st.image.image_id) abToggle(true); else abLayout();
+  if (st.originalFor !== originalRequest().key) abToggle(true); else abLayout();
+}
+
+function refreshAb() {                   // S7 / C25: disabled without a photo and in the crop mode (reason as tooltip)
+  const b = $('#ab-btn');
+  if (!('title0' in b.dataset)) b.dataset.title0 = b.title;
+  b.disabled = !st.image || cropActive();
+  b.title = cropActive() ? L.AB_DISABLED_CROP : b.dataset.title0;
 }
 
 function initCompare() {
@@ -823,6 +843,7 @@ async function openPhoto(path) {
   path = (path || '').trim().replace(/^"|"$/g, '');
   if (!path) return;
   const token = ++openSeq;              // S1: taken before the flushes, so the newest click wins while a save is sent
+  await leaveCrop(true);                // C22 (D10): another photo commits the crop of this one
   await flushSave();                    // the previous photo's last change goes out first (PL15)
   await flushRetries();                 // S13g''': no failed save is left to land over what follows
   if (token !== openSeq) return;
@@ -834,6 +855,7 @@ async function openPhoto(path) {
   // from here until the saved edit is restored nothing is scheduled for saving (S1): the state is in transit
   st.loading = token;
   st.image = Object.assign(info, {path});
+  await dispatch({type: 'carry'}, {restore: true});   // C24 (S11'): the crop is this photo's own, never carried over
   st.snapshots = {}; st.fingerprint = null; st.previous = false; st.editStatus = null;
   $('#photo-path').value = path;
   savePref('lastPath', path);
@@ -977,7 +999,8 @@ const gridIO = typeof IntersectionObserver === 'function'
   ? new IntersectionObserver((entries) => { for (const e of entries) if (e.isIntersecting) loadThumb(e.target); }, {rootMargin: '200px'})
   : null;
 
-function showGrid(on) {
+async function showGrid(on) {
+  if (on) await leaveCrop(true);        // C22 (D10): opening the grid commits the crop
   document.body.classList.toggle('grid-open', on);
   $('#grid').hidden = !on;
   $('#grid-btn').setAttribute('aria-pressed', String(on));
@@ -1147,6 +1170,7 @@ async function gridRestore() {
 
 async function resetOriginal() {        // the editor: one undo step; the photo library keeps the cleared edit
   if (!st.image) return;
+  await leaveCrop(true);
   const before = ed;
   await dispatch({type: 'resetToOriginal'});
   if (ed !== before) toast(L.RESET_TOAST);
@@ -1208,9 +1232,10 @@ async function pasteEdit() {
   if (!st.clipboard || !targets.length) return;
   await flushSave();                    // S13 (h): the open photo's pending save never races the paste
   await flushRetries();                 // S13g''': no failed save is left to land over what follows
-  if (!confirm(L.pasteConfirm(st.clipboard.name, targets.length))) return;
+  const withGeometry = $('#paste-geometry').checked;        // C26: off by default, never remembered
+  if (!confirm(L.pasteConfirmWith(st.clipboard.name, targets.length, withGeometry))) return;
   let res;
-  try { res = await (await api('POST', '/api/edit/paste', {targets, edit: st.clipboard.edit})).json(); }
+  try { res = await (await api('POST', '/api/edit/paste', {targets, edit: st.clipboard.edit, with_geometry: withGeometry})).json(); }
   catch (e) { toast(e.message, true); return; }
   gridBatchDone(L.pasteDone, targets, res.results);
   markCells(targets, res.results, 'edited');
@@ -1257,7 +1282,8 @@ function refreshExport() {
   b.disabled = !st.image || exp.busy;
   b.textContent = exp.busy ? L.EXPORT_BUSY : '匯出';
   refreshDialog();                                   // S2 E29: the dialog decides what is disabled in it
-  $('#ab-btn').disabled = !st.image;                 // S7
+  refreshAb();                                       // S7 / C25
+  $('#crop-btn').disabled = !st.image;               // C22
   $('#reset-original-btn').disabled = !st.image;     // S10
 }
 
@@ -1429,7 +1455,8 @@ async function removeExportPreset() {
   });
 }
 
-function openExportDialog(target) {
+async function openExportDialog(target) {
+  await leaveCrop(true);                // C22 (D10): the export dialog commits the crop first (E15a sends it)
   if (target === 'photo' ? !st.image : !st.grid.sel.size) return;
   xd.target = target; xd.opener = document.activeElement;
   let stored = null;
@@ -1498,6 +1525,177 @@ function toggleLib() {
   else document.body.classList.toggle('lib-collapsed');
 }
 
+// ------------------------------------------------------------------ S3 crop mode (CONTRACT-s3-crop C22-C25): the draft
+// lives in L.cropSession, never in the reducer; the screen shows the whole straightened frame (frame preview) with
+// the box over it. Dragging the box never asks the backend for anything; only rotate / flip / straighten change the
+// frame picture. Commit (Enter, 完成, 裁切 / R again, another photo, the grid, the export dialog) = one setGeometry
+// step; cancel (Esc, 取消) = nothing happened.
+const crop = {s: null, drag: null};
+const cropActive = () => !!(crop.s && crop.s.active);
+const photoSize = () => ({width: st.image.width, height: st.image.height});
+
+function frameRequest() {              // the crop mode's picture: the whole frame of the draft (its crop ignored)
+  const d = Object.assign({}, crop.s.draft, {crop: null});
+  return Object.assign(currentRequest(), {geometry: L.normGeometry(d), frame: true});
+}
+const frameKey = (g) => JSON.stringify([g.rotate, g.flip, g.angle]);
+
+function enterCrop() {
+  if (!st.image || cropActive() || st.loading) return;
+  if (ab.on) abToggle(false);          // C25: A/B is off in the crop mode, and stays off after it
+  crop.s = L.cropSession(null, {type: 'enter', geometry: ed.geometry});
+  $('#crop-panel').hidden = false;
+  $('#crop-btn').setAttribute('aria-pressed', 'true');
+  $('#preview').classList.add('cropping');
+  refreshAb();
+  renderCropControls();
+  requestPreview();
+}
+
+async function leaveCrop(commit) {      // C22 (D10): only Esc / 取消 cancel; every other way out commits
+  if (!cropActive()) return;
+  const s = L.cropSession(crop.s, commit ? Object.assign({type: 'commit'}, photoSize()) : {type: 'cancel'});
+  crop.s = null; crop.drag = null;
+  $('#crop-panel').hidden = true;
+  $('#crop-box').hidden = true;
+  $('#crop-btn').setAttribute('aria-pressed', 'false');
+  $('#preview').classList.remove('cropping');
+  refreshAb();
+  if (commit && s.result.changed) await dispatch({type: 'setGeometry', geometry: s.result.geometry});   // one step
+  else requestPreview();
+}
+
+function cropChange(draft, gesture) {
+  const before = frameKey(crop.s.draft);
+  crop.s = L.cropSession(crop.s, {type: 'change', draft, gesture});
+  renderCropControls();
+  layoutCrop();
+  if (frameKey(crop.s.draft) !== before) requestPreview();   // straighten / rotate / flip: a new frame picture
+}
+
+function cropStep(type) {               // the draft's own undo / redo / reset (Ctrl+Z only moves the draft)
+  const before = frameKey(crop.s.draft);
+  crop.s = L.cropSession(crop.s, {type});
+  renderCropControls();
+  layoutCrop();
+  if (frameKey(crop.s.draft) !== before) requestPreview();
+}
+
+function geometryAct(action) {          // rotate / flip / orientation: in the crop mode the draft, else one step
+  if (!st.image) return;
+  const {width, height} = photoSize();
+  if (cropActive()) { cropChange(L.geometryAction(crop.s.draft, action, width, height)); return; }
+  dispatch({type: 'setGeometry', geometry: L.geometryAction(ed.geometry, action, width, height)});
+}
+
+function renderCropControls() {
+  if (!cropActive()) return;
+  const d = crop.s.draft, {width, height} = photoSize();
+  const orient = L.cropOrientation(d, width, height);
+  const sel = $('#crop-aspect');
+  sel.innerHTML = '';
+  for (const [v, label] of L.aspectOptions(orient === 'landscape')) {
+    const o = document.createElement('option'); o.value = v; o.textContent = label; sel.appendChild(o);
+  }
+  if (![...sel.options].some((o) => o.value === d.aspect)) {   // a ratio typed by an agent: shown as it is
+    const o = document.createElement('option'); o.value = d.aspect; o.textContent = d.aspect; sel.appendChild(o);
+  }
+  sel.value = d.aspect;
+  const ob = $('#crop-orient');
+  ob.disabled = d.aspect === 'free' || d.aspect === '1:1';
+  ob.textContent = orient === 'portrait' ? L.ORIENT_LANDSCAPE : L.ORIENT_PORTRAIT;   // what pressing it gives
+  if (document.activeElement !== $('#crop-angle')) $('#crop-angle').value = String(d.angle);
+  if (document.activeElement !== $('#crop-angle-num')) $('#crop-angle-num').value = String(d.angle);
+  $('#crop-hint').textContent = L.CROP_HINT;
+}
+
+function layoutCrop() {                 // the box over the frame picture (only once the frame picture is shown)
+  const box = $('#crop-box'), img = $('#preview-img');
+  if (!cropActive() || img.hidden || img.dataset.kind !== 'frame') { box.hidden = true; return; }
+  const {width, height} = photoSize();
+  const b = L.fitCrop(crop.s.draft, width, height).box;
+  const l = img.offsetLeft, t = img.offsetTop, w = img.offsetWidth, h = img.offsetHeight;
+  Object.assign(box.style, {left: (l + b[0] * w) + 'px', top: (t + b[1] * h) + 'px',
+                            width: ((b[2] - b[0]) * w) + 'px', height: ((b[3] - b[1]) * h) + 'px'});
+  box.hidden = false;
+}
+
+function initCrop() {
+  $('#crop-btn').onclick = () => (cropActive() ? leaveCrop(true) : enterCrop());
+  $('#crop-done').onclick = () => leaveCrop(true);
+  $('#crop-cancel').onclick = () => leaveCrop(false);
+  $('#crop-reset').onclick = () => cropStep('reset');
+  $('#rotate-left').onclick = () => geometryAct('rotate_left');
+  $('#rotate-right').onclick = () => geometryAct('rotate_right');
+  $('#flip-h').onclick = () => geometryAct('flip_h');
+  $('#flip-v').onclick = () => geometryAct('flip_v');
+  $('#crop-orient').onclick = () => geometryAct('orient');
+  $('#crop-aspect').addEventListener('change', () => {
+    if (!cropActive()) return;
+    const {width, height} = photoSize();
+    const d = Object.assign(L.fullGeometry(crop.s.draft), {aspect: $('#crop-aspect').value});
+    if (d.crop) d.crop = Object.fromEntries(L.CROP_EDGES.map((k, i) => [k, L.fitCrop(d, width, height).box[i]]));
+    cropChange(d);
+  });
+  const angle = (v, gesture) => {       // straighten: the latest frame preview wins (B7), the box fits itself in
+    if (!cropActive() || !Number.isFinite(v)) return;
+    const a = Math.round(Math.min(45, Math.max(-45, v)) / L.ANGLE_STEP) * L.ANGLE_STEP;
+    cropChange(Object.assign(L.fullGeometry(crop.s.draft), {angle: Math.round(a * 10) / 10}), gesture);
+  };
+  $('#crop-angle').addEventListener('input', () => angle(+$('#crop-angle').value, 'angle'));
+  $('#crop-angle').addEventListener('change', () => { if (cropActive()) crop.s = L.cropSession(crop.s, {type: 'endGesture'}); });
+  $('#crop-angle').addEventListener('dblclick', () => angle(0));
+  $('#crop-angle-num').addEventListener('change', () => angle(parseFloat($('#crop-angle-num').value)));
+  const box = $('#crop-box');
+  box.addEventListener('pointerdown', (e) => {          // C23: the box and its 8 handles; no preview while dragging
+    if (!cropActive()) return;
+    e.preventDefault();
+    box.setPointerCapture(e.pointerId);
+    const img = $('#preview-img');
+    crop.drag = {handle: e.target.dataset && e.target.dataset.h ? e.target.dataset.h : 'move', x: e.clientX, y: e.clientY,
+                 start: crop.s.draft, w: img.offsetWidth, h: img.offsetHeight};
+    box.classList.add('dragging');
+  });
+  box.addEventListener('pointermove', (e) => {
+    const g = crop.drag;
+    if (!g || !cropActive()) return;
+    const size = Object.assign(photoSize(), {minW: L.CROP_MIN_PX / g.w, minH: L.CROP_MIN_PX / g.h});
+    cropChange(L.cropDrag(g.start, size, g.handle, (e.clientX - g.x) / g.w, (e.clientY - g.y) / g.h), 'drag');
+  });
+  const up = () => {
+    if (!crop.drag) return;
+    crop.drag = null;
+    box.classList.remove('dragging');
+    if (cropActive()) crop.s = L.cropSession(crop.s, {type: 'endGesture'});
+  };
+  box.addEventListener('pointerup', up);
+  box.addEventListener('pointercancel', up);
+  box.addEventListener('keydown', (e) => {               // the focused box: arrows 0.5 %, Shift 5 %
+    const mv = L.cropKeyMove(e.key, e.shiftKey);
+    if (!mv || !cropActive()) return;
+    e.preventDefault(); e.stopPropagation();
+    const img = $('#preview-img');
+    const size = Object.assign(photoSize(), {minW: L.CROP_MIN_PX / img.offsetWidth, minH: L.CROP_MIN_PX / img.offsetHeight});
+    cropChange(L.cropDrag(crop.s.draft, size, 'move', mv[0], mv[1]));
+  });
+  if (typeof ResizeObserver === 'function') new ResizeObserver(layoutCrop).observe($('#preview'));
+  $('#preview-img').addEventListener('load', layoutCrop);
+}
+
+function cropKey(e) {                   // the keyboard while cropping; true when the key was ours
+  const k = e.key.toLowerCase();
+  if (e.key === 'Escape') { e.preventDefault(); leaveCrop(false); return true; }
+  if (e.key === 'Enter' && !(e.target.matches && e.target.matches('button, select, input'))) {
+    e.preventDefault(); leaveCrop(true); return true;
+  }
+  if ((e.ctrlKey || e.metaKey) && k === 'z') { e.preventDefault(); cropStep(e.shiftKey ? 'redo' : 'undo'); return true; }
+  if ((e.ctrlKey || e.metaKey) && k === 'y') { e.preventDefault(); cropStep('redo'); return true; }
+  if (typing(e.target)) return false;
+  if (k === 'x' && !e.ctrlKey && !e.metaKey && !e.altKey && !$('#crop-orient').disabled) { geometryAct('orient'); return true; }
+  if (k === L.AB_KEY) return true;      // C25: no A/B while cropping
+  return false;
+}
+
 // ------------------------------------------------------------------ wiring
 const typing = (el) => !!(el && el.matches && (el.matches('input[type=text], input[type=search], input[type=number]') || el.isContentEditable));
 const inField = (el) => !!(el && el.matches && el.matches('input, select, textarea'));   // S13 (c): arrows stay there
@@ -1528,6 +1726,7 @@ async function init() {
   $('#grid-restore-btn').onclick = gridRestore;
   for (const b of document.querySelectorAll('#grid-filter button')) b.onclick = () => setGridFilter(b.dataset.filter);   // S9
   initCompare();                                             // S7
+  initCrop();                                                // S3 C22
   $('#export-btn').onclick = () => openExportDialog('photo');   // S2 E29 (D3): always the dialog, Enter exports
   initExportDialog();
   $('#cap-btn').onclick = (e) => { e.stopPropagation(); toggleCapDetail(); };   // S2 E30
@@ -1561,12 +1760,20 @@ async function init() {
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && !$('#cap-detail').hidden) { toggleCapDetail(false); $('#cap-btn').focus(); return; }
     if (!$('#export-backdrop').hidden) return;          // S2 E29: the dialog has the keyboard
+    if (cropActive() && cropKey(e)) return;              // S3 C22: Enter / Esc / Ctrl+Z / X while cropping
     if (typing(e.target)) return;
     const k = e.key.toLowerCase();
+    if ((e.ctrlKey || e.metaKey) && (e.key === '[' || e.key === ']')) {   // C23: rotate 90°, in or out of the crop mode
+      e.preventDefault(); geometryAct(e.key === '[' ? 'rotate_left' : 'rotate_right'); return;
+    }
     if ((e.ctrlKey || e.metaKey) && k === 'z') { e.preventDefault(); if (e.shiftKey) redo(); else undo(); return; }
     if ((e.ctrlKey || e.metaKey) && k === 'y') { e.preventDefault(); redo(); return; }
     if (e.target.closest && (e.target.closest('#preset-tree') || e.target.closest('#grid'))) return;
     if (k === L.AB_KEY && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && !e.repeat) { abToggle(); return; }   // S7
+    if (k === 'r' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && !e.repeat) {   // C22: R = 裁切
+      if (cropActive()) leaveCrop(true); else enterCrop();
+      return;
+    }
     if (e.key === '\\' && !e.repeat) showOriginal(true);
     else if (e.key === 'ArrowLeft' && !inField(e.target) && !e.repeat) step(-1);
     else if (e.key === 'ArrowRight' && !inField(e.target) && !e.repeat) step(1);
@@ -1604,5 +1811,6 @@ window.darkroom = {st, pv, ab, get ed() { return ed; }, dispatch, requestPreview
                    exportPhoto, savePreset, importFiles, reloadLibrary,
                    flushSave, loadEdit, showGrid, loadGrid, copyEdit, pasteEdit, exportSelected,
                    abToggle, abSetSplit, setGridFilter, resetOriginal, restorePrevious, gridResetOriginal, gridRestore,
-                   openExportDialog, closeExportDialog, runExport, loadCaps, downloadPresets, loadExportPresets};
+                   openExportDialog, closeExportDialog, runExport, loadCaps, downloadPresets, loadExportPresets,
+                   crop, enterCrop, leaveCrop, geometryAct};
 init().catch((e) => toast('載入失敗：' + e.message, true));

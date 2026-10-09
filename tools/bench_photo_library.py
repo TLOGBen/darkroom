@@ -16,7 +16,10 @@ just written"). Skipped like B7 / R1 (darkroom_app.gpucheck) while the GPU is re
 (this bench does not use the GPU, so forced numbers count). A miss prints the stage split (read / hash / decode+encode
 / write) and a cProfile top 20 of that step (ADR-0003: profile before anything else).
 
-  python -s tools/bench_photo_library.py [--force] [--keep] [--jpegs 500] [--heics 50] [--gb 2]
+--geometry (CONTRACT-s3-crop C18 / M5): before (b), every other JPEG gets an edit with a geometry (rotate 90 + 4:5
+crop + 3 degrees), so half of the 500 warm thumbnail() calls apply it on the cached 256 px thumbnail; same limits.
+
+  python -s tools/bench_photo_library.py [--force] [--keep] [--jpegs 500] [--heics 50] [--gb 2] [--geometry]
 """
 import argparse
 import builtins
@@ -145,6 +148,7 @@ def main(argv=None):
     ap.add_argument("--jpegs", type=int, default=500)
     ap.add_argument("--heics", type=int, default=50)
     ap.add_argument("--gb", type=float, default=2.0)
+    ap.add_argument("--geometry", action="store_true", help="half of the warm thumbnails carry a geometry (S3 M5)")
     a = ap.parse_args(argv)
     skip, msg = gpu_skip()
     print(msg)
@@ -172,6 +176,12 @@ def main(argv=None):
         res["(a) cold JPEG: first 40"], res["(a) cold JPEG: all 500"] = cold_run(f, jpegs, a.jpegs)
         res["(c) cold HEIC: first 40"], res["(c) cold HEIC: all 50"] = cold_run(f, heics, a.heics)
 
+        if a.geometry:                                # M5: half of the photos are cropped / turned
+            geo = {"rotate": 90, "flip": False, "angle": 3, "aspect": "4:5", "crop": None}
+            names = sorted(os.listdir(jpegs))
+            for n in names[::2]:
+                f.set_edit(os.path.join(jpegs, n), None, 100, None, geometry=geo)
+            print(f"[M5] {len(names[::2])} / {len(names)} 張有幾何（rotate 90、4:5、3°）", flush=True)
         g = build_facade(preset_dir, data_dir=data)   # a fresh service: everything from the index and the cache
         opened = []
         real_open = builtins.open

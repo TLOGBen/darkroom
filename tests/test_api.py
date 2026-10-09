@@ -7,11 +7,11 @@ import _util
 
 
 class TestPublicApi(unittest.TestCase):
-    def test_all_is_exactly_the_seven_names(self):  # A2 / B1
+    def test_public_api_eight_names(self):  # A2 / B1, as patched by K5 (CONTRACT-s3-crop C6): + Geometry
         import darkroom
-        self.assertEqual(sorted(darkroom.__all__),
-                         sorted(["load_preset", "Params", "render", "read_image", "write_image", "SCHEMA_VERSION",
-                                 "UnsupportedPresetError"]))
+        self.assertEqual(darkroom.__all__,
+                         ["load_preset", "Params", "render", "read_image", "write_image", "SCHEMA_VERSION",
+                          "UnsupportedPresetError", "Geometry"])
         for name in darkroom.__all__:
             self.assertTrue(hasattr(darkroom, name), name)
 
@@ -36,7 +36,7 @@ class TestPublicApi(unittest.TestCase):
         self.assertEqual(offenders, [])
 
     def test_package_modules_are_private(self):
-        """Only the seven names are public; implementation modules are underscore-prefixed."""
+        """Only the eight names are public; implementation modules are underscore-prefixed."""
         pkg = os.path.join(_util.REPO, "darkroom")
         for f in os.listdir(pkg):
             if f.endswith(".py") and f not in ("__init__.py", "__main__.py"):

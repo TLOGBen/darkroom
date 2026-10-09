@@ -43,6 +43,8 @@ VALUE_LABELS = {
     "ToneCurvePV2012Blue": "點曲線（藍）",
 }
 
+PRESET_CROP = "裁切（preset 帶的裁切與拉直不會套用）"     # verbatim (CONTRACT-s3-crop C10): minor
+PRESET_CROP_LABEL = "裁切（preset 帶的，不套用）"           # verbatim (C10)
 CLAMPED = "（超出範圍，已夾值）"
 APPROXIMATED = "，已以黑白近似）"     # a black & white Look rendered as the grayscale conversion (S5): minor
 BANNER = "這個 preset 有 {n} 項會改變觀感的設定無法套用：{items_joined_by_、}"   # verbatim (contract R4)
@@ -59,6 +61,8 @@ def _parts(item):
 
 
 def level(item):
+    if item == PRESET_CROP:
+        return "minor"
     key, base, suffix = _parts(item)
     if suffix == CLAMPED or base in MINOR:
         return "minor"
@@ -68,6 +72,8 @@ def level(item):
 
 
 def label(item):
+    if item == PRESET_CROP:
+        return PRESET_CROP_LABEL
     key, base, suffix = _parts(item)
     if suffix == CLAMPED:
         return VALUE_LABELS.get(key, LABELS.get(key, key)) + CLAMPED

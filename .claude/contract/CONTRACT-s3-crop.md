@@ -200,3 +200,19 @@ X-Edit（S8b）：encodeURIComponent(JSON.stringify({"preset": name|null, "stren
 案例表：tests/cases/s3_geometry_cases.json（C3）｜ tests/cases/s3_geometry_actions.json（C4）
 preset 合併雜湊：15C015CC0C080FF9 ｜ 數量：1466
 ```
+
+## 實作補丁（2026-10-10，實作時的決定與量測；與條文同等效力，只收緊或補常數；放寬處逐項標明並說理由）
+- IP1（M1 → D1 定案為 (A)）：專用 Python、真實 preset 庫（只讀）、3 張測試照（含天空在上方的 landscape_lighthouse），暈影與顆粒歸零後「裁下半部再渲染」對「整張渲染再切」的保留區平均絕對差：Dehaze 不為 0 的 673 個 × 3 張（2019 筆）p50 0.292/255、p95 1.008/255、max 10.355/255；Texture 不為 0 的 324 個 × 3 張（972 筆）p50 0.374/255、p95 1.100/255、max 1.977/255。兩者 p95 都 ≤ 2/255 → 依主 session 裁決改採 (A)：統計直接取自裁切後的畫面。C7 的「D1 選 (B) 時另加…」句、常數「統計來源」「保留區容差」與 `test_crop_keeps_colors` 一起拿掉（錯不起表面「裁切改變顏色」由這筆量測承擔）。
+- IP2（M2 → D12 維持 (A)、C9 常數）：1067×1600 8-bit 照片，angle 0.1／7.5／45／−12.5：`grid_sample` bicubic 對 `cv2.warpAffine` INTER_CUBIC 平均差 ≤ 0.0007/255、最大差 1/255（bilinear 對 INTER_LINEAR 平均 ≤ 0.0005/255、最大 1/255）；兩邊像素中心慣例一致（angle 0 的 4 種 rotate × flip，GPU 與 CPU 都與 numpy 逐位元組相同）。C9 的最大差常數＝1/255。釘死：`test_geometry_cpu_matches_gpu`。
+- IP3（C1，放寬並說理由）：`Geometry.from_dict` 缺的鍵取恆等值（rotate 0、flip false、angle 0、aspect original、crop null）；「多一個鍵」照舊 invalid。理由：MCP schema 沒有 required，代理只給 `{"rotate": 90}` 是常見寫法；存檔與回傳一律是 5 鍵正規化物件。
+- IP4（C6）：`Geometry` 除了 from_dict／to_dict／resolve／output_size／apply，另有 `identity`、`frame_size`、`ratio`、`matrix`、`sampling`、`bound(width, height, out_width, out_height, frame=False)`（預覽從縮小的底圖取樣、frame 模式用；`render` 簽名不變）。核心公開名稱仍恰 8 個。
+- IP5（C13／C20）：「省略」的哨兵 `KEEP` 放在 `darkroom_app/facade.py`（三個入口都可以 import facade，不准 import preview／services，L13）。
+- IP6（C1 句子）：句中的 `{值}` 文字原樣、其他用 JSON 並把整數值的浮點數寫成整數（CLI 的 46.0 與網頁的 46 同句）。
+- IP7（XP35 常數）：`EXPORT_ITEM_NOT_OBJECT`、`EXPORT_ITEM_UNKNOWN_KEY` 的鍵清單加 `geometry`。PL8 的 /2 鍵集合不對時 reason＝「keys must be exactly schema, fingerprint, preset, strength, overrides, geometry」。
+- IP8（C10）：preset 的數值型 Crop 屬性照舊留在 `Params.values`（434 個帶 `CropConstrainToWarp` 的 preset 參數不變，既有編輯的 preset_status 不會因升級變 changed）；只是不進未套用清單、不渲染；C15 存成 preset 時一律不寫。
+- IP9（C20 CLI）：`--no-edit` 與任何幾何旗標同給 → argparse 用法錯誤；`export` 只給幾何旗標不給顏色 → 該 item 只有 geometry（顏色＝不套 preset，與 HTTP／MCP 的 item 規則一致，AGENTS.md 已註明）；`--aspect` 單獨給＝恆等＝沒有裁切（C1 原文，AGENTS.md 已註明）。
+- IP10（C17）：沒有幾何（或恆等）時走舊路徑，`frame` 只檢查型別；有幾何時輸出尺寸與 `preview_target` 同一份式子。細節底圖＝每張開啟的照片在主機留一份 16-bit 的 ≤ 6000000 像素複本，第一次需要時上傳 GPU，GPU 上只留最近一張。取樣比例超過 1.5 個來源像素／輸出像素時先 area 縮小再 `grid_sample`（防鋸齒）。
+- IP11（C22 前端）：完成時若框是自動（crop null）而比例是「寬:高」，把自動框寫成實際的框再正規化（否則恆等規則會把比例丟掉）。草稿的框存使用者給的值，畫面與完成都經 `L.fitCrop`。旋轉／鏡像按鈕在裁切面板裡；模式外用 Ctrl+[／Ctrl+] 一步旋轉。
+- IP12（既有測試的修改，皆在本合約補丁點名範圍內）：`test_api`（A2→8 名）、`test_layering` 與 `test_s2_entries`（`--no-edit` 帶 `geometry: null`）、`test_photo_library`（/2 的 reason、/3 的 schema 句、X-Edit 多兩鍵）、`test_export`（item 句子）、`test_s2_export`（省略 geometry 會讀編輯）、`test_app_frontend`（PROTECTED 與 hidden 清單、貼上確認與 body、currentRequest 帶 geometry）、`tests/js`（editBody／editRequest／badgeTitle）。
+- IP13（量測工具）：`tools/bench_preview.py --geometry`（拉直滑桿 frame 預覽＋裁切後清晰預覽延遲）、`tools/bench_export.py --s3`（拉直 3°＋3:2，並一律用暫存 data_dir）、`tools/bench_photo_library.py --geometry`（一半照片有幾何）。
+- C11 量測：`test_render_with_geometry_latency`，24MP 照片的 1.5MP 預覽（1095×1369，angle 7.5＋4:5）全管線中位數 19.08 ms（門檻 25 ms）。

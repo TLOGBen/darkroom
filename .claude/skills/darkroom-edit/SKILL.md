@@ -42,8 +42,15 @@ python -s -m darkroom_app.cli edit set <photo> --preset <id> --strength 80 --ove
 python -s -m darkroom_app.cli edit get <photo> --json
 python -s -m darkroom_app.cli edit clear <photo> --json
 
-# 複製／貼上：把 <photo-a> 的編輯原樣貼到 1～500 張（取代它們的編輯）
+# 複製／貼上：把 <photo-a> 的顏色貼到 1～500 張（各張自己的裁切／旋轉保留）
 python -s -m darkroom_app.cli edit paste --from <photo-a> <photo-b> <photo-c> --json
+# 連裁切／旋轉一起貼（會換掉它們的裁切，先確認）
+python -s -m darkroom_app.cli edit paste --from <photo-a> <photo-b> --with-geometry --json
+# 裁切、拉直、旋轉、鏡像（存在這張的編輯裡；沒給幾何旗標的 edit set 會保留原本的裁切）
+python -s -m darkroom_app.cli edit set <photo> --preset <id> --rotate 90 --angle 2.5 --aspect 4:5 --json
+python -s -m darkroom_app.cli edit set <photo> --aspect free --crop 0.1,0.05,0.9,0.95 --json
+python -s -m darkroom_app.cli edit set <photo> --preset <id> --no-geometry --json      # 拿掉裁切
+python -s -m darkroom_app.cli preview <photo> --rotate 90 --angle 2.5 --frame > frame.jpg   # 整個畫面（忽略框）
 
 # 匯出：不給 --preset／--strength／--override 就每張用存好的編輯（沒有編輯＝原圖）；給了就每張同一組參數；永不覆蓋
 python -s -m darkroom_app.cli export <photo-a> <photo-b> --dest-dir <dest> --json
@@ -66,7 +73,7 @@ python -s -m darkroom_app.cli edit save-preset <photo> --name "人像暖調 80" 
 
 ## MCP（已註冊時優先用，因為預覽直接回圖）
 
-`darkroom_open_photo{path}` → `image_id` → `darkroom_preview{image_id, preset_id, strength, overrides, max_pixels}` 回 `image/jpeg` 內容，**你可以直接看圖**，不滿意就改參數再預覽；確定了再 `darkroom_edit_set{path, preset_id, strength, overrides}` 或 `darkroom_export{items:[{path|image_id, preset_id, strength, overrides}], format, quality, dest_dir, bit_depth, max_kb, resize:{mode,value}, metadata, remove_gps, sharpen:{target,amount}, export_preset}`（只有 `items` 必填；item 只給 `path` ＝用存好的編輯）。`darkroom_export` 每張可以不同參數；匯出預設用 `darkroom_export_presets_list`／`darkroom_export_preset_save{name, settings}`／`darkroom_export_preset_delete{name}`；`darkroom_edit_paste{targets, source|edit}`；`darkroom_edit_get{path}`。工具總表見 `AGENTS.md`。
+`darkroom_open_photo{path}` → `image_id` → `darkroom_preview{image_id, preset_id, strength, overrides, max_pixels, geometry, frame}` 回 `image/jpeg` 內容，**你可以直接看圖**，不滿意就改參數再預覽；確定了再 `darkroom_edit_set{path, preset_id, strength, overrides}` 或 `darkroom_export{items:[{path|image_id, preset_id, strength, overrides}], format, quality, dest_dir, bit_depth, max_kb, resize:{mode,value}, metadata, remove_gps, sharpen:{target,amount}, export_preset}`（只有 `items` 必填；item 只給 `path` ＝用存好的編輯）。`darkroom_export` 每張可以不同參數；匯出預設用 `darkroom_export_presets_list`／`darkroom_export_preset_save{name, settings}`／`darkroom_export_preset_delete{name}`；`darkroom_edit_paste{targets, source|edit, with_geometry}`（預設只貼顏色）；幾何（`geometry: {rotate, flip, angle, aspect, crop}`）沒給＝用／保留存好的，`null`＝拿掉；`darkroom_edit_get{path}`。工具總表見 `AGENTS.md`。
 
 ## 關鍵事實
 

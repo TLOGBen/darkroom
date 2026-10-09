@@ -263,11 +263,14 @@ test('S1 / S2: the autosave request carries the remembered snapshot through past
   ed = L.reduce(ed, {type: 'setStrength', value: 80});
   ed = L.reduce(ed, {type: 'setValue', slider: S_CONTRAST, presetValue: 0, value: 30});
   const snap = {id: 'p', name: 'n', group: 'g', params: {schema: 'darkroom-params/1', values: {Exposure2012: 1}, curves: {}, masks: [], skipped: []}};
+  // CONTRACT-s3-crop C24 / S2b: the body always carries the geometry; the PASTE path always pastes it (with_geometry)
   assert.deepEqual(L.editRequest(ed, 'D:/x.jpg', {}, 'f'),
-                   {method: 'PUT', body: {path: 'D:/x.jpg', preset_id: 'p', strength: 80, overrides: {Contrast2012: 30}}});
+                   {method: 'PUT', body: {path: 'D:/x.jpg', preset_id: 'p', strength: 80, overrides: {Contrast2012: 30},
+                                          geometry: null}});
   assert.deepEqual(L.editRequest(ed, 'D:/x.jpg', {p: snap}, 'f'),
                    {method: 'PASTE', body: {targets: ['D:/x.jpg'], edit: {schema: 'darkroom-edit/1', fingerprint: 'f', preset: snap,
-                                                                          strength: 80, overrides: {Contrast2012: 30}}}});
+                                                                          strength: 80, overrides: {Contrast2012: 30}},
+                                            with_geometry: true}});
   assert.equal(L.editRequest(ed, 'D:/x.jpg', {q: snap}, 'f').method, 'PUT');              // another preset: library
   assert.equal(L.editRequest(L.reduce(ed, {type: 'selectPreset', id: null}), 'x', {p: snap}, 'f').method, 'PUT');
   assert.equal(L.editRequest(ed, 'x', {p: snap}, null).body.edit.fingerprint, '');
@@ -324,7 +327,8 @@ test('S8 / S9 / S10: badge titles, the grid filter, reset / restore sentences an
   assert.equal(L.badgeTitle({preset: '底片 01', strength: 130, status: 'current'}), '底片 01　130%');
   assert.equal(L.badgeTitle({preset: '底片 01', strength: 130, status: 'changed'}), '底片 01　130%（preset 已變更）');
   assert.equal(L.badgeTitle({preset: '底片 01', strength: 80, status: 'missing'}), '底片 01　80%（preset 已不在庫裡）');
-  assert.equal(L.badgeTitle({preset: null, strength: 100, status: null}), '只有微調　100%');
+  // S8b (CONTRACT-s3-crop C18): the strength only with a preset
+  assert.equal(L.badgeTitle({preset: null, strength: 100, status: null}), '只有微調');
   assert.equal(L.badgeTitle(null), '已編輯');
   assert.equal(L.stale({status: 'changed'}), true);
   assert.equal(L.stale({status: 'current'}), false);
@@ -476,7 +480,8 @@ test('PL15 / PLP9: restoring a saved edit, autosave body, grid selection, export
   assert.notEqual(r.tweaks, edit.overrides);                            // a copy, not the response object
   const none = L.reduce(ed, {type: 'restoreEdit', edit: {schema: 'darkroom-edit/1', fingerprint: 'f', preset: null, strength: 100, overrides: {}}});
   assert.deepEqual([none.presetId, none.strength, none.tweaks], [null, 100, {}]);
-  assert.deepEqual(L.editBody(r, 'D:/x.jpg'), {path: 'D:/x.jpg', preset_id: 'p', strength: 80, overrides: {Exposure2012: 0.5}});
+  assert.deepEqual(L.editBody(r, 'D:/x.jpg'), {path: 'D:/x.jpg', preset_id: 'p', strength: 80, overrides: {Exposure2012: 0.5},
+                                               geometry: null});                     // + C24: null is sent too
   assert.deepEqual(L.editBody(L.reduce(r, {type: 'selectPreset', id: null}), 'x').strength, 100);   // no preset: 100
   assert.deepEqual(L.editBody(L.reduce(r, {type: 'resetAll'}), 'x').overrides, {});
   assert.equal(L.AUTOSAVE_MS, 500);
@@ -640,4 +645,185 @@ test('E30: capability status sentences and the preset download helpers', () => {
   assert.deepEqual(L.groupPresetIds(presets, '電影 - 暖調'), ['b']);
   const rep = L.downloadReport([{ok: true, preset_id: 'a', file_name: 'A.xmp', data_base64: ''}, {ok: false, preset_id: 'x', error: 'unknown preset x'}]);
   assert.deepEqual(rep, {summary: '已下載 1 個 .xmp，1 個沒有下載', lines: ['已下載：A.xmp', 'unknown preset x']});
+});
+
+// ---------------------------------------------------------------- CONTRACT-s3-crop (C1-C4, C14, C18, C22-C26)
+const fs = require('node:fs');
+const readCases = (name) => JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'cases', name), 'utf8')).cases;
+const near = (a, b, tol, what) => assert.ok(Math.abs(a - b) <= tol, `${what}: ${a} vs ${b}`);
+
+test('C3: L.fitCrop on the shared case table (box 1e-9, pixels equal)', () => {
+  const cases = readCases('s3_geometry_cases.json');
+  assert.ok(cases.length >= 40);
+  for (const c of cases) {
+    const r = L.fitCrop(c.geometry, c.width, c.height);
+    for (let i = 0; i < 4; i++) near(r.box[i], c.expect.box[i], 1e-9, c.name);
+    for (const k of ['left', 'top', 'right', 'bottom', 'width', 'height']) assert.equal(r[k], c.expect[k], `${c.name}: ${k}`);
+  }
+});
+
+test('C4: L.geometryAction implements the shared operation table', () => {
+  const cases = readCases('s3_geometry_actions.json');
+  assert.ok(cases.length >= 40);
+  for (const c of cases) {
+    const g = L.geometryAction(c.before, c.action, c.width, c.height);
+    for (const k of ['rotate', 'flip', 'angle', 'aspect']) assert.equal(g[k], c.after[k], `${c.name}: ${k}`);
+    if (c.after.crop === null) assert.equal(g.crop, null, c.name);
+    else for (const k of L.CROP_EDGES) near(g.crop[k], c.after.crop[k], 1e-9, `${c.name}: crop.${k}`);
+  }
+  // rotate right 4 times / flip twice: back where it started
+  const g = {rotate: 90, flip: true, angle: 3, aspect: '4:5', crop: {left: 0.1, top: 0.2, right: 0.5, bottom: 0.7}};
+  let h = g;
+  for (let i = 0; i < 4; i++) h = L.geometryAction(h, 'rotate_right', 600, 400);
+  assert.equal(h.rotate, 90);
+  for (const k of L.CROP_EDGES) near(h.crop[k], g.crop[k], 1e-12, k);
+  h = L.geometryAction(L.geometryAction(g, 'flip_h', 600, 400), 'flip_h', 600, 400);
+  assert.equal(h.flip, true); assert.equal(h.angle, 3);
+  assert.throws(() => L.geometryAction(g, 'spin', 600, 400));
+});
+
+test('C1: normGeometry - identity is null whatever the aspect, ratios reduced, full objects for the draft', () => {
+  assert.equal(L.normGeometry(null), null);
+  assert.equal(L.normGeometry({rotate: 0, flip: false, angle: 0, aspect: '4:5', crop: null}), null);
+  assert.equal(L.normGeometry({rotate: 0, flip: false, angle: -0, aspect: 'original', crop: null}), null);
+  assert.deepEqual(L.normGeometry({rotate: 90, flip: false, angle: 0, aspect: '8:10', crop: null}),
+                   {rotate: 90, flip: false, angle: 0, aspect: '4:5', crop: null});
+  assert.deepEqual(L.fullGeometry(null), L.GEOMETRY_IDENTITY);
+  assert.equal(L.reduceAspect('16:9'), '16:9');
+  assert.equal(L.reduceAspect('6:4'), '3:2');
+  assert.deepEqual(L.aspectOptions(false).map(([v]) => v), ['original', 'free', '1:1', '4:5', '5:7', '2:3', '3:4', '16:9']);
+  assert.deepEqual(L.aspectOptions(true).map(([v]) => v), ['original', 'free', '1:1', '5:4', '7:5', '3:2', '4:3', '9:16']);
+  assert.deepEqual(L.aspectOptions(false)[3], ['4:5', '4:5（8×10）']);
+  assert.deepEqual(L.aspectOptions(true)[5], ['3:2', '3:2（6×4）']);
+  assert.equal(L.cropOrientation({aspect: '4:5'}, 600, 400), 'portrait');
+  assert.equal(L.cropOrientation({aspect: 'original'}, 600, 400), 'landscape');
+  assert.equal(L.cropOrientation({aspect: '1:1'}, 600, 400), 'square');
+});
+
+test('C23: L.cropDrag - handles, a locked ratio, the box stops at the picture, always through fitCrop', () => {
+  const size = {width: 600, height: 400, minW: 0.05, minH: 0.05};
+  const free = {rotate: 0, flip: false, angle: 0, aspect: 'free', crop: {left: 0.2, top: 0.2, right: 0.6, bottom: 0.6}};
+  let g = L.cropDrag(free, size, 'e', 0.1, 0);
+  near(g.crop.right, 0.7, 1e-12, 'e'); near(g.crop.left, 0.2, 1e-12, 'left stays');
+  g = L.cropDrag(free, size, 'move', 0.5, 0);                       // too far: stops at the right edge
+  near(g.crop.right, 1, 1e-6, 'move stops'); near(g.crop.right - g.crop.left, 0.4, 1e-6, 'size kept');
+  g = L.cropDrag(free, size, 'nw', 0.5, 0.5);                       // never inverted: the smallest box
+  near(g.crop.right - g.crop.left, 0.05, 1e-9, 'min width'); near(g.crop.bottom - g.crop.top, 0.05, 1e-9, 'min height');
+  const locked = Object.assign({}, free, {aspect: '1:1', crop: {left: 0.3, top: 0.25, right: 0.5, bottom: 0.55}});
+  g = L.cropDrag(locked, size, 'se', 0.1, 0);                       // 1:1 on 600x400: w*600 = h*400
+  near((g.crop.right - g.crop.left) * 600, (g.crop.bottom - g.crop.top) * 400, 1e-6, 'ratio kept');
+  g = L.cropDrag(locked, size, 's', 0, 0.1);
+  near((g.crop.right - g.crop.left) * 600, (g.crop.bottom - g.crop.top) * 400, 1e-6, 'ratio kept (edge)');
+  near((g.crop.left + g.crop.right) / 2, 0.4, 1e-9, 'edge drag keeps the centre line');
+  const tilted = {rotate: 0, flip: false, angle: 10, aspect: 'free', crop: null};
+  g = L.cropDrag(tilted, size, 'nw', -0.5, -0.5);                   // outward into the blank corner: stops inside
+  const r = L.fitCrop(Object.assign({}, g, {aspect: 'free'}), 600, 400).box;
+  const box = [g.crop.left, g.crop.top, g.crop.right, g.crop.bottom];
+  for (let i = 0; i < 4; i++) near(r[i], box[i], 1e-9, 'fits');
+  assert.deepEqual(L.cropKeyMove('ArrowLeft', false), [-0.005, 0]);
+  assert.deepEqual(L.cropKeyMove('ArrowDown', true), [0, 0.05]);
+  assert.equal(L.cropKeyMove('Enter', false), null);
+});
+
+test('C22: L.cropSession - enter / change / undo / commit / cancel never touch the reducer', () => {
+  const g0 = {rotate: 90, flip: false, angle: 0, aspect: 'original', crop: null};
+  let s = L.cropSession(null, {type: 'enter', geometry: g0});
+  assert.equal(s.active, true);
+  assert.deepEqual(s.draft, g0);
+  s = L.cropSession(s, {type: 'change', draft: Object.assign({}, g0, {angle: 2}), gesture: 'angle'});
+  s = L.cropSession(s, {type: 'change', draft: Object.assign({}, g0, {angle: 3}), gesture: 'angle'});   // one drag = one step
+  assert.equal(s.past.length, 1);
+  s = L.cropSession(s, {type: 'endGesture'});
+  s = L.cropSession(s, {type: 'change', draft: Object.assign({}, g0, {angle: 3, flip: true})});
+  assert.equal(s.past.length, 2);
+  s = L.cropSession(s, {type: 'undo'});
+  assert.equal(s.draft.angle, 3); assert.equal(s.draft.flip, false);
+  s = L.cropSession(s, {type: 'redo'});
+  assert.equal(s.draft.flip, true);
+  const c = L.cropSession(s, {type: 'commit', width: 600, height: 400});
+  assert.equal(c.active, false);
+  assert.deepEqual(c.result, {changed: true, geometry: {rotate: 90, flip: true, angle: 3, aspect: 'original', crop: null}});
+  const x = L.cropSession(s, {type: 'cancel'});
+  assert.deepEqual(x.result, {changed: false, geometry: g0});
+  // nothing changed: commit says so
+  const same = L.cropSession(L.cropSession(null, {type: 'enter', geometry: null}), {type: 'commit', width: 600, height: 400});
+  assert.deepEqual(same.result, {changed: false, geometry: null});
+  // a ratio with an automatic box becomes the box itself (identity + aspect would otherwise be nothing)
+  let r = L.cropSession(null, {type: 'enter', geometry: null});
+  r = L.cropSession(r, {type: 'change', draft: Object.assign(L.fullGeometry(null), {aspect: '1:1'})});
+  r = L.cropSession(r, {type: 'commit', width: 600, height: 400});
+  assert.equal(r.result.changed, true);
+  const cr = r.result.geometry.crop;
+  near(cr.left, 1 / 6, 1e-12, 'l'); near(cr.right, 5 / 6, 1e-12, 'r'); assert.equal(cr.top, 0); assert.equal(cr.bottom, 1);
+  // reset: the draft back to no geometry, as one more undoable step
+  let z = L.cropSession(null, {type: 'enter', geometry: g0});
+  z = L.cropSession(z, {type: 'reset'});
+  assert.deepEqual(z.draft, L.GEOMETRY_IDENTITY);
+  assert.deepEqual(L.cropSession(z, {type: 'undo'}).draft, g0);
+  // the draft has its own 50 steps
+  let many = L.cropSession(null, {type: 'enter', geometry: null});
+  for (let i = 1; i <= 60; i++) many = L.cropSession(many, {type: 'change', draft: Object.assign(L.fullGeometry(null), {angle: i / 10})});
+  assert.equal(many.past.length, L.CROP_DRAFT_LIMIT);
+  assert.equal(L.CROP_DRAFT_LIMIT, 50);
+});
+
+test('C24 / C16: the reducer carries the geometry - setGeometry, undo, restoreEdit, resetToOriginal, carry', () => {
+  let ed = L.reduce(L.initialEditor(), {type: 'selectPreset', id: 'p'});
+  assert.equal(ed.geometry, null);
+  const g = {rotate: 90, flip: false, angle: 0, aspect: '8:10', crop: null};
+  ed = L.reduce(ed, {type: 'setGeometry', geometry: g});
+  assert.deepEqual(ed.geometry, {rotate: 90, flip: false, angle: 0, aspect: '4:5', crop: null});
+  assert.equal(L.reduce(ed, {type: 'setGeometry', geometry: g}), ed);          // the same geometry: no step
+  const back = L.reduce(ed, {type: 'undo'});
+  assert.equal(back.geometry, null);
+  assert.deepEqual(L.reduce(back, {type: 'redo'}).geometry, ed.geometry);
+  const reset = L.reduce(ed, {type: 'resetToOriginal'});                      // S10': the geometry goes too
+  assert.equal(reset.geometry, null); assert.equal(reset.presetId, null);
+  assert.deepEqual(L.reduce(reset, {type: 'undo'}).geometry, ed.geometry);   // one Ctrl+Z brings it back
+  const restored = L.reduce(ed, {type: 'restoreEdit', edit: {preset: null, strength: 100, overrides: {}, geometry: g}});
+  assert.deepEqual(restored.geometry, ed.geometry);
+  assert.equal(L.reduce(ed, {type: 'restoreEdit', edit: {preset: null, strength: 100, overrides: {}}}).geometry, null);   // /1
+  const carried = L.reduce(ed, {type: 'carry'});                             // C24: never carried to another photo
+  assert.equal(carried.geometry, null);
+  assert.equal(carried.presetId, 'p');
+  assert.ok(carried.past.every((x) => x.geometry === null));
+  assert.equal(L.carryGeometry(), null);
+  assert.equal(L.carryHintVisible(L.reduce(L.initialEditor(), {type: 'setGeometry', geometry: g}), true, false), false);   // colour only
+  assert.deepEqual(L.editBody(ed, 'x').geometry, ed.geometry);
+});
+
+test('S2b: the autosave paste carries the geometry (schema /2) and always with_geometry', () => {
+  let ed = L.reduce(L.initialEditor(), {type: 'selectPreset', id: 'p'});
+  const g = {rotate: 0, flip: true, angle: 0, aspect: 'free', crop: {left: 0.1, top: 0.1, right: 0.9, bottom: 0.9}};
+  ed = L.reduce(ed, {type: 'setGeometry', geometry: g});
+  const snap = {id: 'p', name: 'n', group: 'g', params: {schema: 'darkroom-params/1', values: {}, curves: {}, masks: [], skipped: []}};
+  const req = L.editRequest(ed, 'D:/x.jpg', {p: snap}, 'f');
+  assert.equal(req.method, 'PASTE');
+  assert.equal(req.body.with_geometry, true);
+  assert.deepEqual(req.body.edit, {schema: 'darkroom-edit/2', fingerprint: 'f', preset: snap, strength: 100, overrides: {},
+                                   geometry: g});
+  assert.deepEqual(L.editRequest(ed, 'D:/x.jpg', {}, 'f').body.geometry, g);
+});
+
+test('C18 / C25 / C26: badges, the original cache key, paste confirmation, sentences', () => {
+  assert.equal(L.badgeTitle({preset: null, strength: 100, status: null, geometry: true, tweaks: false}), '只有裁切／旋轉');
+  assert.equal(L.badgeTitle({preset: null, strength: 100, status: null, geometry: false, tweaks: true}), '只有微調');
+  assert.equal(L.badgeTitle({preset: null, strength: 100, status: null, geometry: true, tweaks: true}), '只有微調・已裁切');
+  assert.equal(L.badgeTitle({preset: '底片', strength: 80, status: 'changed', geometry: true, tweaks: false}),
+               '底片　80%・已裁切（preset 已變更）');
+  assert.equal(L.badgeTitle({preset: '底片', strength: 80, status: 'current', geometry: false, tweaks: true}), '底片　80%');
+  const g = {rotate: 90, flip: false, angle: 0, aspect: '8:10', crop: null};
+  assert.equal(L.originalKey('i', null, false), 'i|null|0');
+  assert.equal(L.originalKey('i', g, false), L.originalKey('i', Object.assign({}, g, {aspect: '4:5'}), false));
+  assert.notEqual(L.originalKey('i', g, false), L.originalKey('i', g, true));
+  assert.equal(L.originalKey('i', {rotate: 0, flip: false, angle: 0, aspect: '1:1', crop: null}, false), 'i|null|0');
+  assert.equal(L.pasteConfirmWith('a.jpg', 3, false), '要用 a.jpg 的編輯取代 3 張照片的編輯嗎？');
+  assert.equal(L.pasteConfirmWith('a.jpg', 3, true), '要用 a.jpg 的編輯取代 3 張照片的編輯嗎？（連同裁切與旋轉）');
+  assert.equal(L.CROP_HINT, '拖曳框或把手調整範圍；Enter 完成、Esc 取消');
+  assert.equal(L.AB_DISABLED_CROP, '裁切模式中不能對照，完成或取消後再用');
+  assert.equal(L.PASTE_GEOMETRY_LABEL, '連同裁切與旋轉');
+  assert.equal(L.BADGE_ONLY_GEOMETRY, '只有裁切／旋轉');
+  assert.equal(L.BADGE_CROPPED, '・已裁切');
+  assert.equal(L.CROP_LABEL, '裁切');
+  assert.deepEqual([L.CROP_MIN_PX, L.CROP_KEY_STEP, L.CROP_KEY_STEP_BIG, L.ANGLE_STEP], [32, 0.005, 0.05, 0.1]);
 });

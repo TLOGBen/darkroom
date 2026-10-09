@@ -64,6 +64,7 @@ pwsh -File tools/start.ps1 -Port 8765 -NoBrowser
 共通：`python -s -m darkroom_app.cli [--preset-dir DIR] [--data-dir DIR] <指令> ... --json`。
 `--json` 讓 stdout **恰好一行** `{"ok":true,"result":…}` 或 `{"ok":false,"error":{"kind":…,"message":…}}`，你一律加。
 `<photo>` 一律用絕對路徑；`<id>` 是 `presets list` 回的 preset id。所有子指令與參數跟 `python -s -m darkroom_app.cli <指令> --help` 一致（本表所有範例都實跑過）。
+「幾何旗標」＝裁切、拉直、旋轉、鏡像：`--rotate 0|90|180|270`（順時針）、`--flip`（水平鏡像，在旋轉之後）、`--angle DEG`（拉直 -45～45 度，正＝順時針）、`--aspect original|free|W:H`、`--crop L,T,R,B`（0～1，轉正後的畫面）、`--no-geometry`（不裁、不轉；不能跟其他幾何旗標一起給）。一個都沒給＝用／保留這張存好的幾何。
 
 | 指令 | 用途 | 寫檔？ |
 |---|---|---|
@@ -84,8 +85,8 @@ pwsh -File tools/start.ps1 -Port 8765 -NoBrowser
 | `sliders` | 所有滑桿（Lightroom crs 鍵名、範圍、預設、步進、中文標籤）；`--override` 只接受這些鍵 | 否 |
 | `open <photo>` | 開照片（JPEG／PNG／TIFF／HEIC），回 `image_id`、尺寸、預覽尺寸 | 否 |
 | `folder <photo>` | 同資料夾裡支援的照片（依檔名排序）與這張的位置 | 否 |
-| `preview <photo> [--preset ID] [--strength S] [--override K=V]... [--max-pixels N]` | 渲染縮小的 JPEG 預覽。**不加 `--json` 時 stdout 是 JPEG 位元組**（要 `> out.jpg`）；加 `--json` 回 `jpeg_base64` | 否（導向檔案時是你在寫） |
-| `export <photo>... [--preset ID] [--strength S] [--override K=V]... \| --no-edit] [--format jpeg\|png\|tiff\|webp] [--bit-depth 8\|16] [--quality N] [--max-kb N] [--resize MODE=VALUE] [--metadata all\|copyright\|none] [--remove-gps] [--sharpen TARGET=AMOUNT] [--export-preset NAME] [--dest-dir D]` | 全解析度匯出成**新檔**，嵌 sRGB、轉正；預設寫到 `<照片資料夾>/darkroom 匯出`，同名加序號。**沒給 `--preset`／`--strength`／`--override`／`--no-edit` 時，每張用照片庫裡存好的編輯，沒有編輯就輸出原圖**；給了就每張同一組參數；`--no-edit`＝原圖（不用存好的編輯）。格式：JPEG（8-bit，品質預設 92）、PNG（8／16-bit，預設 8）、TIFF（8／16-bit，預設 16）、WebP（8-bit，品質預設 92）。`--max-kb` 只對 JPEG（整個檔 ≤ N KB，1 KB＝1024 位元組，自動找最高能塞進去的品質）。`--resize` 只縮不放：`long_edge`／`short_edge`／`width`／`height`＝像素（1～65535）、`megapixels`（≤ 1000）、`percent`（≤ 100）。`--metadata`：`all`（預設，原照片 EXIF）、`copyright`（只留版權）、`none`；`--remove-gps` 配 `all` 拿掉位置。`--sharpen`：`screen`／`matte`／`glossy`＝`low`／`standard`／`high`。`--export-preset` 用存好的匯出設定，旗標明確給的優先。每筆成功多 `used: {params_from: edit\|original\|request, quality, width, height}` | 新檔 |
+| `preview <photo> [--preset ID] [--strength S] [--override K=V]... [--max-pixels N] [幾何旗標] [--frame]` | 渲染縮小的 JPEG 預覽。**不加 `--json` 時 stdout 是 JPEG 位元組**（要 `> out.jpg`）；加 `--json` 回 `jpeg_base64`。沒給幾何旗標＝用這張存好的裁切／旋轉；`--frame`＝整個轉正後的畫面（忽略裁切框，裁切模式看到的樣子） | 否（導向檔案時是你在寫） |
+| `export <photo>... [--preset ID] [--strength S] [--override K=V]... \| --no-edit] [--format jpeg\|png\|tiff\|webp] [--bit-depth 8\|16] [--quality N] [--max-kb N] [--resize MODE=VALUE] [--metadata all\|copyright\|none] [--remove-gps] [--sharpen TARGET=AMOUNT] [--export-preset NAME] [--dest-dir D] [幾何旗標]` | 全解析度匯出成**新檔**，嵌 sRGB、轉正；預設寫到 `<照片資料夾>/darkroom 匯出`，同名加序號。**沒給 `--preset`／`--strength`／`--override`／`--no-edit` 時，每張用照片庫裡存好的編輯，沒有編輯就輸出原圖**；給了就每張同一組參數；`--no-edit`＝原圖（不用存好的編輯）。格式：JPEG（8-bit，品質預設 92）、PNG（8／16-bit，預設 8）、TIFF（8／16-bit，預設 16）、WebP（8-bit，品質預設 92）。`--max-kb` 只對 JPEG（整個檔 ≤ N KB，1 KB＝1024 位元組，自動找最高能塞進去的品質）。`--resize` 只縮不放：`long_edge`／`short_edge`／`width`／`height`＝像素（1～65535）、`megapixels`（≤ 1000）、`percent`（≤ 100）。`--metadata`：`all`（預設，原照片 EXIF）、`copyright`（只留版權）、`none`；`--remove-gps` 配 `all` 拿掉位置。`--sharpen`：`screen`／`matte`／`glossy`＝`low`／`standard`／`high`。`--export-preset` 用存好的匯出設定，旗標明確給的優先。每筆成功多 `used: {params_from: edit\|original\|request, quality, width, height}`。裁切／旋轉：沒給幾何旗標＝用這張存好的；給了＝這次用旗標組的（顏色沒給就是不套 preset）；`--no-edit` 連裁切也不套（原圖就是原圖）；輸出寬高＝裁切後的尺寸 | 新檔 |
 | `export-presets list` | 存好的「匯出預設」（具名的匯出設定，不含資料夾） | 否 |
 | `export-presets save --name N [--format …] [--bit-depth …] [--quality …] [--max-kb …] [--resize …] [--metadata …] [--remove-gps] [--sharpen …]` | 把匯出設定存成匯出預設（名稱 1～60 字）；**同名（不分大小寫）會取代**，回 `previous`（被取代的設定，再存一次就復原） | `data_dir/export-presets.json` |
 | `export-presets delete <name>` | 刪一個匯出預設，回被刪的內容（再 `save` 一次就復原）；沒有 → not_found | `data_dir/export-presets.json` |
@@ -93,9 +94,9 @@ pwsh -File tools/start.ps1 -Port 8765 -NoBrowser
 | `presets export <id>... --dest-dir D` | 把 preset 的 `.xmp` 寫到 `D`（要先存在、絕對路徑、**不可以在 preset 資料夾或 preset 庫裡**）；**永不覆蓋**，同名加 ` (2)`；成功行「已匯出 preset：…」；部分失敗結束碼 6 | `D` 裡的新檔 |
 | `capabilities [--refresh]` | 這台電腦與設定能做什麼：`gpu`、`heic`、`webp`、`photo_library`、`preset_library_writes`、`semantic_index`、`onepassword`，每項 `{available, reason}`；不加 `--json` 每項一行「項目<Tab>可用」或「項目<Tab>關閉：原因」。結果在程序內快取，`--refresh` 重測。設定了 `anthropic_api_key_ref` 時會跑一次 `op whoami`（只查有沒有登入，不讀秘密） | 否 |
 | `edit get <photo>` | 照片庫裡這張的編輯（以內容指紋對應）：`edit` 為 `null` 或 `{preset(含快照), strength, overrides}`，`preset_status`：`current`／`changed`／`missing`；`previous`：有沒有一份被清掉、可用 `edit restore` 取回的編輯 | 否 |
-| `edit set <photo> [--preset ID] [--strength S] [--override K=V]...` | **取代**這張的編輯（當下把 preset 參數拍快照）；什麼都不給＝移除 | `data_dir/edits/` |
+| `edit set <photo> [--preset ID] [--strength S] [--override K=V]... [幾何旗標]` | **取代**這張的編輯（當下把 preset 參數拍快照）；**沒給幾何旗標＝保留這張原本的裁切／旋轉**，`--no-geometry`＝拿掉；preset、微調、幾何都沒有＝移除 | `data_dir/edits/` |
 | `edit clear <photo>` | 移除這張的編輯 | `data_dir/edits/` |
-| `edit paste --from <photo> <target>...` | 把一張的編輯原樣貼到 1～500 張（**取代**它們原本的編輯） | `data_dir/edits/` |
+| `edit paste --from <photo> <target>... [--with-geometry]` | 把一張的編輯貼到 1～500 張：**預設只換顏色**（preset 快照、強度、微調；各張自己的裁切／旋轉保留）；`--with-geometry`＝連裁切／旋轉一起取代。來源只有裁切沒有顏色時一定要 `--with-geometry` | `data_dir/edits/` |
 | `edit save-preset <photo> --name N [--group G]` | 把這張的編輯存成自存 preset（`user/` 新檔） | 庫 `user/`＋索引 |
 | `edit restore <photo>` | 取回上一份：`edit clear`（或 `edit set` 什麼都不給）時被清掉的那份編輯會留著，這個指令把它放回去（留著的那份不刪，可重複）；沒有 → not_found；這張現在已經有別的編輯 → conflict（不會蓋掉；要取回先 `edit clear`） | `data_dir/edits/` |
 | `thumbnails <folder> [--offset N] [--limit N]` | 縮圖格清單（背景產縮圖；`fingerprint`／`edited` 產好前是 `null`） | `data_dir/thumbs/`、`index/` |
@@ -116,8 +117,8 @@ pwsh -File tools/start.ps1 -Port 8765 -NoBrowser
 | `darkroom_sliders` | 滑桿表 | 否 |
 | `darkroom_open_photo` | 開照片（`path`）→ `image_id` | 否 |
 | `darkroom_photo_folder` | 同資料夾的照片（`image_id`） | 否 |
-| `darkroom_preview` | 預覽（`image_id`、`preset_id`、`strength`、`overrides`、`max_pixels` 預設 786432）；**回傳 `image/jpeg` 內容，你可以直接看圖再決定** | 否 |
-| `darkroom_export` | 匯出（`items: [{path 或 image_id, preset_id, strength, overrides}]`、`format`、`quality`、`dest_dir`、`bit_depth`、`max_kb`、`resize: {mode, value}`、`metadata`、`remove_gps`、`sharpen: {target, amount}`、`export_preset`）；只有 `items` 必填；**item 三個參數鍵都沒給＝用存好的編輯（沒有＝原圖）**，`preset_id: null`＝不套 preset；每張可以不同參數；成功筆多 `used: {params_from, quality, width, height}`；`failed` 是失敗數 | 新檔 |
+| `darkroom_preview` | 預覽（`image_id`、`preset_id`、`strength`、`overrides`、`max_pixels` 預設 786432、`geometry`、`frame`）；**回傳 `image/jpeg` 內容，你可以直接看圖再決定**；`geometry` 沒給＝用存好的、`null`＝不套 | 否 |
+| `darkroom_export` | 匯出（`items: [{path 或 image_id, preset_id, strength, overrides, geometry}]`、`format`、`quality`、`dest_dir`、`bit_depth`、`max_kb`、`resize: {mode, value}`、`metadata`、`remove_gps`、`sharpen: {target, amount}`、`export_preset`）；只有 `items` 必填；**item 四個參數鍵（`preset_id`、`strength`、`overrides`、`geometry`）都沒給＝用存好的編輯（沒有＝原圖）**，`preset_id: null`＝不套 preset，`geometry` 沒給＝存好的裁切、`null`＝不裁；每張可以不同參數；成功筆多 `used: {params_from, quality, width, height}`；`failed` 是失敗數 | 新檔 |
 | `darkroom_preset_groups` | 群組樹 | 否 |
 | `darkroom_preset_rename` | 改顯示名稱（`preset_id`、`name`） | 索引 |
 | `darkroom_preset_move` | 搬群組（`preset_id`、`group`） | 索引 |
@@ -128,9 +129,9 @@ pwsh -File tools/start.ps1 -Port 8765 -NoBrowser
 | `darkroom_preset_save` | 存自存 preset（`name`、`group`、`preset_id`、`strength`、`overrides`） | 庫 `user/`＋索引 |
 | `darkroom_presets_rebuild` | 重建索引 | 索引 |
 | `darkroom_edit_get` | 讀一張的編輯（`path`） | 否 |
-| `darkroom_edit_set` | 取代一張的編輯（`path`、`preset_id`、`strength`、`overrides`） | `data_dir/edits/` |
+| `darkroom_edit_set` | 取代一張的編輯（`path`、`preset_id`、`strength`、`overrides`、`geometry`；`geometry` 沒給＝保留原本的、`null`＝拿掉） | `data_dir/edits/` |
 | `darkroom_edit_clear` | 移除一張的編輯（`path`） | `data_dir/edits/` |
-| `darkroom_edit_paste` | 貼編輯（`targets`，來源用 `source` 路徑或 `edit` 物件）；`failed` 是失敗數 | `data_dir/edits/` |
+| `darkroom_edit_paste` | 貼編輯（`targets`，來源用 `source` 路徑或 `edit` 物件，`with_geometry` 預設 false＝只換顏色、各張裁切保留）；`failed` 是失敗數 | `data_dir/edits/` |
 | `darkroom_folder_thumbnails` | 縮圖格清單（`folder`、`offset`、`limit`） | `data_dir/thumbs/`、`index/` |
 | `darkroom_thumbnail` | 一張縮圖（`path`）；回傳 `image/jpeg` | `data_dir/thumbs/` |
 | `darkroom_edit_save_preset` | 把一張的編輯存成自存 preset（`path`、`name`、`group`） | 庫 `user/`＋索引 |
@@ -192,6 +193,7 @@ python -s -m darkroom_app.cli edit paste --from <photo-a> <photo-b> <photo-c> --
 ```
 
 結束碼 6 ＝ 部分目標失敗（例如檔案不存在），`results` 逐筆列。
+**貼上預設只貼顏色**：每張照片自己的裁切／旋轉保留；使用者要「連裁切一起套」才加 `--with-geometry`（MCP `with_geometry: true`），而且會換掉它們的裁切，超過一張先確認。
 要把已保存的編輯匯出成檔案：`export <photo>... --dest-dir <dest> --json`，**不要給 `--preset`／`--strength`／`--override`**，每張就用它自己存好的編輯（用的是存編輯當時的 preset 快照，preset 檔後來改過也一樣）；沒有編輯的那張輸出原圖，`used.params_from` 會是 `original`，回報時要講。照片庫讀不到（資料區有問題、編輯檔壞了）時那一筆失敗、原因原樣給，不會默默改匯出原圖。
 
 ### 4. 「幫這張照片套 preset 並保存」（之後在 App 裡打開會看到）
@@ -203,6 +205,21 @@ python -s -m darkroom_app.cli edit clear <photo> --json    # 反悔
 ```
 
 編輯以照片**內容**的 SHA-256 對應，搬移改名不會掉；照片被別的程式改過內容就算另一張。
+
+### 4b. 「把這張轉正／裁成 4:5」（裁切、拉直、旋轉、鏡像）
+
+```powershell
+# 向右轉 90°、拉直 2.5°、裁成 4:5（框不給＝該比例最大的框，空白自動裁掉）
+python -s -m darkroom_app.cli edit set <photo> --preset <id> --rotate 90 --angle 2.5 --aspect 4:5 --json
+# 自己給框（0～1，轉正後的畫面；比例 free 才完全照給的框）
+python -s -m darkroom_app.cli edit set <photo> --aspect free --crop 0.1,0.05,0.9,0.95 --json
+# 先看裁切模式看到的整個畫面（忽略框）
+python -s -m darkroom_app.cli preview <photo> --rotate 90 --angle 2.5 --frame > frame.jpg
+# 拿掉裁切與旋轉（顏色保留）
+python -s -m darkroom_app.cli edit set <photo> --preset <id> --no-geometry --json
+```
+
+**`edit set` 沒給幾何旗標時會保留原本的裁切**；要改顏色不用重給。給了任何一個幾何旗標＝用這次的旗標組一份新的（沒給的欄位取預設：不轉、不鏡像、角度 0、比例 original）。只給 `--aspect`、其他都沒有＝沒有裁切（要裁請同時給 `--crop`，或配 `--angle`／`--rotate`）。縮圖、預覽、匯出都會套用存好的裁切。
 
 ### 5. 「把這個效果存成 preset」
 

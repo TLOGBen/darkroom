@@ -233,8 +233,9 @@ class TestRequest(ExportCase):  # X1 / XP2: request-level checks, nothing writte
                 ("good.jpg", "unknown slider key 'Bogus'"),
                 ("nope", "unknown image_id"),
                 ("", "path is required"),
-                ("", "each item must be an object {image_id | path, preset_id, strength, overrides}"),
-                ("", "unknown item key 'presetid' (allowed: image_id, path, preset_id, strength, overrides)")]
+                # XP35 (CONTRACT-s3-crop C19): the item takes a geometry too, and the sentences say so
+                ("", "each item must be an object {image_id | path, preset_id, strength, overrides, geometry}"),
+                ("", "unknown item key 'presetid' (allowed: image_id, path, preset_id, strength, overrides, geometry)")]
         for r, (source, reason) in zip(res, want):
             self.assertEqual(r, {"ok": False, "source": source, "error": f"匯出失敗：{source}：{reason}"})
         self.assertEqual(res[-1], {"ok": True, "source": "good.jpg",

@@ -18,9 +18,10 @@ import cv2
 import numpy as np
 import torch
 
-from darkroom import Params, read_image, render
+from darkroom import Geometry, Params, read_image, render
 
 PREVIEW_MAX_PIXELS = 1500000  # verbatim constant (B4)
+DETAIL_MAX_PIXELS = 4 * PREVIEW_MAX_PIXELS   # verbatim (CONTRACT-s3-crop D6(B)): the detail base, never above the photo
 from .formats import PHOTO_EXT  # noqa: E402,F401  the one extension table (CONTRACT-heic H7), torch-free home (KP11)
 JPEG_QUALITY = 85
 MAX_OPEN_IMAGES = 8
@@ -49,8 +50,9 @@ class Engine:
         if self.device.type == "cuda":
             lo, hi = torch.cuda.Stream.priority_range()  # (lowest, greatest); greatest is the most negative
             self.stream = torch.cuda.Stream(device=self.device, priority=hi)
-        self.images = OrderedDict()   # image_id -> {"path", "width", "height", "tensor"}
+        self.images = OrderedDict()   # image_id -> {"path", "width", "height", "tensor", "detail"}
         self._lock = threading.Lock()
+        self._detail = None           # (image_id, device tensor): the detail base of the photo cropped last (S3 D6)
 
     # ------------------------------------------------------------------ helpers
     def _on_stream(self):
@@ -74,6 +76,12 @@ class Engine:
         h, w = full.shape[:2]
         pw, ph = preview_size(w, h)
         small = full if (pw, ph) == (w, h) else cv2.resize(full, (pw, ph), interpolation=cv2.INTER_AREA)
+        detail = None                 # S3 D6(B): a bigger host copy (16-bit) for crops, when the photo is bigger
+        if (pw, ph) != (w, h):
+            dw, dh = preview_size(w, h, DETAIL_MAX_PIXELS)
+            d = full if (dw, dh) == (w, h) else cv2.resize(full, (dw, dh), interpolation=cv2.INTER_AREA)
+            detail = (np.clip(d, 0.0, 1.0) * 65535.0 + 0.5).astype(np.uint16)
+            del d
         del full
         host = torch.from_numpy(np.ascontiguousarray(small, dtype=np.float32)).permute(2, 0, 1)[None]
         with self._on_stream():
@@ -81,7 +89,8 @@ class Engine:
         self._sync()
         image_id = uuid.uuid4().hex
         with self._lock:
-            self.images[image_id] = {"path": os.path.abspath(path), "width": w, "height": h, "tensor": t}
+            self.images[image_id] = {"path": os.path.abspath(path), "width": w, "height": h, "tensor": t,
+                                     "detail": detail}
             while len(self.images) > MAX_OPEN_IMAGES:
                 self.images.popitem(last=False)
         return {"image_id": image_id, "width": w, "height": h, "preview_width": pw, "preview_height": ph}
@@ -92,15 +101,59 @@ class Engine:
             self.images.move_to_end(image_id)
             return info
 
-    def preview(self, image_id, params, max_pixels=None):
+    def preview_target(self, image_id, geometry=None, frame=False, max_pixels=None):
+        """(width, height) of the preview of `geometry` (CONTRACT-s3-crop C17): preview_size(output size, max_pixels
+        or 1500000); frame=True: of the whole straightened frame W' x H'. No geometry: as before (L5)."""
+        info = self.get(image_id)
+        t = info["tensor"]
+        if geometry is None or geometry.identity:
+            w, h = int(t.shape[-1]), int(t.shape[-2])
+            return (w, h) if max_pixels is None else preview_size(w, h, max_pixels)
+        W, H = info["width"], info["height"]
+        tw, th = geometry.frame_size(W, H) if frame else geometry.output_size(W, H)
+        return preview_size(tw, th, PREVIEW_MAX_PIXELS if max_pixels is None else max_pixels)
+
+    def _base(self, image_id, info, geometry, frame, pw, ph):
+        """The image the preview samples from (D6(B)): the preview base, or the detail base when the cropped area
+        of the preview base has fewer pixels than the preview needs."""
+        t = info["tensor"]
+        if frame or info.get("detail") is None:
+            return t
+        r = geometry.resolve(info["width"], info["height"])
+        s = t.shape[-1] / info["width"]
+        if r["width"] * s >= pw * 0.999 and r["height"] * s >= ph * 0.999:
+            return t
+        if self._detail is None or self._detail[0] != image_id:
+            self._detail = None
+            host = torch.from_numpy(info["detail"].astype(np.float32) * np.float32(1 / 65535)).permute(2, 0, 1)[None]
+            self._detail = (image_id, host.to(self.device, non_blocking=False).contiguous())
+        return self._detail[1]
+
+    def preview(self, image_id, params, max_pixels=None, geometry=None, frame=False):
         """Render `params` (already at their final values: strength 1) -> (JPEG bytes, milliseconds).
 
         max_pixels (optional): shrink the rendered preview on the device to preview_size(w, h, max_pixels).
+        geometry (a darkroom.Geometry, optional; CONTRACT-s3-crop C17): the picture is cropped / turned first, at
+        preview_target's size; frame=True shows the whole straightened frame (the crop mode).
         """
         if not isinstance(params, Params):
             raise TypeError("params must be a darkroom.Params")
-        t = self.get(image_id)["tensor"]
+        info = self.get(image_id)
+        t = info["tensor"]
         t0 = time.perf_counter()
+        if geometry is not None and not geometry.identity:
+            pw, ph = self.preview_target(image_id, geometry, frame, max_pixels)
+            with self._on_stream():
+                base = self._base(image_id, info, geometry, frame, pw, ph)
+                out = render(base, params, strength=1.0,
+                             geometry=geometry.bound(info["width"], info["height"], pw, ph, frame))
+                u8 = (out[0].clamp(0, 1) * 255.0 + 0.5).to(torch.uint8)
+                host = u8.flip(0).permute(1, 2, 0).contiguous().cpu()
+            self._sync()
+            ok, buf = cv2.imencode(".jpg", host.numpy(), [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY])
+            if not ok:
+                raise RuntimeError("JPEG encoding failed")
+            return buf.tobytes(), (time.perf_counter() - t0) * 1000.0
         with self._on_stream():
             out = render(t, params, strength=1.0)                       # stays on the device
             if max_pixels is not None:
@@ -117,16 +170,17 @@ class Engine:
             raise RuntimeError("JPEG encoding failed")
         return buf.tobytes(), (time.perf_counter() - t0) * 1000.0
 
-    def render_full(self, image, params, bits):
+    def render_full(self, image, params, bits, geometry=None):
         """Export render (CONTRACT-export X3, X11): a full-resolution HxWx3 float32 host image at `params` (final
         values, strength 1) -> host array: bits 8 -> HxWx3 uint8 in BGR order (for cv2.imencode), bits 16 ->
-        HxWx3 uint16 RGB. Same stream as the preview; only that stream is synchronized."""
+        HxWx3 uint16 RGB. Same stream as the preview; only that stream is synchronized. geometry (CONTRACT-s3-crop
+        C19): the output picture is cropped / turned first (its size is the output size)."""
         if not isinstance(params, Params):
             raise TypeError("params must be a darkroom.Params")
         host = torch.from_numpy(np.ascontiguousarray(image, dtype=np.float32)).permute(2, 0, 1)[None]
         with self._on_stream():
             t = host.to(self.device, non_blocking=False)
-            out = render(t, params, strength=1.0)                       # stays on the device
+            out = render(t, params, strength=1.0, geometry=geometry)    # stays on the device
             del t
             x = out[0].clamp(0, 1)
             del out

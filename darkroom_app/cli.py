@@ -6,8 +6,8 @@
     sliders
     open <photo>
     folder <photo>                      (open, then list the folder, in this one process)
-    preview <photo> [--preset ID] [--strength S] [--override KEY=VALUE]... [--max-pixels N]
-    export <photo>... [--preset ID] [--strength S] [--override KEY=VALUE]... | --no-edit
+    preview <photo> [--preset ID] [--strength S] [--override KEY=VALUE]... [--max-pixels N] [geometry] [--frame]
+    export <photo>... [--preset ID] [--strength S] [--override KEY=VALUE]... [geometry] | --no-edit
                       [--format jpeg|png|tiff|webp] [--bit-depth 8|16] [--quality N] [--max-kb N]
                       [--resize MODE=VALUE] [--metadata all|copyright|none] [--remove-gps] [--sharpen TARGET=AMOUNT]
                       [--export-preset NAME] [--dest-dir D]
@@ -19,8 +19,10 @@
     presets rebuild
     presets semantic build [--limit N] [--dry-run] [--wait-seconds S] | semantic status   (CONTRACT-semantic-index)
     groups create <group> | rename <group> <new>          (CONTRACT-preset-library K16)
-    edit get <photo> | set <photo> [--preset ID] [--strength S] [--override KEY=VALUE]... | clear <photo>
-    edit paste --from <photo> <target>... | save-preset <photo> --name N [--group G] | restore <photo>
+    edit get <photo> | set <photo> [--preset ID] [--strength S] [--override KEY=VALUE]... [geometry] | clear <photo>
+    edit paste --from <photo> <target>... [--with-geometry] | save-preset <photo> --name N [--group G] | restore <photo>
+    [geometry] = --rotate 0|90|180|270 --flip --angle DEG --aspect original|free|W:H --crop L,T,R,B | --no-geometry
+                 (CONTRACT-s3-crop C20: any of them = a new geometry from these flags; none = the photo's saved one)
     thumbnails <folder> [--offset N] [--limit N] | thumbnail <photo>      (CONTRACT-photo-library PL6)
 
 Every subcommand takes --json: stdout is then exactly one line {"ok":true,"result":...} or
@@ -40,7 +42,9 @@ import re
 import sys
 
 from . import config
+from . import messages as M
 from .errors import DarkroomError
+from .facade import KEEP
 
 EXIT = {"invalid": 2, "not_found": 3, "conflict": 4, "unavailable": 5}
 EXIT_PARTIAL = 6                        # export / import / paste: some items failed (CONTRACT-export XP11)
@@ -100,6 +104,46 @@ def _pair(first, second):
             return text
         return {first: key, second: _lenient_number(value) if second == "value" else value}
     return parse
+
+
+GEOMETRY_FLAGS = ("rotate", "flip", "angle", "aspect", "crop")      # CONTRACT-s3-crop C20 (+ --no-geometry)
+
+
+def _crop(text):
+    """--crop L,T,R,B -> {left, top, right, bottom}; anything else is a usage error with the constant sentence."""
+    parts = text.split(",")
+    try:
+        values = [float(x) for x in parts]
+    except ValueError:
+        values = None
+    if values is None or len(values) != 4:
+        raise argparse.ArgumentTypeError(M.CLI_BAD_CROP.format(value=text))
+    return dict(zip(("left", "top", "right", "bottom"), values))
+
+
+def _geometry_flags(p):
+    """C20: the geometry flags; raw values go to the service, which judges them (as XP17)."""
+    p.add_argument("--rotate", type=_lenient_int, default=None, help="0, 90, 180 or 270 (clockwise)")
+    p.add_argument("--flip", action="store_true", default=None, help="mirror horizontally (after --rotate)")
+    p.add_argument("--angle", type=_lenient_number, default=None, help="straighten, -45..45 degrees (+ = clockwise)")
+    p.add_argument("--aspect", default=None, help="original (default), free or W:H")
+    p.add_argument("--crop", type=_crop, default=None, metavar="L,T,R,B",
+                   help="the box in 0..1 of the turned frame (default: the largest box of --aspect)")
+    p.add_argument("--no-geometry", action="store_true", help="no rotation, no crop (removes a saved one)")
+
+
+def _geometry(a, parser):
+    """KEEP (no flag: the photo's saved geometry), None (--no-geometry) or a new object from the flags (C20)."""
+    given = [k for k in GEOMETRY_FLAGS if getattr(a, k) is not None]
+    if a.no_geometry:
+        if given:
+            parser.error(f"argument --no-geometry: not allowed with argument --{given[0]}")
+        return None
+    if not given:
+        return KEEP
+    return {"rotate": 0 if a.rotate is None else a.rotate, "flip": bool(a.flip),
+            "angle": 0 if a.angle is None else a.angle, "aspect": "original" if a.aspect is None else a.aspect,
+            "crop": a.crop}
 
 
 def _settings_flags(p):
@@ -206,6 +250,8 @@ def _parser():
     p.add_argument("--override", type=_override, action="append", default=None, metavar="KEY=VALUE",
                    help="slider difference added after strength (repeatable)")
     p.add_argument("--max-pixels", type=int, default=None, help="limit the preview to N pixels")
+    _geometry_flags(p)
+    p.add_argument("--frame", action="store_true", help="the whole straightened frame, crop ignored (C17)")
     p = leaf(sub, "export", "export photos at full resolution as new files (never overwrites); without --preset / "
                             "--strength / --override each photo's saved edit is used")
     p.add_argument("photo", nargs="*")
@@ -215,6 +261,7 @@ def _parser():
     p.add_argument("--strength", type=float, default=None, help="percent, 0..200 (default 100)")
     p.add_argument("--override", type=_override, action="append", default=None, metavar="KEY=VALUE",
                    help="slider difference added after strength (repeatable)")
+    _geometry_flags(p)
     _settings_flags(p)
     p.add_argument("--export-preset", default=None, metavar="NAME", help="saved export settings (flags win)")
     p.add_argument("--dest-dir", default=None, help="existing absolute folder (default: <photo folder>/darkroom 匯出)")
@@ -233,17 +280,21 @@ def _parser():
     esub = edit.add_subparsers(dest="edit_command", required=True, metavar="SUBCOMMAND")
     p = leaf(esub, "get", "the edit kept for a photo")
     p.add_argument("photo")
-    p = leaf(esub, "set", "replace a photo's edit (preset snapshot, strength, overrides); nothing chosen removes it")
+    p = leaf(esub, "set", "replace a photo's edit (preset snapshot, strength, overrides, geometry); nothing chosen "
+                          "removes it; no geometry flag keeps the saved geometry")
     p.add_argument("photo")
     p.add_argument("--preset", default=None, help="preset id")
     p.add_argument("--strength", type=float, default=100, help="percent, 0..200 (default 100)")
     p.add_argument("--override", type=_override, action="append", default=None, metavar="KEY=VALUE",
                    help="slider difference added after strength (repeatable)")
+    _geometry_flags(p)
     p = leaf(esub, "clear", "remove a photo's edit")
     p.add_argument("photo")
-    p = leaf(esub, "paste", "copy one photo's edit onto other photos (their edits are replaced)")
+    p = leaf(esub, "paste", "copy one photo's edit onto other photos (their colours are replaced; each keeps its "
+                            "own crop / rotation unless --with-geometry)")
     p.add_argument("--from", dest="source", required=True, metavar="PHOTO", help="the photo whose edit is copied")
     p.add_argument("target", nargs="*")
+    p.add_argument("--with-geometry", action="store_true", help="also paste the crop / rotation (C14)")
     p = leaf(esub, "save-preset", "save a photo's edit (its preset snapshot x strength + overrides) as a user preset")
     p.add_argument("photo")
     p.add_argument("--name", default=None)
@@ -259,8 +310,9 @@ def _parser():
     return ap
 
 
-def _run(a, facade):
+def _run(a, facade, parser=None):
     cmd = a.command
+    parser = parser or _parser()
     if cmd == "presets":
         sc = a.presets_command
         if sc == "list":
@@ -299,11 +351,21 @@ def _run(a, facade):
         return facade.slider_table()
     if cmd == "export":           # every photo is a path item with the same parameters; nothing is opened first
         overrides = dict(a.override) if a.override else None
-        if a.preset is None and a.strength is None and overrides is None and not a.no_edit:
+        geometry = _geometry(a, parser)
+        if a.no_edit and (geometry is not KEEP or a.no_geometry):
+            flag = "--no-geometry" if a.no_geometry else "--" + next(k for k in GEOMETRY_FLAGS
+                                                                     if getattr(a, k) is not None)
+            parser.error(f"argument --no-edit: not allowed with argument {flag}")
+        if a.preset is None and a.strength is None and overrides is None and not a.no_edit and geometry is KEEP:
             items = [{"path": p} for p in a.photo]            # E15: each photo's saved edit
-        else:
+        elif geometry is KEEP and not a.no_edit:              # XP35: the saved geometry with the given colours
             strength = 100 if a.strength is None else a.strength
             items = [{"path": p, "preset_id": a.preset, "strength": strength, "overrides": overrides}
+                     for p in a.photo]
+        else:                                                 # --no-edit: the photo as it is (no geometry either)
+            strength = 100 if a.strength is None else a.strength
+            g = None if a.no_edit else geometry
+            items = [{"path": p, "preset_id": a.preset, "strength": strength, "overrides": overrides, "geometry": g}
                      for p in a.photo]
         s = _settings(a)
         return facade.export(items, s["format"], s["quality"], a.dest_dir, bit_depth=s["bit_depth"],
@@ -323,10 +385,12 @@ def _run(a, facade):
             return facade.get_edit(a.photo)
         if sc == "set":
             overrides = dict(a.override) if a.override else None
-            return facade.set_edit(a.photo, a.preset, a.strength, overrides)
+            return facade.set_edit(a.photo, a.preset, a.strength, overrides, geometry=_geometry(a, parser))
         if sc == "clear":
             return facade.clear_edit(a.photo)
         if sc == "paste":
+            if a.with_geometry:
+                return facade.paste_edit(a.target, a.source, None, with_geometry=True)
             return facade.paste_edit(a.target, a.source, None)
         if sc == "restore":
             return facade.restore_edit(a.photo)
@@ -335,13 +399,17 @@ def _run(a, facade):
         return facade.folder_thumbnails(a.folder, a.offset, a.limit)
     if cmd == "thumbnail":
         return facade.thumbnail(a.photo)
+    geometry = _geometry(a, parser) if cmd == "preview" else KEEP     # usage errors before the photo is read
     info = facade.open_photo(a.photo)
     if cmd == "open":
         return info
     if cmd == "folder":
         return facade.list_folder(info["image_id"])
     overrides = dict(a.override) if a.override else None
-    return facade.preview(info["image_id"], a.preset, a.strength, overrides, a.max_pixels)
+    extra = {} if geometry is KEEP else {"geometry": geometry}
+    if a.frame:
+        extra["frame"] = True
+    return facade.preview(info["image_id"], a.preset, a.strength, overrides, a.max_pixels, **extra)
 
 
 def _is_import(a):
@@ -412,7 +480,8 @@ def _reconfigure():
 
 def main(argv=None, facade=None):
     _reconfigure()
-    a = _parser().parse_args(argv)          # usage errors: argparse exits with 2
+    parser = _parser()
+    a = parser.parse_args(argv)             # usage errors: argparse exits with 2
     # S2 E19: relative folders are made absolute against the working directory before anything uses them
     a.preset_dir = os.path.abspath(a.preset_dir) if a.preset_dir else a.preset_dir
     a.data_dir = os.path.abspath(a.data_dir) if a.data_dir else a.data_dir
@@ -430,7 +499,7 @@ def main(argv=None, facade=None):
             _line(CONFIG_ERROR.format(e=e), sys.stderr)
             return 2
     try:
-        result = _run(a, facade)
+        result = _run(a, facade, parser)
     except config.ConfigError as e:         # the data folder is resolved on first use (PLP8): same line, exit 2
         _line(CONFIG_ERROR.format(e=e), sys.stderr)
         return 2

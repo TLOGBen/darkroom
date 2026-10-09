@@ -507,8 +507,9 @@ class TestCliControllerWithFake(unittest.TestCase):  # L7 / L9 / L13
         # XP30 / S2 E26: no --preset / --strength / --override -> path-only items (the saved edit), format None
         self.assertEqual(fake.calls[-1], ("export", ([{"path": "a.jpg"}], None, None, None)))
         rc, out, err = self.run_cli(["export", "a.jpg", "--no-edit", "--json"], fake)
+        # XP35 (CONTRACT-s3-crop C19): --no-edit = no preset and no geometry (the photo as it is)
         self.assertEqual(fake.calls[-1], ("export", ([{"path": "a.jpg", "preset_id": None, "strength": 100,
-                                                       "overrides": None}], None, None, None)))
+                                                       "overrides": None, "geometry": None}], None, None, None)))
         rc, out, err = self.run_cli(["export", "--quality", "abc", "--json"], fake)   # the service judges it
         self.assertEqual(fake.calls[-1], ("export", ([], None, "abc", None)))
         fake.fail["export"] = DarkroomError("invalid", "沒有要匯出的照片")

@@ -560,7 +560,11 @@ class TestPaste(PhotoLibCase):
         edit = self.f.get_edit(a)["edit"]
         reasons = [
             ("x", "not an object"), ({"schema": "darkroom-edit/1"}, "keys must be exactly schema, fingerprint, preset, strength, overrides"),
-            ({**edit, "schema": "darkroom-edit/2"}, "schema is 'darkroom-edit/2', not darkroom-edit/1"),
+            ({**edit, "schema": "darkroom-edit/3"}, "schema is 'darkroom-edit/3', not darkroom-edit/1"),
+            # CONTRACT-s3-crop C12 (PL9'): /2 is read too - with its geometry key, and only a valid geometry
+            ({**edit, "schema": "darkroom-edit/2"},
+             "keys must be exactly schema, fingerprint, preset, strength, overrides, geometry"),
+            ({**edit, "schema": "darkroom-edit/2", "geometry": {"rotate": 45}}, "rotate 要是 0、90、180、270 其中之一：45"),
             ({**edit, "preset": {"id": "p"}}, "preset must be null or {id, name, group, params}"),
             ({**edit, "preset": {**edit["preset"], "params": {"schema": "x"}}},
              "params: not a darkroom-params/1 parameter object (schema='x')"),
@@ -1169,8 +1173,9 @@ class TestPhotoLibraryHttp(AioHTTPTestCase):
         from darkroom_app.server import x_edit                                 # seal F6: encodeURIComponent exactly
         self.assertEqual(x_edit({"preset": "A (2)!*'", "strength": 100, "status": "current"}),
                          "%7B%22preset%22%3A%22A%20(2)!*'%22%2C%22strength%22%3A100%2C%22status%22%3A%22current%22%7D")
-        self.assertEqual(json.loads(unquote(r.headers["X-Edit"])),
-                         {"preset": "曝光一", "strength": 130, "status": "current"})   # Chinese name survives
+        self.assertEqual(json.loads(unquote(r.headers["X-Edit"])),                # + S8b geometry / tweaks (C18)
+                         {"preset": "曝光一", "strength": 130, "status": "current", "geometry": False,
+                          "tweaks": False})                                            # Chinese name survives
         _xmpgen.write(self.presets, "p-expo.xmp", _xmpgen.xmp_text({"Exposure2012": "+2.50"}, name="變了", group="風景 - 海邊"))
         self.app[FACADE].rebuild_library()
         r = await self.client.get("/api/thumbnail", params={"path": a})
@@ -1181,10 +1186,11 @@ class TestPhotoLibraryHttp(AioHTTPTestCase):
         self.assertEqual(json.loads(unquote(r.headers["X-Edit"]))["status"], "missing")
         await self.client.put("/api/edit", json={"path": a, "preset_id": None, "overrides": {"Exposure2012": 0.3}})
         r = await self.client.get("/api/thumbnail", params={"path": a})
-        self.assertEqual(json.loads(unquote(r.headers["X-Edit"])), {"preset": None, "strength": 100, "status": None})
+        self.assertEqual(json.loads(unquote(r.headers["X-Edit"])), {"preset": None, "strength": 100, "status": None,
+                                                                    "geometry": False, "tweaks": True})
         # the CLI / MCP thumbnail result shape is unchanged (the summary is an HTTP header only)
         res = self.app[FACADE].thumbnail(a)
-        self.assertEqual(res.edit, {"preset": None, "strength": 100, "status": None})
+        self.assertEqual(res.edit, {"preset": None, "strength": 100, "status": None, "geometry": False, "tweaks": True})
         from darkroom_app.mcp_server.tools import Tools
         out = Tools(lambda: self.app[FACADE]).call("darkroom_thumbnail", {"path": a})
         self.assertEqual(set(out["structuredContent"]), {"fingerprint", "edited", "width", "height"})

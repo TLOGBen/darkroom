@@ -3,6 +3,7 @@
 Controllers (HTTP handlers, CLI, MCP tools) are checked against it for format translation only: what they pass
 to the facade, how a result is serialized, how each DarkroomError kind and an unexpected exception come out.
 """
+from darkroom_app.facade import KEEP
 from darkroom_app.services.photo_library import ThumbnailResult
 from darkroom_app.services.preview import PreviewResult
 
@@ -44,8 +45,11 @@ class FakeDarkroom:
     def list_folder(self, image_id):
         return self._do("list_folder", (image_id,), {"folder": "F", "files": [], "index": -1})
 
-    def preview(self, image_id, preset_id=None, strength=100, overrides=None, max_pixels=None):
-        return self._do("preview", (image_id, preset_id, strength, overrides, max_pixels),
+    def preview(self, image_id, preset_id=None, strength=100, overrides=None, max_pixels=None, *, geometry=KEEP,
+                frame=False):
+        # CONTRACT-s3-crop C20: geometry / frame are recorded only when given (old calls unchanged)
+        s3 = {k: v for k, v in (("geometry", geometry), ("frame", frame)) if v is not KEEP and v is not False}
+        return self._do("preview", (image_id, preset_id, strength, overrides, max_pixels) + ((s3,) if s3 else ()),
                         PreviewResult(JPEG, 1.23456, 4, 2))
 
     def export(self, items, format=None, quality=None, dest_dir=None, *, bit_depth=None, max_kb=None, resize=None,
@@ -94,17 +98,19 @@ class FakeDarkroom:
     def get_edit(self, path):
         return self._do("get_edit", (path,), {"fingerprint": FP, "edit": EDIT, "preset_status": None})
 
-    def set_edit(self, path, preset_id=None, strength=100, overrides=None):
-        return self._do("set_edit", (path, preset_id, strength, overrides),
+    def set_edit(self, path, preset_id=None, strength=100, overrides=None, *, geometry=KEEP):
+        extra = () if geometry is KEEP else ({"geometry": geometry},)       # C20: recorded only when given
+        return self._do("set_edit", (path, preset_id, strength, overrides) + extra,
                         {"fingerprint": FP, "edit": EDIT, "preset_status": None})
 
     def clear_edit(self, path):
         return self._do("clear_edit", (path,), {"fingerprint": FP, "edit": None, "preset_status": None})
 
-    def paste_edit(self, targets, source=None, edit=None):
+    def paste_edit(self, targets, source=None, edit=None, *, with_geometry=False):
         results = [{"ok": True, "target": "a.jpg"},
                    {"ok": False, "target": "b.jpg", "error": "photo not found: b.jpg"}][: len(targets or [])]
-        return self._do("paste_edit", (targets, source, edit), {"results": results})
+        extra = ({"with_geometry": with_geometry},) if with_geometry is not False else ()   # C20: only when given
+        return self._do("paste_edit", (targets, source, edit) + extra, {"results": results})
 
     def folder_thumbnails(self, folder, offset=0, limit=None):
         return self._do("folder_thumbnails", (folder, offset, limit),

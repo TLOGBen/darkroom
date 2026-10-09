@@ -50,6 +50,7 @@
   <section class="col" id="col-pv">
     <div class="pv-tools">
       <span class="seg"><button id="hold" title="按住看原圖（快捷鍵：按住 \）">按住看原圖</button><button id="ab-btn" title="對照：左邊原圖、右邊編輯後，拖分隔線比較（快捷鍵：Y）" aria-pressed="false" disabled>對照</button></span>
+      <button id="crop-btn" title="裁切：拖框、選比例、拉直、旋轉、鏡像（快捷鍵：R；Enter 完成、Esc 取消）" aria-pressed="false" disabled>裁切</button>
       <span id="skip-banner" class="warnbar" role="button" tabindex="0" hidden></span><span id="skip-note" class="skipnote" role="button" tabindex="0" hidden></span>
       <span id="edit-status" class="editstatus" hidden></span>
       <button id="restore-previous-btn" title="取回上一份：把最近一次被還原（清除）的編輯拿回來" disabled>取回上一份</button>
@@ -58,6 +59,20 @@
       <button id="save-preset-btn" title="把目前的 preset × 強度＋微調存成自存 preset（不改目前的編輯）" disabled>存成 preset</button>
       <button id="export-btn" title="匯出：打開匯出設定（格式、尺寸、中繼資料、銳利化），按 Enter 用全解析度匯出成新檔，存進照片旁的「darkroom 匯出」資料夾" aria-haspopup="dialog" disabled>匯出</button>
     </div>
+    <div id="crop-panel" class="crop-bar" role="toolbar" aria-label="裁切" hidden>
+      <label for="crop-aspect" class="mute">比例</label><select id="crop-aspect" title="裁切比例（預設：原始比例，鎖定）"></select>
+      <button id="crop-orient" title="直式／橫式互換（快捷鍵：X）">直式</button>
+      <label for="crop-angle" class="mute">拉直</label><input id="crop-angle" type="range" min="-45" max="45" step="0.1" value="0" title="拉直（雙擊歸 0）"><input type="number" id="crop-angle-num" min="-45" max="45" step="0.1" value="0" title="拉直角度（度，-45～45）">
+      <button id="rotate-left" title="向左轉 90°（Ctrl+[）">向左轉 90°</button>
+      <button id="rotate-right" title="向右轉 90°（Ctrl+]）">向右轉 90°</button>
+      <button id="flip-h" title="水平鏡像">水平鏡像</button>
+      <button id="flip-v" title="垂直鏡像">垂直鏡像</button>
+      <button id="crop-reset" title="重設：回到沒有裁切、拉直與旋轉（Ctrl+Z 可拿回）">重設</button>
+      <span id="crop-hint" class="mute">拖曳框或把手調整範圍；Enter 完成、Esc 取消</span>
+      <span class="sp"></span>
+      <button id="crop-cancel" title="取消（Esc）：丟掉這次的裁切">取消</button>
+      <button id="crop-done" class="primary" title="完成（Enter）">完成</button>
+    </div>
     <div class="pv-wrap" id="preview">
       <img id="preview-img" alt="預覽" hidden>
       <div class="pv-empty" id="preview-empty">在上方輸入照片路徑後按「開啟」</div>
@@ -65,6 +80,7 @@
       <img id="ab-orig" alt="" aria-hidden="true">
       <div id="ab-divider"><div id="ab-handle" tabindex="0" role="slider" aria-label="對照分隔線" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50"><i></i><i></i></div></div>
       <span class="ab-tag" id="ab-tag-a">原圖</span><span class="ab-tag" id="ab-tag-b">編輯後</span>
+      <div id="crop-box" tabindex="0" role="group" aria-label="裁切框（拖曳移動，方向鍵 0.5%、Shift 5%）" hidden><b class="thirds"></b><i data-h="nw"></i><i data-h="n"></i><i data-h="ne"></i><i data-h="e"></i><i data-h="se"></i><i data-h="s"></i><i data-h="sw"></i><i data-h="w"></i></div>
       <div id="skip-detail" class="skip-detail" role="dialog" aria-label="無法套用的設定（完整內容）" hidden></div>
       <div class="canvas-pick" role="group" aria-label="預覽底色">
         <button class="c-dark" data-canvas="dark" title="底色：深灰" aria-pressed="true"></button>
@@ -106,7 +122,8 @@
     <span id="grid-pending" class="mute" hidden></span>
     <span class="sp"></span>
     <button id="copy-edit-btn" title="複製目前照片的編輯（preset 快照、強度、微調）" disabled>複製編輯</button>
-    <button id="paste-edit-btn" title="把複製的編輯貼到選取的照片，取代它們原本的編輯" disabled>貼上編輯</button>
+    <button id="paste-edit-btn" title="把複製的編輯貼到選取的照片，取代它們原本的顏色（各自的裁切與旋轉保留，除非勾選旁邊的選項）" disabled>貼上編輯</button>
+    <label class="xd-check" title="貼上時也換掉選取照片的裁切與旋轉"><input id="paste-geometry" type="checkbox">連同裁切與旋轉</label>
     <button id="grid-reset-original-btn" title="還原成原圖：移除選取照片的編輯（可用「取回上一份」拿回來）" disabled>還原成原圖</button>
     <button id="grid-restore-btn" title="取回上一份：把選取照片最近一次被清掉的編輯放回去" disabled>取回上一份</button>
     <button id="export-selected-btn" title="用各自存好的編輯、全解析度匯出選取的照片（先打開匯出設定）" aria-haspopup="dialog" disabled>匯出所選</button>

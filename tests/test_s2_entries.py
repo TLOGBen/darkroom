@@ -451,8 +451,9 @@ class TestCliS2(unittest.TestCase):
         self.run_cli(["export", "a.jpg", "b.jpg", "--json"], fake)
         self.assertEqual(fake.calls[-1], ("export", ([{"path": "a.jpg"}, {"path": "b.jpg"}], None, None, None)))
         self.run_cli(["export", "a.jpg", "--no-edit", "--json"], fake)
+        # XP35 (CONTRACT-s3-crop C19): --no-edit = preset_id null and geometry null
         self.assertEqual(fake.calls[-1], ("export", ([{"path": "a.jpg", "preset_id": None, "strength": 100,
-                                                       "overrides": None}], None, None, None)))
+                                                       "overrides": None, "geometry": None}], None, None, None)))
         self.run_cli(["export", "a.jpg", "--strength", "50", "--json"], fake)
         self.assertEqual(fake.calls[-1][1][0], [{"path": "a.jpg", "preset_id": None, "strength": 50.0,
                                                  "overrides": None}])

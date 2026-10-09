@@ -34,6 +34,7 @@ from .errors import DarkroomError
 from .facade import Facade
 from .messages import OPEN_ERROR  # noqa: F401  (re-exported: verbatim constant, CONTRACT-heic)
 from .presets import Library
+from .facade import KEEP      # CONTRACT-s3-crop C20: a body without "geometry" = the photo's saved geometry
 
 HOST = "127.0.0.1"          # only ever bound to the local machine (B2)
 DEFAULT_PORT = 8765
@@ -116,6 +117,9 @@ async def _call(request, operation, *args):
         keys = ("bit_depth", "max_kb", "resize", "metadata", "remove_gps", "sharpen", "export_preset")
         fn = getattr(request.app[FACADE], operation)
         return await asyncio.to_thread(lambda: fn(*args[:4], **dict(zip(keys, args[4:]))))
+    if args and isinstance(args[-1], dict) and operation in ("preview", "set_edit", "paste_edit"):
+        fn = getattr(request.app[FACADE], operation)         # CONTRACT-s3-crop C20: keyword-only in the facade
+        return await asyncio.to_thread(lambda: fn(*args[:-1], **args[-1]))
     return await asyncio.to_thread(getattr(request.app[FACADE], operation), *args)
 
 
@@ -164,7 +168,8 @@ async def api_preview(request):
     body = await _json_body(request)
     try:
         res = await _call(request, "preview", body.get("image_id"), body.get("preset_id"),
-                          body.get("strength", 100), body.get("overrides"))
+                          body.get("strength", 100), body.get("overrides"), None,
+                          {"geometry": body.get("geometry", KEEP), "frame": body.get("frame", False)})
     except DarkroomError as e:
         return _error(e)
     return web.Response(body=res.jpeg, content_type="image/jpeg",
@@ -251,7 +256,7 @@ async def api_edit_set(request):
     if "data_dir" in body:                 # an interface rule (PLP2): the data folder is configured, never sent
         return web.json_response({"error": DATA_DIR_REFUSED}, status=400)
     return await _json(request, "set_edit", body.get("path"), body.get("preset_id"), body.get("strength", 100),
-                       body.get("overrides"))
+                       body.get("overrides"), {"geometry": body.get("geometry", KEEP)})
 
 
 async def api_edit_clear(request):
@@ -262,7 +267,8 @@ async def api_edit_paste(request):
     body = await _json_body(request)
     if "data_dir" in body:
         return web.json_response({"error": DATA_DIR_REFUSED}, status=400)
-    return await _json(request, "paste_edit", body.get("targets"), body.get("source"), body.get("edit"))
+    return await _json(request, "paste_edit", body.get("targets"), body.get("source"), body.get("edit"),
+                       {"with_geometry": body.get("with_geometry", False)})
 
 
 async def api_edit_save_preset(request):

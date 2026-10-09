@@ -105,7 +105,10 @@ PROTECTED = ("#carry-hint", ".hint", "#reset-all", "#undo", "#redo", "#toggle-li
              "#export-dialog", "#export-backdrop", ".xd", "#xd-preset", "#xd-preset-save", "#xd-preset-delete", "#xd-bit-depth",
              "#xd-max-kb-on", "#xd-max-kb", "#xd-resize-mode", "#xd-resize-value", "#xd-metadata", "#xd-remove-gps",
              "#xd-sharpen-target", "#xd-sharpen-amount", "#xd-summary", "#xd-go", "#xd-cancel", "#cap-btn", "#cap-refresh",
-             "#cap-detail", ".menu-pop")
+             "#cap-detail", ".menu-pop",
+             # + CONTRACT-s3-crop C27 (S18'): the crop button and every control of the crop mode
+             "#crop-btn", "#crop-aspect", "#crop-orient", "#crop-angle", "#rotate-left", "#rotate-right", "#flip-h",
+             "#flip-v", "#crop-reset", "#crop-done", "#crop-cancel", "#paste-geometry")
 
 
 def hidden_in_media(css):
@@ -163,6 +166,117 @@ class TestLogicJs(unittest.TestCase):
 
 
 class TestPageStructure(unittest.TestCase):
+
+    # ------------------------------------------------------------ CONTRACT-s3-crop C22-C27
+    def test_crop_mode_structure(self):  # C22 (D10): Enter / Esc, the ways that commit, cancel never dispatches
+        js, html = read("app.js"), read("index.html")
+        crop = js[js.index("// ------------------------------------------------------------------ S3 crop mode"):
+                  js.index("// ------------------------------------------------------------------ wiring")]
+        key = crop[crop.index("function cropKey(e)"):]
+        self.assertIn("if (e.key === 'Escape') { e.preventDefault(); leaveCrop(false); return true; }", key)
+        self.assertIn("if (e.key === 'Enter' && !(e.target.matches && e.target.matches('button, select, input'))) {\n"
+                      "    e.preventDefault(); leaveCrop(true); return true;", key)
+        self.assertIn("cropStep(e.shiftKey ? 'redo' : 'undo')", key)                       # Ctrl+Z moves the draft only
+        self.assertIn("if (cropActive() && cropKey(e)) return;", js)
+        # every way out but Esc / 取消 commits
+        for fn, line in (("async function openPhoto", "await leaveCrop(true);"),
+                         ("async function showGrid", "if (on) await leaveCrop(true);"),
+                         ("async function openExportDialog", "await leaveCrop(true);"),
+                         ("async function resetOriginal", "await leaveCrop(true);")):
+            body = js[js.index(fn):js.index("\n}\n", js.index(fn))]
+            self.assertIn(line, body, fn)
+        self.assertIn("$('#crop-btn').onclick = () => (cropActive() ? leaveCrop(true) : enterCrop());", crop)
+        self.assertIn("$('#crop-done').onclick = () => leaveCrop(true);", crop)
+        self.assertIn("$('#crop-cancel').onclick = () => leaveCrop(false);", crop)
+        self.assertIn("if (cropActive()) leaveCrop(true); else enterCrop();", js)          # R
+        self.assertIn("if (k === 'r' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && !e.repeat) {", js)
+        leave = crop[crop.index("async function leaveCrop"):crop.index("function cropChange")]
+        self.assertEqual(leave.count("dispatch("), 1)
+        self.assertIn("if (commit && s.result.changed) await dispatch({type: 'setGeometry', geometry: s.result.geometry});",
+                      leave)
+        # the draft never goes through the reducer and never schedules a save
+        for banned in ("scheduleSave", "L.reduce", "flushSave"):
+            self.assertNotIn(banned, crop, banned)
+        draft = crop[crop.index("function cropChange"):crop.index("function geometryAct")]
+        self.assertNotIn("dispatch(", draft)
+        self.assertIn("crop.s = L.cropSession(crop.s, {type: 'change', draft, gesture});", draft)
+        self.assertRegex(html, r'<div id="crop-panel" class="crop-bar" role="toolbar" aria-label="裁切" hidden>')
+        self.assertRegex(html, r'<button id="crop-btn"[^>]*aria-pressed="false" disabled>裁切</button>')
+
+    def test_crop_controls_structure(self):  # C23 constants: controls, texts, the box, no preview while dragging
+        js, html, css = read("app.js"), read("index.html"), read("app.css")
+        panel = html[html.index('<div id="crop-panel"'):html.index('<div class="pv-wrap" id="preview">')]
+        for ident, text in (("rotate-left", "向左轉 90°"), ("rotate-right", "向右轉 90°"), ("flip-h", "水平鏡像"),
+                            ("flip-v", "垂直鏡像"), ("crop-reset", "重設"), ("crop-done", "完成"), ("crop-cancel", "取消"),
+                            ("crop-orient", "直式")):
+            self.assertRegex(panel, r'<button id="%s"[^>]*>%s</button>' % (ident, re.escape(text)))
+        self.assertIn('<label for="crop-angle" class="mute">拉直</label>', panel)
+        self.assertRegex(panel, r'<input id="crop-angle" type="range" min="-45" max="45" step="0.1" value="0"')
+        self.assertRegex(panel, r'<select id="crop-aspect"')
+        self.assertIn('<span id="crop-hint" class="mute">拖曳框或把手調整範圍；Enter 完成、Esc 取消</span>', panel)
+        wrap = html[html.index('<div class="pv-wrap" id="preview">'):html.index('<div class="strength">')]
+        box = wrap[wrap.index('<div id="crop-box"'):wrap.index("</div>", wrap.index('<div id="crop-box"'))]
+        self.assertEqual(re.findall(r'data-h="(\w+)"', box), ["nw", "n", "ne", "e", "se", "s", "sw", "w"])
+        self.assertIn('class="thirds"', box)
+        self.assertRegex(css, r"#crop-box \{[^}]*box-shadow: 0 0 0 9999px")                  # outside darkened
+        self.assertRegex(css, r"#crop-box\.dragging \.thirds \{ opacity: 1; \}")             # thirds while dragging
+        crop = js[js.index("// ------------------------------------------------------------------ S3 crop mode"):
+                  js.index("// ------------------------------------------------------------------ wiring")]
+        move = crop[crop.index("box.addEventListener('pointermove'"):crop.index("const up = () =>")]
+        for banned in ("api(", "requestPreview", "/api/preview", "dispatch("):                # dragging never renders
+            self.assertNotIn(banned, move, banned)
+        self.assertIn("cropChange(L.cropDrag(g.start, size, g.handle, (e.clientX - g.x) / g.w, (e.clientY - g.y) / g.h), "
+                      "'drag');", move)
+        change = crop[crop.index("function cropChange"):crop.index("function cropStep")]
+        self.assertIn("if (frameKey(crop.s.draft) !== before) requestPreview();", change)   # only a new frame renders
+        self.assertIn("const frameKey = (g) => JSON.stringify([g.rotate, g.flip, g.angle]);", crop)
+        self.assertIn("for (const [v, label] of L.aspectOptions(orient === 'landscape')) {", crop)
+        self.assertIn("const b = L.fitCrop(crop.s.draft, width, height).box;", crop)         # C3: the one rule draws
+        self.assertIn("$('#crop-angle').addEventListener('dblclick', () => angle(0));", crop)
+        self.assertIn("const mv = L.cropKeyMove(e.key, e.shiftKey);", crop)
+        self.assertIn("pv.pending = {body: frame ? frameRequest() : currentRequest(), seq: ++pv.seq, "
+                      "kind: frame ? 'frame' : 'edit'};", js)
+        self.assertIn("return Object.assign(currentRequest(), {geometry: L.normGeometry(d), frame: true});", crop)
+        self.assertIn("if ((e.ctrlKey || e.metaKey) && (e.key === '[' || e.key === ']')) {", js)   # rotate outside too
+        self.assertIn("dispatch({type: 'setGeometry', geometry: L.geometryAction(ed.geometry, action, width, height)});",
+                      crop)
+
+    def test_ab_crop_mode_structure(self):  # C25 (S7'): the original with the same geometry; no A/B while cropping
+        js = read("app.js")
+        self.assertIn("return {body, key: L.originalKey(st.image.image_id, g, frame)};", js)
+        orq = js[js.index("function originalRequest()"):js.index("async function ensureOriginal")]
+        self.assertIn("const body = {image_id: st.image.image_id, preset_id: null, strength: 100, overrides: {}, "
+                      "geometry: L.normGeometry(g)};", orq)
+        self.assertIn("if (st.originalFor === key) return true;", js)
+        self.assertIn("if (want && (!st.image || cropActive())) return;", js)
+        ref = js[js.index("function refreshAb()"):js.index("function initCompare")]
+        self.assertIn("b.disabled = !st.image || cropActive();", ref)
+        self.assertIn("b.title = cropActive() ? L.AB_DISABLED_CROP : b.dataset.title0;", ref)
+        self.assertIn("if (ab.on) abToggle(false);", js[js.index("function enterCrop"):js.index("async function leaveCrop")])
+        self.assertIn("if (k === L.AB_KEY) return true;      // C25: no A/B while cropping", js)
+
+    def test_grid_paste_geometry_structure(self):  # C26: the check box, off by default, never remembered
+        js, html = read("app.js"), read("index.html")
+        self.assertIn('<label class="xd-check" title="貼上時也換掉選取照片的裁切與旋轉"><input id="paste-geometry" '
+                      'type="checkbox">連同裁切與旋轉</label>', html)
+        grid = html[html.index('<main id="grid" hidden>'):html.index("</main>", html.index('<main id="grid"'))]
+        self.assertLess(grid.index('id="paste-edit-btn"'), grid.index('id="paste-geometry"'))
+        self.assertNotRegex(html, r'id="paste-geometry"[^>]*checked')
+        self.assertNotIn("paste-geometry", js.replace("const withGeometry = $('#paste-geometry').checked;", ""))
+        paste = js[js.index("async function pasteEdit"):js.index("async function exportSelected")]
+        self.assertIn("with_geometry: withGeometry", paste)
+        self.assertIn("confirm(L.pasteConfirmWith(st.clipboard.name, targets.length, withGeometry))", paste)
+
+    def test_photo_switch_drops_geometry(self):  # C24 (S11'): another photo starts without the crop of this one
+        js = read("app.js")
+        op = js[js.index("async function openPhoto"):js.index("function openFailed")]
+        i = op.index("st.image = Object.assign(info, {path});")
+        j = op.index("await dispatch({type: 'carry'}, {restore: true});")
+        self.assertLess(i, j)
+        self.assertLess(j, op.index("await loadEdit(path, token);"))
+        self.assertIn("const carryGeometry = () => null;", read("logic.js"))
+        dispatch = js[js.index("async function dispatch"):js.index("const undo = ")]
+        self.assertIn("JSON.stringify(prev.geometry) === JSON.stringify(ed.geometry);", dispatch)
     def test_three_columns_and_logic_loaded(self):  # B9
         html = read("index.html")
         for ident in ("preset-tree", "preview", "sliders", "strength"):
@@ -223,7 +337,10 @@ class TestPageStructure(unittest.TestCase):
                       # + S2 E29 / E30
                       "export-dialog", "xd-preset", "xd-preset-save", "xd-preset-delete", "xd-bit-depth", "xd-max-kb-on",
                       "xd-max-kb", "xd-resize-mode", "xd-resize-value", "xd-metadata", "xd-remove-gps", "xd-sharpen-target",
-                      "xd-sharpen-amount", "xd-summary", "xd-go", "xd-cancel", "cap-btn", "cap-refresh"):
+                      "xd-sharpen-amount", "xd-summary", "xd-go", "xd-cancel", "cap-btn", "cap-refresh",
+                      # + CONTRACT-s3-crop C27 (the crop panel itself may be hidden: it is a mode)
+                      "crop-btn", "crop-aspect", "crop-orient", "crop-angle", "rotate-left", "rotate-right", "flip-h",
+                      "flip-v", "crop-reset", "crop-done", "crop-cancel", "paste-geometry"):
             tag = re.search(r'<[a-z]+ id="%s"[^>]*>' % ident, html).group(0)
             self.assertNotRegex(tag, r"\shidden(?:[\s=>])", ident)
         self.assertRegex(html, r'<span id="carry-hint"[^>]*title="沿用上一張的設定（還不是這張的編輯，會再沿用到下一張）"')
@@ -503,7 +620,7 @@ class TestPageStructure(unittest.TestCase):
         self.assertIn("function unloadSave()", js)                                                # (g)
         self.assertIn("if (!job.retried) {", js)
         paste = js[js.index("async function pasteEdit"):js.index("async function exportSelected")]   # (h)
-        self.assertLess(paste.index("await flushSave();"), paste.index("confirm(L.pasteConfirm("))
+        self.assertLess(paste.index("await flushSave();"), paste.index("confirm(L.pasteConfirmWith("))   # + C26
         self.assertIn("const GRID_EMPTY = '這個資料夾沒有支援的照片（JPEG／PNG／TIFF／HEIC）';", read("logic.js"))   # (j)
         self.assertIn("e.textContent = L.GRID_EMPTY;", js)
         self.assertRegex(css, r"#grid-count(?:, #grid-pending)? \{[^}]*white-space: nowrap;")    # (k)
@@ -673,8 +790,9 @@ class TestPageStructure(unittest.TestCase):
         self.assertIn("$('#copy-edit-btn').disabled = !st.edit;", grid_js)
         self.assertIn("$('#paste-edit-btn').disabled = !(st.clipboard && st.grid.sel.size > 0);", grid_js)
         self.assertIn("$('#export-selected-btn').disabled = !(st.grid.sel.size > 0);", grid_js)
-        self.assertIn("confirm(L.pasteConfirm(st.clipboard.name, targets.length))", grid_js)
-        self.assertIn("api('POST', '/api/edit/paste', {targets, edit: st.clipboard.edit})", grid_js)
+        # CONTRACT-s3-crop C26: the confirmation names the geometry when it is pasted too; with_geometry is the box
+        self.assertIn("confirm(L.pasteConfirmWith(st.clipboard.name, targets.length, withGeometry))", grid_js)
+        self.assertIn("api('POST', '/api/edit/paste', {targets, edit: st.clipboard.edit, with_geometry: withGeometry})", grid_js)
         self.assertIn("toast(L.copied(st.clipboard.name));", grid_js)
         self.assertIn("gridBatchDone(L.pasteDone, targets, res.results);", grid_js)
         export_sel = grid_js[grid_js.index("async function exportSelected"):]
@@ -765,8 +883,9 @@ class TestPageStructure(unittest.TestCase):
         self.assertNotIn("{path: st.image.path}", cei)
         self.assertEqual(cei.count("return "), 1)
         req = js[js.index("function currentRequest()"):js.index("function requestPreview()")]
-        self.assertIn("return {image_id: st.image.image_id, preset_id: ed.presetId, strength: strengthNow(), overrides};",
-                      req)
+        # XP35 (CONTRACT-s3-crop C19): the shown geometry goes with it too (null included)
+        self.assertIn("return {image_id: st.image.image_id, preset_id: ed.presetId, strength: strengthNow(), overrides,"
+                      "\n          geometry: L.normGeometry(ed.geometry)};", req)
         # seal F3: the dialog's checkboxes are read as .checked on the real path, into the keys settingsFromForm uses
         fv = js[js.index("function formValues()"):js.index("const dialogSettings")]
         self.assertIn("max_kb_on: $('#xd-max-kb-on').checked", fv)

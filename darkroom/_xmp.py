@@ -37,6 +37,11 @@ NEUTRAL_PROFILES = ("Embedded", "Default Color", "Default Monochrome")
 # core patch K3); the Look's own tone and curves are still not applied, so it stays listed, as "approximated".
 MONOCHROME_LOOK = re.compile(r"monochrome|black\s*(?:&|and)\s*white|\bb&w\b", re.I)   # verbatim (S5)
 LOOK_APPROXIMATED = "Look（{name}，已以黑白近似）"                                     # verbatim (S5)
+# CONTRACT-s3-crop C10 (D5): a preset's crop is never applied (the geometry belongs to each photo); a real crop in
+# the preset is reported once as a minor skipped item.
+CROP_KEYS = frozenset(["HasCrop", "CropTop", "CropLeft", "CropBottom", "CropRight", "CropAngle", "CropConstrainToWarp",
+                       "CropConstrainAspectRatio", "CropWidth", "CropHeight", "CropUnit"])                # verbatim (C10)
+PRESET_CROP_SKIPPED = "裁切（preset 帶的裁切與拉直不會套用）"                                             # verbatim (C10)
 CURVE_TAGS = ("ToneCurvePV2012", "ToneCurvePV2012Red", "ToneCurvePV2012Green", "ToneCurvePV2012Blue")
 TEXT_TAGS = ("Name", "ShortName", "SortName", "Group", "Description")
 
@@ -214,6 +219,8 @@ def read_preset(path):
     for k, v in attrs.items():
         if k in META or k.startswith("Supports"):
             continue
+        if k in CROP_KEYS and not _NUM.match(v.strip()):
+            continue                     # C10: HasCrop / CropConstrainAspectRatio are read below, never kept
         if k == "ConvertToGrayscale":
             values[k] = boolean(v, k)
         elif k == "HDREditMode":
@@ -239,8 +246,16 @@ def read_preset(path):
     # Everything present with an effect the renderer does not apply (incl. ColorGradeShadow/HighlightSat: Lightroom
     # stores those tones in SplitToning*, so they are never applied a second time).
     for k in values:
+        if k in CROP_KEYS:               # C10: one item for the whole crop, below
+            continue
         if cov.unrendered_active(k, values):
             skipped.add("PostCropVignetteRoundness（負值）" if k == "PostCropVignetteRoundness" else k)
+
+    edges = tuple(values.get(k, d) for k, d in (("CropLeft", 0.0), ("CropTop", 0.0), ("CropRight", 1.0),
+                                                ("CropBottom", 1.0)))
+    if (attrs.get("HasCrop", "").strip().lower() == "true" or values.get("CropAngle", 0.0) != 0
+            or edges != (0.0, 0.0, 1.0, 1.0)):
+        skipped.add(PRESET_CROP_SKIPPED)
 
     curves, masks, name = {}, [], ""
     for ch in children:

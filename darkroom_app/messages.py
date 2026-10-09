@@ -26,8 +26,9 @@ EXPORT_OOM = "顯示卡記憶體不足，可能有其他程式正在使用 GPU�
 EXPORT_RENDER_FAILED = "渲染失敗：{detail}"
 EXPORT_CANNOT_WRITE = "無法寫入匯出資料夾：{folder}"
 EXPORT_NAMES_USED_UP = "{stem} 的匯出檔名已用到 ({n_max})，請清理匯出資料夾後再試"
-EXPORT_ITEM_NOT_OBJECT = "each item must be an object {image_id | path, preset_id, strength, overrides}"
-EXPORT_ITEM_UNKNOWN_KEY = "unknown item key {key!r} (allowed: image_id, path, preset_id, strength, overrides)"
+EXPORT_ITEM_NOT_OBJECT = "each item must be an object {image_id | path, preset_id, strength, overrides, geometry}"   # XP35
+EXPORT_ITEM_UNKNOWN_KEY = ("unknown item key {key!r} (allowed: image_id, path, preset_id, strength, overrides, "
+                           "geometry)")                                                                          # XP35
 
 LIMIT_MAX = 200
 MAX_PIXELS_MIN = 65536
@@ -130,3 +131,10 @@ CAP_NO_WEBP = "這台電腦的 OpenCV 不能寫 WebP，WebP 匯出先關閉"
 OP_NOT_SIGNED_IN = "1Password 尚未登入（請解鎖 1Password App 或執行 op signin）"
 OP_WHOAMI_TIMEOUT = "1Password 尚未登入或還在等解鎖（op whoami 逾時）"
 OP_NOT_USED = "沒有用到 1Password（config.local.json 沒有 anthropic_api_key_ref）"
+
+# CONTRACT-s3-crop (verbatim constants; C14, C17, C20; the geometry sentences live in darkroom/_geometry.py, C1)
+FRAME_INVALID = "frame 必須是 true 或 false"
+WITH_GEOMETRY_INVALID = "with_geometry 必須是 true 或 false"
+PASTE_GEOMETRY_ONLY = "只有幾何不能只貼顏色：這份編輯只有裁切／旋轉，要貼上請連同幾何一起貼（with_geometry）"
+CLI_BAD_CROP = "--crop 要是 L,T,R,B 四個 0～1 的數：{value}"
+PL_EDIT_KEYS_V2 = "keys must be exactly schema, fingerprint, preset, strength, overrides, geometry"

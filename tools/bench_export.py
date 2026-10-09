@@ -13,7 +13,11 @@ of darkroom_app.gpucheck) or without CUDA; --force measures anyway and labels th
 --s2 (CONTRACT-s2-export-detect E11) measures the same 20 photos with resize long_edge 2048 + output sharpening
 screen / standard + max_kb 800 instead; pass: wall time / 20 <= 0.8 s per photo.
 
-  python -s tools/bench_export.py [--force] [--keep] [--s2]
+--s3 (CONTRACT-s3-crop C19 / M4) exports the same 20 photos straightened 3 degrees and cropped to 3:2 (grid_sample at
+24 MP) instead; pass: wall time / 20 <= 0.8 s per photo; the peak GPU memory of the batch is printed. The photo library
+always gets a temporary data_dir here (the real one is never read or written).
+
+  python -s tools/bench_export.py [--force] [--keep] [--s2] [--s3]
 """
 import argparse
 import os
@@ -36,6 +40,7 @@ PER_PHOTO_LIMIT_S = 0.8                      # verbatim (XP8)
 OVERLAP_LIMIT = 0.7                          # verbatim (XP8)
 S2_SETTINGS = {"resize": {"mode": "long_edge", "value": 2048}, "sharpen": {"target": "screen", "amount": "standard"},
                "max_kb": 800}                # verbatim (S2 E11)
+S3_GEOMETRY = {"rotate": 0, "flip": False, "angle": 3, "aspect": "3:2", "crop": None}   # verbatim (S3 M4)
 PRESET = '''<x:xmpmeta xmlns:x="adobe:ns:meta/" x:xmptk="Adobe XMP Core 7.0">
  <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
   <rdf:Description rdf:about=""
@@ -114,7 +119,7 @@ def make_photos(folder, n=N_PHOTOS, width=WIDTH, height=HEIGHT):
     return paths[:n], paths[n]
 
 
-def measure(folder, n=N_PHOTOS, width=WIDTH, height=HEIGHT, log=print, s2=False):
+def measure(folder, n=N_PHOTOS, width=WIDTH, height=HEIGHT, log=print, s2=False, s3=False):
     """Run the XP8 measurement (s2: the E11 one) with every file inside `folder`. Returns a dict of the numbers."""
     from darkroom_app import encoding
     from darkroom_app import engine as engine_mod
@@ -130,8 +135,8 @@ def measure(folder, n=N_PHOTOS, width=WIDTH, height=HEIGHT, log=print, s2=False)
     log(f"[XP8] 測試圖：{n} 張 {width}×{height} JPEG q{QUALITY}（產生 {time.perf_counter() - t0:.1f} 秒）")
     eng = engine_mod.Engine()
     try:
-        facade = build_facade(presets_dir, engine=eng)
-        item = {"preset_id": "bench-curve", "strength": 100}
+        facade = build_facade(presets_dir, engine=eng, data_dir=os.path.join(folder, "data"))
+        item = {"preset_id": "bench-curve", "strength": 100, **({"geometry": S3_GEOMETRY} if s3 else {})}
         res = facade.export([{"path": warm, **item}], "jpeg", QUALITY, out_dir)["results"]
         if not res[0]["ok"]:
             raise RuntimeError(res[0]["error"])
@@ -151,10 +156,15 @@ def measure(folder, n=N_PHOTOS, width=WIDTH, height=HEIGHT, log=print, s2=False)
                 mock.patch.object(encoding, "read_exif", timed("read_exif", encoding.read_exif)), \
                 mock.patch.object(eng, "render_full", timed("render", eng.render_full)), \
                 mock.patch.object(export_mod.ExportService, "_write", timed("write", export_mod.ExportService._write)):
+            import torch
+            if torch.cuda.is_available():
+                torch.cuda.reset_peak_memory_stats()
+                base_mem = torch.cuda.memory_allocated()
             t = time.perf_counter()
             res = facade.export([{"path": p, **item} for p in photos], "jpeg", QUALITY, out_dir,
                                 **(S2_SETTINGS if s2 else {}))["results"]
             wall = time.perf_counter() - t
+            peak = (torch.cuda.max_memory_allocated() - base_mem) if torch.cuda.is_available() else 0
         failed = [r for r in res if not r["ok"]]
         if failed:
             raise RuntimeError(failed[0]["error"])
@@ -164,12 +174,16 @@ def measure(folder, n=N_PHOTOS, width=WIDTH, height=HEIGHT, log=print, s2=False)
     stages["read"] = [a + b for a, b in zip(stages.pop("read_image"), stages.pop("read_exif"))]
     total = sum(sum(v) for v in stages.values())
     out = {"wall": wall, "per_photo": wall / n, "stage_sum": total, "overlap": wall / total,
-           "median": {k: statistics.median(v) for k, v in stages.items()}}
+           "median": {k: statistics.median(v) for k, v in stages.items()}, "peak_gpu": peak}
     m = out["median"]
     log(f"[XP8] 每段中位數：讀檔 {m['read']:.3f} 秒、渲染 {m['render']:.3f} 秒、編碼寫檔 {m['write']:.3f} 秒")
     log(f"[XP8] 牆鐘 {wall:.2f} 秒（{out['per_photo']:.3f} 秒／張，門檻 <= {PER_PHOTO_LIMIT_S}）；"
         f"分段加總 {total:.2f} 秒，重疊比 {out['overlap']:.3f}（門檻 <= {OVERLAP_LIMIT}）")
-    out["ok"] = out["per_photo"] <= PER_PHOTO_LIMIT_S and (s2 or out["overlap"] <= OVERLAP_LIMIT)
+    out["ok"] = out["per_photo"] <= PER_PHOTO_LIMIT_S and (s2 or s3 or out["overlap"] <= OVERLAP_LIMIT)
+    if s3:
+        sz = res[0]["used"]
+        log(f"[M4] 拉直 3° + 3:2 裁切（輸出 {sz['width']}×{sz['height']}）：{out['per_photo']:.3f} 秒／張"
+            f"（門檻 <= {PER_PHOTO_LIMIT_S}）；批次中 GPU 峰值記憶體 {peak / 2**20:.0f} MiB")
     if s2:
         log(f"[E11] resize long_edge 2048 + 螢幕銳利化（標準）+ 800 KB：{out['per_photo']:.3f} 秒／張"
             f"（門檻 <= {PER_PHOTO_LIMIT_S}）")
@@ -186,6 +200,7 @@ def main(argv=None):
     ap.add_argument("--force", action="store_true", help="measure even while the GPU is busy")
     ap.add_argument("--keep", action="store_true", help="keep the temp folder (prints its path)")
     ap.add_argument("--s2", action="store_true", help="the S2 E11 scenario (resize + sharpen + size limit)")
+    ap.add_argument("--s3", action="store_true", help="the S3 M4 scenario (straighten 3 degrees + 3:2 crop)")
     a = ap.parse_args(argv)
     skip, msg = gpu_check()
     print(msg, flush=True)
@@ -193,7 +208,7 @@ def main(argv=None):
         return 0
     folder = tempfile.mkdtemp(prefix="darkroom-bench-export-")
     try:
-        out = measure(folder, log=lambda s: print(s, flush=True), s2=a.s2)
+        out = measure(folder, log=lambda s: print(s, flush=True), s2=a.s2, s3=a.s3)
     finally:
         if a.keep:
             print(f"[XP8] 暫存資料夾：{folder}")

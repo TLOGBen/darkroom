@@ -13,7 +13,11 @@ about 1 s above 15 %, or a ComfyUI process on the GPU whose /queue is not empty 
 is handed to GET /api/folder/thumbnails so the thumbnail workers run through the whole measurement. The server
 always gets a temporary --data-dir, so the real %LOCALAPPDATA%/darkroom is never written.
 
-  python -s tools/bench_preview.py [--seconds 10] [--force] [--port 0] [--with-thumbnails]
+--geometry (CONTRACT-s3-crop C11 / M3): the drag is the straighten slider of the crop mode instead (frame previews,
+angle -10..10 degrees, latest wins); the same thresholds. Before it, the first sharp preview of a crop to a quarter of
+the area (the detail base going to the GPU, D6) and the next ones are timed.
+
+  python -s tools/bench_preview.py [--seconds 10] [--force] [--port 0] [--with-thumbnails] [--geometry]
 """
 import argparse
 import asyncio
@@ -137,7 +141,7 @@ async def pick_preset(session, base):
     return rows[0]
 
 
-async def drag(session, base, image_id, preset_id, seconds, hz):
+async def drag(session, base, image_id, preset_id, seconds, hz, geometry=False):
     import cv2
     import numpy as np
     latest = {"body": None, "t": 0.0, "sent": True}
@@ -158,11 +162,15 @@ async def drag(session, base, image_id, preset_id, seconds, hz):
                 events += tick - last_tick
                 last_tick = tick
                 ph = tick / hz * 2 * math.pi * 0.5
-                latest.update(body={"image_id": image_id, "preset_id": preset_id,
-                                    "strength": round(100 + 90 * math.sin(ph), 2),
-                                    "overrides": {"Exposure2012": round(0.5 * math.sin(ph * 1.3), 3),
-                                                  "Clarity2012": 15.0}},
-                              t=t0 + tick / hz, sent=False)
+                if geometry:                       # C11: the straighten slider, frame previews (the crop mode)
+                    body = {"image_id": image_id, "preset_id": preset_id, "strength": 100, "overrides": {},
+                            "geometry": {"rotate": 0, "flip": False, "angle": round(10 * math.sin(ph), 1),
+                                         "aspect": "original", "crop": None}, "frame": True}
+                else:
+                    body = {"image_id": image_id, "preset_id": preset_id,
+                            "strength": round(100 + 90 * math.sin(ph), 2),
+                            "overrides": {"Exposure2012": round(0.5 * math.sin(ph * 1.3), 3), "Clarity2012": 15.0}}
+                latest.update(body=body, t=t0 + tick / hz, sent=False)
             await asyncio.sleep(0)
             await asyncio.sleep(0.001)
 
@@ -232,7 +240,21 @@ async def run(args):
                                  headers={"X-Darkroom": "1"}) as r:
                     listing = await r.json()
                 print(f"[PL12] 背景縮圖開始：{listing['total']} 張", flush=True)
-            rtts, lags, render_ms, events = await drag(s, base, info["image_id"], preset["id"], args.seconds, HZ)
+            if args.geometry:                      # M3 / D6: a crop to 1/4 of the area, first (detail base) and next
+                crop = {"image_id": info["image_id"], "preset_id": preset["id"], "strength": 100, "overrides": {},
+                        "geometry": {"rotate": 0, "flip": False, "angle": 0, "aspect": "free",
+                                     "crop": {"left": 0.25, "top": 0.25, "right": 0.75, "bottom": 0.75}}}
+                times = []
+                for i in range(6):
+                    t0 = time.perf_counter()
+                    async with s.post(base + "api/preview", json=crop) as r:
+                        await r.read()
+                    times.append((time.perf_counter() - t0) * 1000)
+                    crop["strength"] = 100 - i
+                print(f"[M3] 裁掉 3/4 面積後第一張清晰預覽 {times[0]:.0f} ms；之後 中位數 "
+                      f"{statistics.median(times[1:]):.0f} ms（{', '.join(f'{t:.0f}' for t in times[1:])}）", flush=True)
+            rtts, lags, render_ms, events = await drag(s, base, info["image_id"], preset["id"], args.seconds, HZ,
+                                                       geometry=args.geometry)
             if grid is not None:
                 async with s.get(base + "api/folder/thumbnails", params={"folder": grid},
                                  headers={"X-Darkroom": "1"}) as r:
@@ -240,7 +262,7 @@ async def run(args):
                 print(f"[PL12] 量測期間縮圖完成 {done}/{listing['total']} 張", flush=True)
         med, p95 = statistics.median(rtts), pct(rtts, 0.95)
         ok = med < MEDIAN_LIMIT_MS and p95 < P95_LIMIT_MS
-        tag = ("（GPU 忙碌時以 --force 量測）" if forced else "") + ("（縮圖產生中，PL12）" if grid is not None else "")
+        tag = ("（GPU 忙碌時以 --force 量測）" if forced else "") + ("（縮圖產生中，PL12）" if grid is not None else "") +             ("（拉直滑桿、frame 預覽，C11）" if args.geometry else "")
         print(f"[B7] preset：{preset['name']}；滑桿事件 {events} 次 / 送出 {len(rtts)} 次", flush=True)
         print(f"[B7] 往返 中位數 {med:.1f} ms、p95 {pct(rtts, 0.95):.1f} ms、最大 {max(rtts):.1f} ms；"
               f"拖動到畫面 中位數 {statistics.median(lags):.1f} ms、p95 {pct(lags, 0.95):.1f} ms；"
@@ -273,6 +295,7 @@ def main(argv=None):
     ap.add_argument("--port", type=int, default=0)
     ap.add_argument("--force", action="store_true", help="measure even when other compute processes are present")
     ap.add_argument("--with-thumbnails", action="store_true", help="thumbnail a 200-photo folder during the drag (PL12)")
+    ap.add_argument("--geometry", action="store_true", help="drag the straighten slider of the crop mode (S3 C11)")
     return asyncio.run(run(ap.parse_args(argv)))
 
 

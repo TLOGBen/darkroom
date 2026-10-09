@@ -43,3 +43,23 @@ def effective_params(params, strength, overrides):
         values[k] = base.get(k) + d
     out = Params(values=values, curves=base.curves, masks=base.masks, skipped=list(base.skipped))
     return out.clamped()
+
+
+def validate_geometry(geometry):
+    """A geometry object or None -> darkroom.Geometry or None; the one rule is Geometry.from_dict (C1): its
+    ValueError becomes invalid with the sentence unchanged. KEEP is not accepted here (the caller resolves it)."""
+    from darkroom import Geometry
+
+    from .errors import DarkroomError
+    try:
+        return Geometry.from_dict(geometry)
+    except ValueError as e:
+        raise DarkroomError("invalid", str(e)) from None
+
+
+def validate_flag(value, sentence):
+    """frame / with_geometry: true or false, else invalid with the constant sentence (C17, C14)."""
+    from .errors import DarkroomError
+    if not isinstance(value, bool):
+        raise DarkroomError("invalid", sentence)
+    return value

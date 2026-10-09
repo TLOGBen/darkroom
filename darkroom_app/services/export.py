@@ -23,7 +23,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
-from darkroom import read_image
+from darkroom import Geometry, read_image
 
 from .. import encoding
 from .. import messages as M
@@ -54,8 +54,8 @@ WEBP_MAX_EDGE = 16383                   # verbatim (E6)
 COPYRIGHT_TAG = 33432
 N_MAX = 9999                            # verbatim (XP2)
 MAX_IN_FLIGHT = 3                       # verbatim (XP7)
-ITEM_KEYS = ("image_id", "path", "preset_id", "strength", "overrides")
-PARAM_KEYS = ("preset_id", "strength", "overrides")
+ITEM_KEYS = ("image_id", "path", "preset_id", "strength", "overrides", "geometry")   # + geometry (S3 C19)
+PARAM_KEYS = ("preset_id", "strength", "overrides", "geometry")     # none of these = the saved edit (E15, XP35)
 
 
 # ---------------------------------------------------------------------- settings (E1, E2)
@@ -207,6 +207,7 @@ class _Job:
     path: str
     params: object
     params_from: str
+    geometry: object = None       # darkroom.Geometry or None (CONTRACT-s3-crop C19)
 
 
 class _Turns:
@@ -371,11 +372,12 @@ class ExportService:
             raise _ItemFailed(name, M.EXPORT_PHOTO_IN_PRESET_DIR)
         if not any(k in item for k in PARAM_KEYS):        # E15: the photo library's saved edit, or the photo as is
             try:
-                final, params_from = self.photo_library.saved_params(path, self._fingerprint(name, path))
+                final, params_from, g = self.photo_library.saved_params(path, self._fingerprint(name, path))
             except DarkroomError as e:                    # never silently the original instead
                 raise _ItemFailed(name, e.message) from None
-            return _Job(index, name, path, final, params_from)
+            return _Job(index, name, path, final, params_from, Geometry.from_dict(g))
         params = None
+        fp = None
         preset_id = item.get("preset_id")
         if preset_id is not None:               # PLP5: the photo is hashed again, the edit's snapshot wins
             fp = self._fingerprint(name, path)
@@ -388,7 +390,16 @@ class ExportService:
             overrides = semantics.validate_overrides(item.get("overrides"))
         except ValueError as e:
             raise _ItemFailed(name, str(e)) from None
-        return _Job(index, name, path, semantics.effective_params(params, strength, overrides), "request")   # X2
+        try:                                    # XP35 (D4): left out = the photo's saved geometry, null = none
+            if "geometry" in item:
+                geometry = semantics.validate_geometry(item["geometry"])
+            else:
+                geometry = Geometry.from_dict(self.photo_library.saved_geometry(
+                    fp if fp is not None else self._fingerprint(name, path)))
+        except DarkroomError as e:
+            raise _ItemFailed(name, e.message) from None
+        return _Job(index, name, path, semantics.effective_params(params, strength, overrides), "request",
+                    geometry)                                                                              # X2
 
     # ------------------------------------------------------------------ the operation
     def export(self, items, format=None, quality=None, dest_dir=None, *, bit_depth=None, max_kb=None, resize=None,
@@ -461,7 +472,8 @@ class ExportService:
                     out[k] = _failed(job.source, _one_line(e))
                     continue
                 try:
-                    pixels = on_gpu(eng, eng.render_full, image, job.params, bits)
+                    extra = () if job.geometry is None else (job.geometry,)    # C19: no geometry = as before
+                    pixels = on_gpu(eng, eng.render_full, image, job.params, bits, *extra)
                 except Exception as e:                              # X11
                     slots.release()
                     if _is_oom(e):
