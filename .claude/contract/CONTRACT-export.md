@@ -137,3 +137,10 @@ HTTP 帶 dest_dir（400）：{"error": "dest_dir is not accepted over HTTP (use 
 ## 封緘第 2 次派遣（複驗）處置紀錄（2026-10-09）
 - XP29（N1，穩定性：第 1 輪 F2 修正帶進的退化，修正並釘死）：編碼階段丟出 `ValueError`／`OverflowError` 以外的例外（例如 `cv2.error`）時，那一號從沒取檔名，`_Turns` 的序號不再前進，8 張以上的批次永久卡死。改為：編碼的任何 `Exception` 都只讓該筆 `ok:false`（「渲染失敗：{detail}」），而且寫檔執行緒不論怎麼離開都保證讓自己那一號過去（沒取過檔名就空轉一次）。釘死：`test_encode_error_neither_hangs_nor_stops_the_batch`（8 張、第 1 張編碼丟 `cv2.error`，60 秒內結束、只 1 筆失敗、其餘 7 張寫出）。
 - N2（測試空心，已修）：`test_same_stem_in_one_list` 末段拿自己的雜湊比自己，刪除；檔名順序的斷言保留（已證明會紅）。
+
+## S2 補丁（2026-10-10，`CONTRACT-s2-export-detect.md` 主 session 裁決；與條文同等效力，劃線與「取代」處以本節為準）
+- XP30（修訂 X1、X2、XP3、XP6；S2 E15、D1）：X1 item 的 `preset_id`、`strength`、`overrides` 改為「可省略」：三個鍵都不存在＝用照片庫裡這張存好的編輯（快照優先；沒有編輯＝原圖，與舊行為逐位元組相同）；`preset_id:null` 照舊＝不套 preset。X1「每筆成功恰為 `{ok,source,output}`」改為 `{ok,source,output,used}`，`used`＝`{params_from, quality, width, height}`（S2 D1 定案）；失敗筆照 XP17 不變。X2 等式對給了參數的 item 照舊；對 E15 的 item，等式另一邊改成「以同一組編輯參數做 preview」。XP3：CLI 沒給 `--preset`／`--strength`／`--override` 的行為改為用已存編輯（`--no-edit`＝舊行為）。
+- XP31（修訂 X1 常數）：「不支援的匯出格式：{format}（可用 jpeg、tiff）」→「不支援的匯出格式：{format}（可用 jpeg、png、tiff、webp）」；「JPEG 品質要在 1～100 之間：{quality}」對 JPEG 逐字不變，WebP 用同句型「WebP 品質要在 1～100 之間：{quality}」；quality 對 png／tiff 忽略（不檢查、不報錯，X13 精神）。
+- XP32（修訂 XP4）：`darkroom_export` inputSchema `required` 由 `["items","format"]` 改為 `["items"]`；`format` enum 加 `png`、`webp`；另加 S2 E27 的設定欄位與 `export_preset`。
+- XP33（修訂 X13、R6／H11／S18 清單）：工具列的 `#export-format`、`#export-quality` 移進 `#export-dialog`；不准藏清單裡這兩項改指向對話框內的 `#xd-format`、`#xd-quality`，`#export-btn` 照舊在工具列。
+- XP34（修訂 X15「不做」清單）：「存成 xmp」「縮放尺寸」從「不做」移除（S2 E16、E17、E8）。

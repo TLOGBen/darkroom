@@ -87,3 +87,10 @@ pycache 檔名（任一層有 __pycache__）：^[^\\/]+\.cpython-\d+(\.opt-\d)?\
 safe_write 白名單模組：本片（空）→ XP5：services/export.py → K18：＋services/preset_library.py → PL14：＋services/photo_library.py → WG15／SI1：＋services/semantic_index.py
 preset 合併雜湊：15C015CC0C080FF9 ｜ 數量：1466
 ```
+
+## S2 補丁（2026-10-10，`CONTRACT-s2-export-detect.md` 主 session 裁決；與條文同等效力，劃線與「取代」處以本節為準）
+- WG16（G3 放行，只多一個形狀；S2 E24）：`services/semantic_index.py` 的 `op.exe` 另外允許恰 2 個參數、第 2 個恰為 `whoami`（執行檔 basename 不分大小寫比對，參數本身區分大小寫）；多一個參數（例如 `--format json`）、`op signin`、`op account list`、別的模組開 `op`、測試身分開 `op` → 一律違規。`_popen_allowed` 純函式測試：允許 `op whoami`、`op.exe whoami`；拒絕 `op whoami --format json`、`op WHOAMI`、`op signin`、`op`（1 參數）、`gpucheck.py` 開 `op whoami`、測試身分開 `op whoami`。G2 事件清單與 CreateFile 位元清單不動（WG14 凍結照舊）；測試仍不准真的跑 op（WG15 照舊，全部用假 runner）。
+- WG17（G10 白名單，S2 D4）：safe_write 白名單模組 4→5，加 `services/export_presets.py`（匯出預設，只寫 data_dir），其餘不變。
+
+WG16 常數：op 形狀另加 op|op.exe whoami（恰 2 參數）｜ 產品可開的子程序：gpucheck → nvidia-smi ｜ services/semantic_index → op read <op://…>（WG15）、op whoami（WG16）
+WG17 常數：safe_write 白名單模組：services/export.py、services/preset_library.py、services/photo_library.py、services/semantic_index.py、services/export_presets.py

@@ -170,3 +170,7 @@ PLP17 常數：無法寫入照片庫的 reason（上層不存在）：上層資�
 ## 封緘第 2 次派遣（複驗）處置紀錄（2026-10-09）
 - 第 1 輪 F1～F11 在原引用處回歸皆符合；第 1 輪咬到的 3 支探針（刪 `_generate` 開頭的 `_guard_folder`、`restore()` 拿掉 `{restore: true}`、`Sec-Fetch-Site` 拒絕清單只剩 `cross-site`）重發仍各自讓測試變紅；修正輪 7 支新判官（含 c6b）各自出生證明全紅；全部逐位元組還原，`git status` 空。
 - N1（記錄、不修，低嚴重度、文件／測試鏡像）：PL12 條文本文與 PLP8「排程」段仍寫 `max(1, min(4, os.cpu_count()//2))` 的舊式，`test_thumbs_not_on_gpu_executor` 對 `THUMB_WORKERS` 的斷言也是舊式鏡像（`os.cpu_count()` 回 None 的環境會自己 TypeError 而不是驗 `or 2` 分支）；Verbatim 區與 PLP17 常數（`max(1, min(4, (os.cpu_count() or 2) // 2))`）為準。下一片順手把兩處本文與那行斷言改成 Verbatim 寫法。
+
+## S2 補丁（2026-10-10，`CONTRACT-s2-export-detect.md` 主 session 裁決；與條文同等效力，劃線與「取代」處以本節為準）
+- PLP18（修訂 PL1／PLP8 的 data_dir 預設；S2 E18）：設定鍵 `data_dir` 優先；否則 win32 → `{LOCALAPPDATA}/darkroom`（PL1 句逐字不變）；darwin → `{home}/Library/Application Support/darkroom`；其他 → `{XDG_DATA_HOME}/darkroom`（XDG 須為非空絕對路徑），否則 `{home}/.local/share/darkroom`；非 Windows 找不到 → 「找不到照片庫資料區：請在 config.local.json 設定 data_dir，或確認 HOME 存在」。設定鍵是相對路徑時以設定檔所在資料夾為基準（S2 E19）。
+- PLP19（S2 E23 `photo_library`）：資料區解析不到（ConfigError）、不是絕對路徑、上層資料夾不存在、或在使用中的 preset 資料夾裡 → get／set／clear／paste／restore／save_edit_as_preset 與 export 的已存編輯一律 unavailable 同句（HTTP 503、CLI 5、MCP isError），不再是 HTTP 500／CLI「darkroom：…」結束碼 2。

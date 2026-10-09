@@ -122,3 +122,6 @@ G10 寫檔白名單（SAFE_WRITE_USERS）：("services/export.py", "services/pre
 ```text
 KP21 常數：REPLACE_RETRIES, REPLACE_RETRY_S = 200, 0.01（共約 2 秒）
 ```
+
+## S2 補丁（2026-10-10，`CONTRACT-s2-export-detect.md` 主 session 裁決；與條文同等效力，劃線與「取代」處以本節為準）
+- KP22（修訂 K16 錯誤 kind；S2 E20）：preset 庫寫入操作（rename_preset、move_preset、set_favorite、create_group、rename_group、import_presets、save_user_preset、rebuild_library、save_edit_as_preset，以及 semantic_build 的寫索引）在「preset 庫在照片資料夾裡」成立時一律 unavailable、S2 常數句、什麼都不寫；三入口照 L7（503／5／isError）。讀取類照常。

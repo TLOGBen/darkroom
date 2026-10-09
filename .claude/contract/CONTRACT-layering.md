@@ -74,3 +74,6 @@ MCP 預設：limit 50 ｜ max_pixels 786432
 MCP caching hints（discover 與 modern tools/list）：{"ttlMs":3600000,"cacheScope":"public"}
 執行緒名稱前綴：darkroom-gpu ｜ preset 合併雜湊：15C015CC0C080FF9
 ```
+
+## S2 補丁（2026-10-10，`CONTRACT-s2-export-detect.md` 主 session 裁決；與條文同等效力，劃線與「取代」處以本節為準）
+- L2′（數字；S2 E25）：facade 操作數 27 → 33，第 28～33 個依序為 `list_export_presets`、`save_export_preset`、`delete_export_preset`、`preset_files`、`export_preset_files`、`capabilities`；MCP 工具 27 → 33；HTTP 路由 29 → 35；`export` 簽名擴充為 `export(items, format=None, quality=None, dest_dir=None, *, bit_depth=None, max_kb=None, resize=None, metadata=None, remove_gps=None, sharpen=None, export_preset=None)`（不是新操作）。

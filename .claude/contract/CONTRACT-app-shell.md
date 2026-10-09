@@ -87,3 +87,6 @@ tooltip 後綴（R3，依序接在上兩行之後）：有微調時「；微調 
 - R9（2026-10-09，匯出合約 X14／XP10）B12 修訂：伺服器唯一會寫檔的是 facade 操作 `export`（`POST /api/export`），只經 `safe_write.create_new` 在匯出資料夾建新檔、只可能建 `darkroom 匯出` 這一層資料夾；照片與 preset 一律只讀（細節見 `CONTRACT-export.md` X14、XP10）。
 - R10（2026-10-09，主 session 裁決，匯出合約 XP16）跨站防護（修訂 B2）：所有路由先過 middleware——`Host` 必須恰為 `127.0.0.1:{port}` 或 `localhost:{port}`（{port}＝實際監聽的埠），否則 421；帶 `Origin` 時必須恰為 `http://127.0.0.1:{port}` 或 `http://localhost:{port}`，否則 403；所有 POST 的 `Content-Type` 必須是 `application/json`（可帶參數，例如 charset），否則 415。句子見 `CONTRACT-export.md` XP16 常數。前端 `api()` 的 POST 一律帶 `Content-Type: application/json`。
 - R11（2026-10-09，主 session 裁決，照片庫合約 PLP11）跨站 GET（修訂 R10）：middleware 另外對所有路由（含 GET 與靜態檔）檢查 `Sec-Fetch-Site`——`cross-site`／`same-site` → 403，`same-origin`／`none`／沒帶 → 放行；四條會讀照片路徑的 GET（`/api/folder`、`/api/edit`、`/api/folder/thumbnails`、`/api/thumbnail`）必須帶 `X-Darkroom: 1`，否則 403。前端 `api()` 每個請求一律帶 `X-Darkroom: 1`，縮圖用 fetch＋blob URL，不用 `<img src>`。句子與順序見 `CONTRACT-photo-library.md` PLP11 常數。
+
+## S2 補丁（2026-10-10，`CONTRACT-s2-export-detect.md` 主 session 裁決；與條文同等效力，劃線與「取代」處以本節為準）
+- R12（修訂 R11 清單；S2 E28）：必須帶 `X-Darkroom: 1` 的 GET 由 4 條變 5 條（加 `/api/capabilities`，以 `allow_head=False` 登記）。

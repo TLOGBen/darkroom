@@ -72,3 +72,6 @@ build 結果：{"state":"dry_run|nothing|submitted|done","model":…,"planned":n
 G10 白名單：("services/export.py", "services/preset_library.py", "services/photo_library.py", "services/semantic_index.py") ｜ MCP 工具順序：…darkroom_edit_save_preset, darkroom_semantic_build, darkroom_semantic_status
 preset 合併雜湊：15C015CC0C080FF9 ｜ 數量：1466
 ```
+
+## S2 補丁（2026-10-10，`CONTRACT-s2-export-detect.md` 主 session 裁決；與條文同等效力，劃線與「取代」處以本節為準）
+- SIP10（修訂 SI3 常數；S2 E24、E34）：`op read 逾時` 改為「1Password 尚未登入或還在等解鎖（op read 逾時）」；新增 reason「1Password 尚未登入（請解鎖 1Password App 或執行 op signin）」（`op whoami` 非 0 時）與「1Password 尚未登入或還在等解鎖（op whoami 逾時）」（`op whoami` 10 秒逾時）。用 `anthropic_api_key_ref` 取金鑰時，先跑一次 `op whoami`（WG16 形狀），不可用 → unavailable「無法取得 Anthropic 金鑰：{reason}」、`op read` 不被呼叫。`test_key_failures_are_fixed_sentences` 改這一句、加兩句。
