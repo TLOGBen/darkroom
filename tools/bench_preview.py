@@ -9,7 +9,11 @@ Skipped (reason printed) only while the GPU is really busy: median of 5 nvidia-s
 about 1 s above 15 %, or a ComfyUI process on the GPU whose /queue is not empty (unreachable = idle).
 --force measures anyway and labels the result.
 
-  python -s tools/bench_preview.py [--seconds 10] [--force] [--port 0]
+--with-thumbnails (CONTRACT-photo-library PL12 / PLP7): before the drag, a folder of 200 generated 4000x3000 JPEGs
+is handed to GET /api/folder/thumbnails so the thumbnail workers run through the whole measurement. The server
+always gets a temporary --data-dir, so the real %LOCALAPPDATA%/darkroom is never written.
+
+  python -s tools/bench_preview.py [--seconds 10] [--force] [--port 0] [--with-thumbnails]
 """
 import argparse
 import asyncio
@@ -66,11 +70,27 @@ def make_test_image(folder, megapixels=MEGAPIXELS):
     return path, big.shape[1], big.shape[0]
 
 
-def start_server(port):
+def make_thumbnail_folder(folder, n=200, w=4000, h=3000):
+    """n different 4000x3000 JPEGs without an embedded thumbnail (the thumbnail workers' load, PL12)."""
+    import cv2
+    import numpy as np
+    os.makedirs(folder, exist_ok=True)
+    yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+    base = np.stack([xx / w, yy / h, 0.5 + 0.4 * np.sin(xx / 97) * np.cos(yy / 61)], -1)
+    for i in range(n):
+        img = np.clip(base + 0.02 * ((i % 7) - 3), 0, 1)
+        img[:: 50 + i % 13] *= 0.9
+        ok, buf = cv2.imencode(".jpg", (img * 255).astype(np.uint8), [cv2.IMWRITE_JPEG_QUALITY, 90])
+        with open(os.path.join(folder, f"grid_{i:04d}.jpg"), "wb") as f:
+            f.write(buf.tobytes())
+    return folder
+
+
+def start_server(port, data_dir):
     env = {k: v for k, v in os.environ.items() if k not in ("PYTHONPATH", "PYTHONHOME")}
     env["PYTHONIOENCODING"] = "utf-8"
-    p = subprocess.Popen([sys.executable, "-s", "-m", "darkroom_app", "--port", str(port)], cwd=REPO, env=env,
-                         stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    p = subprocess.Popen([sys.executable, "-s", "-m", "darkroom_app", "--port", str(port), "--data-dir", data_dir],
+                         cwd=REPO, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     box = []
 
     def reader():
@@ -184,8 +204,12 @@ async def run(args):
     try:
         path, w, h = make_test_image(tmp)
         print(f"[B7] 測試圖：{w}×{h}（{w * h / 1e6:.1f} MP）", flush=True)
+        grid = None
+        if args.with_thumbnails:
+            print("[PL12] 產生 200 張 4000×3000 JPEG 給縮圖工作…", flush=True)
+            grid = make_thumbnail_folder(os.path.join(tmp, "grid"))
         port = args.port or _free_port()
-        server = start_server(port)
+        server = start_server(port, os.path.join(tmp, "data"))
         skip2, msg2 = gpu_check()
         if skip2 and not args.force:
             print(msg2, flush=True)
@@ -203,10 +227,20 @@ async def run(args):
                 async with s.post(base + "api/preview", json={"image_id": info["image_id"], "preset_id": preset["id"],
                                                               "strength": 100, "overrides": {}}) as r:
                     await r.read()
+            if grid is not None:                   # PL12: the whole folder is thumbnailed in the background now
+                async with s.get(base + "api/folder/thumbnails", params={"folder": grid},
+                                 headers={"X-Darkroom": "1"}) as r:
+                    listing = await r.json()
+                print(f"[PL12] 背景縮圖開始：{listing['total']} 張", flush=True)
             rtts, lags, render_ms, events = await drag(s, base, info["image_id"], preset["id"], args.seconds, HZ)
+            if grid is not None:
+                async with s.get(base + "api/folder/thumbnails", params={"folder": grid},
+                                 headers={"X-Darkroom": "1"}) as r:
+                    done = sum(1 for i in (await r.json())["items"] if i["cached"])
+                print(f"[PL12] 量測期間縮圖完成 {done}/{listing['total']} 張", flush=True)
         med, p95 = statistics.median(rtts), pct(rtts, 0.95)
         ok = med < MEDIAN_LIMIT_MS and p95 < P95_LIMIT_MS
-        tag = "（GPU 忙碌時以 --force 量測）" if forced else ""
+        tag = ("（GPU 忙碌時以 --force 量測）" if forced else "") + ("（縮圖產生中，PL12）" if grid is not None else "")
         print(f"[B7] preset：{preset['name']}；滑桿事件 {events} 次 / 送出 {len(rtts)} 次", flush=True)
         print(f"[B7] 往返 中位數 {med:.1f} ms、p95 {pct(rtts, 0.95):.1f} ms、最大 {max(rtts):.1f} ms；"
               f"拖動到畫面 中位數 {statistics.median(lags):.1f} ms、p95 {pct(lags, 0.95):.1f} ms；"
@@ -238,6 +272,7 @@ def main(argv=None):
     ap.add_argument("--seconds", type=float, default=SECONDS)
     ap.add_argument("--port", type=int, default=0)
     ap.add_argument("--force", action="store_true", help="measure even when other compute processes are present")
+    ap.add_argument("--with-thumbnails", action="store_true", help="thumbnail a 200-photo folder during the drag (PL12)")
     return asyncio.run(run(ap.parse_args(argv)))
 
 

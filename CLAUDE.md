@@ -10,11 +10,12 @@
 ## 目前狀態：核心函式庫已封緘；App 外殼（`darkroom_app/`）已做
 
 - 啟動：`tools/start.ps1`（專用 Python 跑 `python -s -m darkroom_app`，只綁 127.0.0.1、預設埠 8765，就緒後開瀏覽器）；桌面捷徑用 `tools/make-shortcut.ps1` 產生。LocalLLMs 路徑來自 `LOCALLLMS_ROOT` 或 `config.local.json`（不進 git，鍵：localllms_root、preset_dir）。
-- 延遲驗收：`python -s tools/bench_preview.py`（GPU 真的忙碌才跳過：使用率取樣中位數 > 15% 或 ComfyUI 佇列非空；`--force` 強制量測）。
+- 延遲驗收：`python -s tools/bench_preview.py`（GPU 真的忙碌才跳過：使用率取樣中位數 > 15% 或 ComfyUI 佇列非空；`--force` 強制量測；`--with-thumbnails` 讓背景縮圖跑滿整段量測）。照片庫效能：`python -s tools/bench_photo_library.py`（PL16，不用 GPU；暫存照片與 data_dir 都在 %TEMP%）。
+- 照片庫（合約 `.claude/contract/CONTRACT-photo-library.md`，ADR-0002）：編輯以照片內容 SHA-256 對應，存在 data_dir（`config.local.json` 鍵 `data_dir`，預設 `%LOCALAPPDATA%/darkroom`；`edits/`、`thumbs/`、`index/`），preset 快照存進編輯、preset 改了已套上的照片不變；照片資料夾永遠不寫。CLI／MCP／App 都有 `--data-dir`；測試一律注入暫存 data_dir。
 - 測試：`python -s -m unittest discover -s tests`。
 - HEIC：`read_image` 經 pillow-heif 讀 `.heic`／`.heif`（合約 `.claude/contract/CONTRACT-heic.md`）。安裝在 darkroom 專用 Python（**不要動 ComfyUI 的 python_embeded**）：`<LOCALLLMS_ROOT>/runtimes/darkroom-python/py3.13.14-torch2.14.0-cu130/python.exe -s -m pip install --no-deps pillow-heif==1.8.0`（2026-10-04 裝，帶 libheif 1.23.4；只新增這一個套件）。前端測試需要 node（`node --test`，不安裝套件）。
 
-- 代理入口（三入口共用 facade，ADR-0001；合約 `.claude/contract/CONTRACT-layering.md`）：CLI `python -s -m darkroom_app.cli presets list|show|flags、sliders、open、folder、preview …`（每個子指令加 `--json` 得一行信封；結束碼 0／1 未預期／2 invalid／3 not_found）；MCP stdio `python -s -m darkroom_app.mcp_server`（7 個唯讀工具 `darkroom_*`）。註冊到 Claude Code（使用者自己跑，repo 不放 `.mcp.json`）：`claude mcp add darkroom -- <LOCALLLMS_ROOT>/runtimes/darkroom-python/py3.13.14-torch2.14.0-cu130/python.exe -s -m darkroom_app.mcp_server`。
+- 代理入口（三入口共用 facade，ADR-0001；合約 `.claude/contract/CONTRACT-layering.md`）：CLI `python -s -m darkroom_app.cli presets …、groups …、sliders、open、folder、preview、export、edit get|set|clear|paste|save-preset、thumbnails、thumbnail`（每個子指令加 `--json` 得一行信封；結束碼 0／1 未預期／2 invalid／3 not_found／4 conflict／5 unavailable／6 批次部分失敗）；MCP stdio `python -s -m darkroom_app.mcp_server`（24 個工具 `darkroom_*`，順序見 `operations.py`）。註冊到 Claude Code（使用者自己跑，repo 不放 `.mcp.json`）：`claude mcp add darkroom -- <LOCALLLMS_ROOT>/runtimes/darkroom-python/py3.13.14-torch2.14.0-cu130/python.exe -s -m darkroom_app.mcp_server`。
 - **先讀地圖**：`.claude/wayfinder/darkroom/map.md`（Destination、已定原則、Decisions so far、還看不清楚、不在範圍內）；每個決定的細節在 `issues/`，研究在 `research/`，實驗與原型在 `prototypes/`。用 `/common:wayfinder` 帶這個地圖路徑繼續；HTML 檢視：`map.html`（不要手改，改 markdown 後重跑 wayfinder 的 `render_map.py`）。
 - **計畫檔**：`.claude/think/comfyui-lightroom-preset-editor.md`（最初的 ① 調色引擎計畫；開頭註明載體已改，其餘仍有效）。
 - 研究擷取的原文在 `.claude/read/material/`。

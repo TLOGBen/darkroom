@@ -285,11 +285,12 @@ def make_thumbnail(data, ext):
 
 # ---------------------------------------------------------------------- the thumbnail queue (PL12)
 class _Job:
-    __slots__ = ("priority", "seq", "key", "path", "folder", "generation", "future")
+    __slots__ = ("priority", "seq", "key", "path", "folder", "generation", "future", "background")
 
     def __init__(self, priority, seq, key, path, folder, generation):
         self.priority, self.seq, self.key, self.path = priority, seq, key, path
         self.folder, self.generation = folder, generation
+        self.background = bool(priority)        # counted in pending_bg even after a direct request bumps it
         self.future = _Future()
 
     def __lt__(self, other):
@@ -378,7 +379,7 @@ class _ThumbQueue:
                 while not self.heap:
                     self.cv.wait()
                 job = heapq.heappop(self.heap)
-                stale = job.priority and self.generation.get(job.folder, 0) != job.generation
+                stale = job.priority and self.generation.get(job.folder, 0) != job.generation   # never a direct request
                 if stale:
                     self.inflight.pop(job.key, None)
                     self._bg_done(job, locked=True)
@@ -400,7 +401,7 @@ class _ThumbQueue:
                 self.cv.notify_all()
 
     def _bg_done(self, job, locked):
-        if job.priority:
+        if job.background:
             left = self.pending_bg.get(job.folder, 0) - 1
             if left <= 0:
                 self.pending_bg.pop(job.folder, None)

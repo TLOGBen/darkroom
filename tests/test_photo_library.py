@@ -921,6 +921,9 @@ class TestThumbnails(PhotoLibCase):
         names = [os.path.basename(x) for x in order]
         self.assertEqual(sorted(set(names)), sorted(os.listdir(self.photos) + os.listdir(other)))
         self.assertLessEqual(len(names), 24 + pl.THUMB_WORKERS)                 # stale jobs were dropped, not redone
+        # a direct request that jumped a background job still counts that job as done: both indexes are written
+        self.assertEqual(len(os.listdir(os.path.join(self.data, "index"))), 2)
+        self.assertTrue(all(i["cached"] for i in self.f.folder_thumbnails(self.photos)["items"]))
 
 
 # ---------------------------------------------------------------- HTTP (PL6, PL13, PLP2)
