@@ -84,3 +84,5 @@ tooltip 後綴（R3，依序接在上兩行之後）：有微調時「；微調 
 - R8（2026-10-04，封緘遺留 N1、N2，於 HEIC 切片收掉，見 `CONTRACT-heic.md` H10、H11）：
   - N1：`app.js` 對 `ed` 的賦值恰為 `let ed = L.initialEditor()` 與 `ed = L.reduce(ed, action)` 兩處，不得 `Object.assign(ed, …)` 或 `ed[…] =`（結構測試 `test_app_changes_state_only_through_the_reducer`）。
   - N2：R6 的禁止清單擴充如上（`test_narrow_windows_keep_function_buttons`）。
+- R9（2026-10-09，匯出合約 X14／XP10）B12 修訂：伺服器唯一會寫檔的是 facade 操作 `export`（`POST /api/export`），只經 `safe_write.create_new` 在匯出資料夾建新檔、只可能建 `darkroom 匯出` 這一層資料夾；照片與 preset 一律只讀（細節見 `CONTRACT-export.md` X14、XP10）。
+- R10（2026-10-09，主 session 裁決，匯出合約 XP16）跨站防護（修訂 B2）：所有路由先過 middleware——`Host` 必須恰為 `127.0.0.1:{port}` 或 `localhost:{port}`（{port}＝實際監聽的埠），否則 421；帶 `Origin` 時必須恰為 `http://127.0.0.1:{port}` 或 `http://localhost:{port}`，否則 403；所有 POST 的 `Content-Type` 必須是 `application/json`（可帶參數，例如 charset），否則 415。句子見 `CONTRACT-export.md` XP16 常數。前端 `api()` 的 POST 一律帶 `Content-Type: application/json`。

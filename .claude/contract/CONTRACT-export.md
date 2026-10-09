@@ -106,3 +106,13 @@ MCP 部分失敗：structuredContent {"results":[…],"failed":n}（全部成功
 SafeWriteRefused 新句（XP12）：refused: no preset folder is known, cannot protect it
 XP14 探針：_winapi.CreateFile(p, 0x80000000, 7, 0, 3, 0x04000000, 0) 對根目錄外既有檔 → 攔、檔在、SHA-256 不變
 ```
+
+## 條文補丁第 3 批（2026-10-09，主 session 裁決：commit 安全審查在 4117f0d 抓到的外部威脅，本片必修，封緘一併驗）
+- [ ] XP16（跨站請求與 DNS rebinding，修訂 X1、XP1；App 外殼補丁 R10）：威脅＝使用者瀏覽器裡的任何網頁（不屬 WG14 的「意外寫入」）。舊行為：`server.py` 不看 `Host`、`Origin`、`Content-Type`，任何 Content-Type 的 body 都當 JSON 解析 → 外站可用 `fetch(…, {mode:"no-cors", body: JSON 字串})`（text/plain 屬 simple request、沒有 preflight）讓 App 讀任意路徑的照片並匯出到攻擊者指定的 `dest_dir`；加上 DNS rebinding（Host＝攻擊者網域）連 `/api/open`、`/api/preview` 的回應都讀得到。修法：(1) 所有路由（GET、POST 都算，含靜態檔與 `/`）先過 middleware：`Host` 必須恰為 `127.0.0.1:{port}` 或 `localhost:{port}`（{port}＝這個連線實際的本機埠，不分大小寫），否則 421＋常數句；(2) 帶 `Origin` 的請求，`Origin` 必須恰為 `http://127.0.0.1:{port}` 或 `http://localhost:{port}`，否則 403＋常數句（`Origin: null` 也拒）；(3) 所有 POST 的 `Content-Type` 媒體類型必須是 `application/json`（可帶 charset 等參數），否則 415＋常數句——跨站請求因此一定觸發 preflight，伺服器不回任何 CORS 標頭，瀏覽器就擋下；(4) HTTP 的 `/api/export` 不接受 `dest_dir`：body 帶了 `dest_dir` 鍵（任何值，含 null）→ 400＋常數句，屬入口自己的規則（同 L7「入口自己的錯誤留在入口」），不呼叫 facade；前端本來就不選資料夾（X8），`dest_dir` 只開放給 CLI 與 MCP。XP6 的 dest_dir 情境（相對路徑、不存在）與 XP13（目的資料夾＝照片資料夾）改為只跑 CLI／MCP；HTTP 的匯出情境改用預設資料夾（`<照片資料夾>/darkroom 匯出`）。(5) 前端 `app.js` 的 `api()` 對有 body 的請求一律帶 `Content-Type: application/json`。檢查順序：Host → Origin → Content-Type → 路由本身。(6) 釘死：`tests/test_http_security.py`——錯的 Host（`evil.example:{port}`、`127.0.0.1:{別的埠}`）、`text/plain` 的 POST（`/api/export`、`/api/open`、`/api/preview`）、外站 Origin（`http://evil.example`、`null`）、HTTP 帶 `dest_dir`，四種都被拒且什麼都不寫、不讀照片（facade 沒被呼叫）；正常流程（同源 Origin、`localhost:{port}`、`application/json; charset=utf-8`）照常 200。`test_http_golden` 只為這條新增斷言（Host／Origin／Content-Type 三種拒絕的狀態碼與句子），既有斷言一條不改。
+```text
+Host 錯（421）：{"error": "request refused: Host must be 127.0.0.1:{port} or localhost:{port}"}
+Origin 錯（403）：{"error": "request refused: cross-site Origin {origin}"}
+Content-Type 錯（415）：{"error": "request refused: POST body must be application/json"}
+HTTP 帶 dest_dir（400）：{"error": "dest_dir is not accepted over HTTP (use the CLI or MCP)"}
+檢查順序：Host → Origin → Content-Type → 路由
+```
