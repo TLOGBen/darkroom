@@ -9,13 +9,18 @@
      匯入 Lightroom 後全選一次匯出即可。
   5. manifest.csv、expected 檔名清單；--check 可比對 Lightroom 匯出的資料夾少了哪些。
 
-用法（在 repo 根目錄）：
-  $PY = "runtimes/comfyui/v0.39.0-portable-nvidia/ComfyUI_windows_portable/python_embeded/python.exe"
-  & $PY -s <本檔> build                 # 產生全部（預設下載真實照片）
-  & $PY -s <本檔> build --no-download   # 不下載；真實照片要自己放進 <out>/sources/
-  & $PY -s <本檔> check <Lightroom 匯出資料夾>      # 檔名開頭有沒有 YYYY-MM-DD- 都認得
-  & $PY -s <本檔> stamp <匯出資料夾> <YYYY-MM-DD>  # 補日期前綴並搬到 outputs/lr-calibration/
-只用 numpy、PIL、cv2（ComfyUI 可攜版內建），不需要安裝套件。
+用法（pwsh；在 darkroom repo 根目錄 D:/Code/darkroom 執行，本檔路徑以此為準）：
+  $PY = "C:/Users/powde/workspace/LocalLLMs/runtimes/darkroom-python/py3.13.14-torch2.14.0-cu130/python.exe"
+  $GEN = ".claude/wayfinder/darkroom/prototypes/calibration/make_calibration_set.py"
+  & $PY -s $GEN plan                  # 只列數量：不下載、不寫任何檔案
+  & $PY -s $GEN build                 # 產生全部（預設下載真實照片）
+  & $PY -s $GEN build --no-download   # 不下載；真實照片要自己放進 <out>/sources/
+  & $PY -s $GEN check <Lightroom 匯出資料夾>      # 檔名開頭有沒有 YYYY-MM-DD- 都認得
+  & $PY -s $GEN stamp <匯出資料夾> <YYYY-MM-DD>  # 補日期前綴並搬到 <LocalLLMs>/outputs/lr-calibration/
+LocalLLMs 的位置：環境變數 LOCALLLMS_ROOT，沒有就讀 darkroom 根目錄的 config.local.json（鍵 localllms_root）。
+大檔（方案 A／B 圖檔、下載的原檔）放 <LocalLLMs>/scratch/lr-calibration/；preset、charts、manifest 寫在本資料夾。
+只用 numpy、PIL、cv2（darkroom 專用 Python 都有），不需要安裝套件；沒有 cv2 時模糊改用 numpy 版（同核心大小與邊界，
+跟 cv2 最多差 1/65535）。
 """
 from __future__ import annotations
 
@@ -37,9 +42,25 @@ import numpy as np
 from PIL import Image, ImageCms, ImageOps
 
 HERE = Path(__file__).resolve().parent
-REPO = HERE.parents[4]
-PRESET_SRC = REPO / "artifact" / "11_preset" / "xmp"
-DEFAULT_OUT = REPO / "scratch" / "lr-calibration"
+DARKROOM = HERE.parents[4]      # D:/Code/darkroom（本檔在 .claude/wayfinder/darkroom/prototypes/calibration/）
+
+
+def _localllms_root() -> Path:
+    """LOCALLLMS_ROOT 環境變數，否則 darkroom 根目錄 config.local.json 的 localllms_root（不寫死路徑）。"""
+    import os
+    root = os.environ.get("LOCALLLMS_ROOT")
+    cfg = DARKROOM / "config.local.json"
+    if not root and cfg.exists():
+        root = json.loads(cfg.read_text(encoding="utf-8-sig")).get("localllms_root")
+    if not root:
+        sys.exit("找不到 LocalLLMs：請設環境變數 LOCALLLMS_ROOT，或在 darkroom 根目錄的 config.local.json 寫 localllms_root")
+    return Path(root)
+
+
+LOCALLLMS = _localllms_root()
+PRESET_SRC = LOCALLLMS / "artifact" / "11_preset" / "xmp"     # 只讀，不寫
+DEFAULT_OUT = LOCALLLMS / "scratch" / "lr-calibration"
+DEFAULT_DEST = LOCALLLMS / "outputs" / "lr-calibration"
 
 W, H = 2048, 1366          # 合成圖尺寸（3:2，約 2.8MP）
 REAL_LONG_EDGE = 2048      # 真實照片縮到的長邊
@@ -565,6 +586,33 @@ def chart_tone():
     return img, lay
 
 
+def _gauss_blur(a: np.ndarray, sigma: float) -> np.ndarray:
+    """cv2.GaussianBlur(a, (0, 0), sigma) for float32 input; numpy fallback with the same kernel size
+    (round(8σ+1)|1) and border (BORDER_REFLECT_101) when cv2 is not installed (charts differ by at most 1/65535)."""
+    try:
+        import cv2
+        return cv2.GaussianBlur(a, (0, 0), sigma)
+    except ImportError:
+        pass
+    n = int(round(sigma * 8 + 1)) | 1
+    x = np.arange(n, dtype=np.float64) - (n - 1) / 2
+    k = np.exp(-x * x / (2 * sigma * sigma))
+    k = (k / k.sum()).astype(np.float32)
+    r = n // 2
+    out = a.astype(np.float32)
+    for axis in (1, 0):
+        pad = [(0, 0), (0, 0)]
+        pad[axis] = (r, r)
+        p = np.pad(out, pad, mode="reflect")          # numpy "reflect" == OpenCV BORDER_REFLECT_101
+        acc = np.zeros_like(out)
+        for i in range(n):
+            sl = [slice(None), slice(None)]
+            sl[axis] = slice(i, i + out.shape[axis])
+            acc += k[i] * p[tuple(sl)]
+        out = acc
+    return out
+
+
 def chart_detail():
     rng = np.random.default_rng(20261004)
     img = np.full((H, W, 3), BG, np.float64)
@@ -598,8 +646,7 @@ def chart_detail():
     img[ya:yb, xc:xc + 460, :] = noise[:, :, None]
     lay.append({"name": "noise_fine", "rect": [xc, ya, xc + 460, yb], "base": 0.5, "sigma": 0.03})
     raw = rng.normal(0, 1, (yb - ya, 500)).astype(np.float32)
-    import cv2
-    mid = cv2.GaussianBlur(raw, (0, 0), 3) - cv2.GaussianBlur(raw, (0, 0), 9)
+    mid = _gauss_blur(raw, 3) - _gauss_blur(raw, 9)
     mid = 0.5 + 0.06 * mid / (mid.std() + 1e-9)
     img[ya:yb, xc + 480:xc + 980, :] = mid[:, :, None]
     lay.append({"name": "texture_mid", "rect": [xc + 480, ya, xc + 980, yb], "base": 0.5,
@@ -832,7 +879,7 @@ def check(args):
 
 
 def stamp(args):
-    """把匯出資料夾裡的 TIFF 加上日期前綴，搬到 outputs/lr-calibration/（已有前綴的只搬不重複加）。"""
+    """把匯出資料夾裡的 TIFF 加上日期前綴，搬到 <LocalLLMs>/outputs/lr-calibration/（已有前綴的只搬不重複加）。"""
     if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", args.date):
         sys.exit("日期格式要是 YYYY-MM-DD")
     src = Path(args.render_dir).resolve()
@@ -853,22 +900,47 @@ def stamp(args):
     print(f"完成：{moved} 個檔案 → {dst}（略過 {skipped} 個）")
 
 
+def expected_names(jobs) -> dict:
+    """{tier: [方案 A 檔名（不含副檔名）]}；跟 build 寫出的 expected_*.txt 同一套規則。"""
+    exp = {"must": [], "optional": []}
+    for j in jobs:
+        exp[j.tier] += [f"{j.stem}__{key}" for key in j.images]
+    return exp
+
+
+def plan(args):
+    """只算數量：不下載、不寫任何檔案；順便確認跟資料夾裡的 expected_*.txt 一致。"""
+    jobs = build_jobs()
+    exp = expected_names(jobs)
+    nm = sum(1 for j in jobs if j.tier == "must")
+    print(f"設定數：必做 {nm}、選做 {len(jobs) - nm}；方案 A 檔數：必做 {len(exp['must'])}、選做 {len(exp['optional'])}")
+    missing = [j.code for j in jobs if j.code.startswith("A11") and j.src_preset is None]
+    print(f"驗收用 preset：找到 {10 - len(missing)}/10（{PRESET_SRC}）" + (f"，缺 {missing}" if missing else ""))
+    for tier in ("must", "optional"):
+        f = HERE / f"expected_{tier}.txt"
+        have = [s for s in f.read_text(encoding="utf-8").split() if s] if f.exists() else None
+        state = "不存在" if have is None else ("一致" if have == exp[tier] else f"不一致（檔案 {len(have)} 個）")
+        print(f"expected_{tier}.txt：{state}")
+    print(f"build 會寫到：{DEFAULT_OUT}；匯出放：{DEFAULT_DEST}")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
     b = sub.add_parser("build")
-    b.add_argument("--out", default=str(DEFAULT_OUT), help="大檔輸出位置（預設 repo 的 scratch/lr-calibration）")
+    b.add_argument("--out", default=str(DEFAULT_OUT), help="大檔輸出位置（預設 <LocalLLMs>/scratch/lr-calibration）")
     b.add_argument("--no-download", action="store_true", help="不下載真實照片")
     b.add_argument("--skip-plan-a", action="store_true", help="不寫方案 A 的大量圖檔（只算清單）")
+    sub.add_parser("plan", help="只列設定數與檔數，不下載、不寫檔")
     c = sub.add_parser("check")
     c.add_argument("render_dir")
-    s = sub.add_parser("stamp", help="匯出檔加日期前綴並搬到 outputs/lr-calibration/")
+    s = sub.add_parser("stamp", help="匯出檔加日期前綴並搬到 <LocalLLMs>/outputs/lr-calibration/")
     s.add_argument("render_dir")
     s.add_argument("date", help="渲染日期 YYYY-MM-DD")
-    s.add_argument("--dest", default=str(REPO / "outputs" / "lr-calibration"))
+    s.add_argument("--dest", default=str(DEFAULT_DEST))
     s.add_argument("--copy", action="store_true", help="用複製代替搬移")
     args = ap.parse_args()
-    {"build": build, "check": check, "stamp": stamp}[args.cmd](args)
+    {"build": build, "plan": plan, "check": check, "stamp": stamp}[args.cmd](args)
 
 
 if __name__ == "__main__":
