@@ -31,7 +31,10 @@
 - K18（preset 庫）：白名單 1→2：`services/preset_library.py`；root＝K1 的庫根；`library.json` 走 `create_new(tmp)`＋`replace_into`，`.lock` 走 `open_lock`，`import/`、`user/` 只用 `create_new`；`preset_dir` 由 G8 拒絕。測試的合成庫在 fixture 根目錄。
 - PL14（照片庫）：白名單 2→3：`services/photo_library.py`；root＝data_dir；PL3 的暫存＋`os.replace` 改 `create_new`＋`replace_into`，clear 走 `remove`；「執行期監看」直接由 G5 守門擔任，不另寫 mock。
 
-## 錯不起表面（Surface Inventory）
+## 實作補丁（2026-10-09，與條文同等效力；只准收緊，任何放行都逐項列在這裡）
+- WG1（G9 只記錄模式結果）：scratchpad 記錄型 hook（不攔，只寫 JSONL）跑整套 `unittest discover -s tests`（223 個測試、含 CUDA 的 `test_render`／`test_heic`／`test_app_server`／`test_interface_parity`；GPU 忙碌時 H12／A17 照 R1 跳過），父程序＋全部 `sys.executable` 子程序都掛。去掉 `darkroom-test-*`／`darkroom-heic24-*` 暫存根、`nul`、pycache 後，**根目錄外的寫入類事件（G2 全部事件）＝0 筆**；沒有任何第三方寫到根目錄外（torch／cv2／pillow-heif 沒有快取寫入）→ **第三方路徑例外：無**。其餘事件只有：`ctypes.dlopen`（`kernel32` 由 numpy `_core/_internal.py`、colorama `win32.py`；`kernel32.dll`、`msvcp140.dll`、`vcruntime140.dll`、`vcruntime140_1.dll` 由 torch `__init__.py`）與 `ctypes.dlsym`（torch、numpy、colorama、dill），發起者全在 site-packages，屬 G3 放行，不另列；`subprocess.Popen`：產品只有 `gpucheck.py` → `nvidia-smi`，測試只有 python（改經 `_guardrun.py`）、`node.EXE`、`pwsh.EXE`、`taskkill`、以及 `test_cli.py:165` 的 `cmd /c mklink /J`（見 WG3）。
+- WG2（G2／G3 收緊）：記錄時發現 `shutil.copy2` 在 Windows 走 `_winapi.CopyFile2`，**不發 `shutil.copyfile` 事件**；`_winapi.CreateFile`、`_winapi.CreateJunction` 也能不經 `open` 建檔。三者加進 G2（目的端查根目錄；`CreateFile` 只在寫入權限或會建檔的 disposition 才算，`\\.\pipe\` 具名管道不是檔案）。`ctypes.dlsym`（取函式指標，`ctypes.windll.kernel32` 被第三方快取後產品再取函式時仍會發）與 `ctypes.dlopen` 同規則：只有第三方放行。「stdlib」＝`sys.base_prefix` 的 `Lib`（site-packages 除外）**與 `python313.zip`**（嵌入式 runtime 的 stdlib 在 zip 裡，co_filename 是相對路徑，改看 frame 的 `__file__`）。
+
 | 表面 | 格式 | 影響（資產 → 後果｜類別） | 釘死測試 |
 |------|------|--------------------------|----------|
 | 根目錄外的寫入（G2～G6） | 一律紅＋堆疊 | 使用者照片與 preset → 新繞法寫進去卻沒有測試紅，原檔被改無法復原｜不可逆／資料 | `test_writeguard_probes`、`test_violation_swallowed_still_fails`、`test_guardrun_child_violation` |
