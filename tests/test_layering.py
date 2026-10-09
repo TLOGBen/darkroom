@@ -1,4 +1,7 @@
-"""CONTRACT-layering L2, L7, L13: layering guards (AST) and controller-only tests against FakeDarkroom."""
+"""CONTRACT-layering L2, L7, L13 and CONTRACT-write-guard G10: layering guards (AST) and controller-only tests.
+
+AST 只管分層，不證明不寫檔；不寫檔由 _writeguard 執行期證明 (tests/_writeguard.py, CONTRACT-write-guard).
+"""
 import ast
 import contextlib
 import io
@@ -16,6 +19,10 @@ APP = os.path.join(_util.REPO, "darkroom_app")
 FORBIDDEN_CALLS = ("os.path.isfile", "os.listdir")
 FORBIDDEN_NAMES = ("validate_strength", "validate_overrides", "effective_params", "folder_listing")
 FORBIDDEN_MODULES = ("darkroom_app.services", "darkroom_app.preview")
+SAFE_WRITE = "safe_write.py"
+SAFE_WRITE_USERS = ()   # G10 whitelist, this slice: empty -> XP5 services/export.py -> K18 +services/preset_library.py
+#                         -> PL14 +services/photo_library.py
+NATIVE_WRITES = ("write_image", "imwrite", ".save(", ".tofile(")   # G10: no audit event, banned everywhere
 
 
 def py_files(*parts):
@@ -124,6 +131,9 @@ class TestLayering(unittest.TestCase):
     def test_no_file_write_path_anywhere(self):  # L12 / L13 (seal patches S1, S7): no code path in darkroom_app writes
         """Photos and presets must never be overwritten: no write-mode open, no file mutation calls at all.
 
+        CONTRACT-write-guard G10: kept as is and no longer extended; scans darkroom_app/** except safe_write.py.
+        AST 只管分層，不證明不寫檔；不寫檔由 _writeguard 執行期證明.
+
         The one exemption is the MCP protocol stream: os.fdopen(protocol_fd, "wb") on the os.dup(1) copy of stdout.
         The other exact exemption (contract patch S7): Engine.open(path) in services/photos.py - receiver `eng`,
         exactly one positional argument, no keywords (it reads the photo). Every other .open(...) is checked.
@@ -147,6 +157,8 @@ class TestLayering(unittest.TestCase):
 
         for path in py_files():
             rel = os.path.relpath(path, APP).replace("\\", "/")
+            if rel == SAFE_WRITE:         # G10: the one write module is guarded at run time, not by this list
+                continue
             tree = parse(path)
             alias = {}               # local name -> real dotted name (import os as o; from os import replace as r)
             for node in ast.walk(tree):
@@ -202,6 +214,26 @@ class TestLayering(unittest.TestCase):
         self.assertEqual(offenders, [])
         with open(os.path.join(APP, "mcp_server", "__init__.py"), encoding="utf-8") as fh:
             self.assertIn("protocol_fd = os.dup(1)", fh.read())     # the exemption is only for the dup of stdout
+
+    def test_only_safe_write_writes(self):  # CONTRACT-write-guard G10
+        """Only the whitelisted modules may import safe_write; native writers are banned everywhere.
+
+        AST 只管分層，不證明不寫檔；不寫檔由 _writeguard 執行期證明.
+        """
+        files = py_files()
+        self.assertIn(os.path.join(APP, SAFE_WRITE), files)
+        self.assertEqual(SAFE_WRITE_USERS, ())
+        for path in files:
+            rel = os.path.relpath(path, APP).replace("\\", "/")
+            with open(path, encoding="utf-8") as f:
+                src = f.read()
+            for needle in NATIVE_WRITES:
+                self.assertNotIn(needle, src, (rel, needle))
+            if rel == SAFE_WRITE or rel in SAFE_WRITE_USERS:
+                continue
+            mods = imported_modules(path)
+            self.assertFalse({"darkroom_app.safe_write", "safe_write"} & mods, rel)
+            self.assertNotIn("safe_write", src, rel)          # no importlib / __import__ spelling either
 
     def test_facade_methods_forward_once(self):  # L2
         from darkroom_app.facade import DarkroomFacade, Facade
