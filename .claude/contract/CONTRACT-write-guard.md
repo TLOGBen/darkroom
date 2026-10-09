@@ -48,6 +48,8 @@
 - WG9（G3／G6 收緊，封緘第 1 次派遣探針 X1）：Windows 的 multiprocessing（spawn，含 `ProcessPoolExecutor`）直接呼叫 `_winapi.CreateProcess`，不發 `subprocess.Popen` 事件，生出的 python 子程序完全沒有守門（實測：service 裡 `ProcessPoolExecutor(1).submit(Path(p).write_bytes, b"x")` 套件全綠、檔案寫出）。補：`_winapi.CreateProcess`（application_name、command_line）加進 G3，判決：CPython 3.13 這個事件給的 command_line 是亂碼（實測 `(None, "", None)`），無法比執行檔，所以**唯一放行**的是同一執行緒上剛被 G3 放行的 `subprocess.Popen` 接著做的那一次 `CreateProcess`（每次 Popen 判決都重設這個許可，用一次就清掉），其他任何 `_winapi.CreateProcess` 一律違規；整條堆疊都是 stdlib（例如執行緒池管理執行緒）時發起者不屬測試也不屬產品 → 違規。multiprocessing 的子程序是 `python.exe … --multiprocessing-fork`、不經 `_guardrun.py`，所以測試與產品都不准用。釘死：`test_writeguard_probes` 新增 `ProcessPoolExecutor` 與 `multiprocessing.Process` 兩支探針。
 - WG10（封緘第 1 次派遣記錄、不修）：(a) G10 的原生寫檔字串禁令只掃 `darkroom_app/**`；核心 `darkroom/` 的 `write_image`（W4）屬核心封緘範圍、本片零 diff，原生寫檔仍是 W3 已知缺口，靠 G7 快照兜底。(b) `safe_write` 的 preset 檢查只看 `config.preset_dir()`；程序用 `--preset-dir` 指到別處時那個資料夾不在檢查內（`.xmp` 副檔名檢查與「只建新檔」仍擋覆蓋），沒有設定檔時丟 `ConfigError` 而不是 `SafeWriteRefused`；留給 XP5／K18 把實際使用中的 preset 資料夾傳進 safe_write 時一併決定。
 
+- WG11（G4 收緊）：`release_root` 刪不掉根目錄（Windows 上有檔案還開著，例如沒關的 sqlite 連線）時，重試 5 次後仍照樣註銷，並讓該測試失敗（「暫存根目錄刪不掉（有檔案還開著？）：{d}」），不再靜默留下 `darkroom-test-*` 殘檔。
+
 ## 錯不起表面（Surface Inventory）
 | 表面 | 格式 | 影響（資產 → 後果｜類別） | 釘死測試 |
 |------|------|--------------------------|----------|
