@@ -41,8 +41,9 @@ REFUSED_ROOT = "refused: root {root} is not an existing absolute folder"  # verb
 REFUSED_LOCK = "refused: {path} is not a .lock file"                      # verbatim (patch WG6)
 REFUSED_NO_PRESET = "refused: no preset folder is known, cannot protect it"   # verbatim (CONTRACT-export XP12)
 
-_CREATE_FLAGS = os.O_CREAT | os.O_EXCL | os.O_WRONLY | os.O_BINARY
-_LOCK_FLAGS = os.O_RDWR | os.O_CREAT | os.O_BINARY
+_O_BINARY = getattr(os, "O_BINARY", 0)        # Windows only (no text-mode translation); POSIX has no such flag
+_CREATE_FLAGS = os.O_CREAT | os.O_EXCL | os.O_WRONLY | _O_BINARY
+_LOCK_FLAGS = os.O_RDWR | os.O_CREAT | _O_BINARY
 _created = set()          # normcase(realpath) of the files create_new made in this process
 
 
@@ -102,7 +103,7 @@ def _check(path, root, protected_ext=False, preset_dir=None):
     if any(_under(real, folder) for folder in _preset_folders(preset_dir)):
         raise SafeWriteRefused(REFUSED_PRESET.format(path=path))
     if protected_ext:
-        if os.path.splitext(real)[1] in PHOTO_EXT + (".xmp",):
+        if os.path.splitext(real)[1].lower() in PHOTO_EXT + (".xmp",):   # normcase lowers it on Windows only
             raise SafeWriteRefused(REFUSED_PROTECTED.format(path=path))
     return real
 

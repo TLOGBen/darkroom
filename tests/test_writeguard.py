@@ -12,6 +12,7 @@ import re
 import secrets
 import subprocess
 import sys
+import sysconfig
 import tempfile
 import unittest
 from concurrent.futures import ThreadPoolExecutor
@@ -87,7 +88,42 @@ PROBES_HANDOFF = [
 # G3: blocked whatever the path (the product may not start processes or load DLLs) - patch WG5, WG9
 EXISTING_P = ("os.utime", "os.link(p, inside)", "_winapi.CreateFile GENERIC_ALL",
               "_winapi.CreateFile DELETE_ON_CLOSE", "os.open(p,O_RDONLY|O_TEMPORARY)")
-NOT_PATH_BASED = {"subprocess.Popen", "_winapi.CreateProcess", "ctypes.dlopen", "ctypes.dlsym", "os.system"}
+NOT_PATH_BASED = {"subprocess.Popen", "_winapi.CreateProcess", "ctypes.dlopen", "ctypes.dlsym", "os.system", "os.fork",
+                  "os.posix_spawn"}
+
+# POSIX (CI on Linux): there is no _winapi, cmd, kernel32 or O_TEMPORARY. The Windows-only probes are left out, the
+# others keep their names and either run as they are or try the same thing through the POSIX means, and two probes
+# are added for what POSIX has instead (a symlink in place of a junction, os.posix_spawn in place of CreateProcess).
+WINDOWS = sys.platform == "win32"
+WINDOWS_ONLY_PROBES = {"_winapi.CreateFile GENERIC_ALL", "_winapi.CreateFile DELETE_ON_CLOSE",
+                       "os.open(p,O_RDONLY|O_TEMPORARY)", "_winapi.CreateFile", "_winapi.CreateJunction"}
+POSIX_PROBES = {   # name -> (source or None = the same source, first event(s) the guard must block)
+    'ctypes.WinDLL("kernel32").CreateFileW(p,…)': (
+        "import ctypes\nlibc = ctypes.CDLL(None)\nlibc.close(libc.open(p.encode(), 0o101, 0o644))", "ctypes.dlopen"),
+    "ctypes (cached windll)": ("import ctypes\nctypes.CDLL(None).open", ("ctypes.dlopen", "ctypes.dlsym")),
+    "shelve.open(p)": (None, ("os.utime", "open", "sqlite3.connect")),       # dbm.sqlite3 is the default there
+    'dbm.open(p,"c")': (None, ("os.utime", "open", "sqlite3.connect")),
+    "shutil.copy2(a,p)": (None, "shutil.copyfile"),                           # no CopyFile2: copyfile's own event
+    "ProcessPoolExecutor": (None, "os.fork"),                                # multiprocessing forks on Linux
+    "multiprocessing.Process": (None, "os.fork"),
+}
+POSIX_EXTRA_PROBES = [
+    ("os.symlink(dir, p)", "import os\nos.symlink(os.path.dirname(a), p)", "os.symlink"),
+    ("os.posix_spawn", "import os\nos.posix_spawn('/bin/sh', ['sh', '-c', 'echo x>' + p], {})", "os.posix_spawn"),
+]
+
+
+def platform_probes():
+    """PROBES_13 + PROBES_HANDOFF as they run on this platform."""
+    probes = PROBES_13 + PROBES_HANDOFF
+    if WINDOWS:
+        return probes
+    out = []
+    for name, src, event in probes:
+        if name not in WINDOWS_ONLY_PROBES:
+            psrc, pevent = POSIX_PROBES.get(name, (None, event))
+            out.append((name, psrc or src, pevent))
+    return out + POSIX_EXTRA_PROBES
 
 
 def run_as_product(src, **names):
@@ -103,7 +139,7 @@ def outside_path(ext=".bin"):
 class TestWriteGuardProbes(unittest.TestCase):  # G2, G3, G11
     def test_writeguard_probes(self):
         root = _util.tmpdir(self)
-        for name, src, event in PROBES_13 + PROBES_HANDOFF:
+        for name, src, event in platform_probes():
             with self.subTest(probe=name):
                 a = os.path.join(root, f"a-{secrets.token_hex(4)}.bin")
                 with open(a, "wb") as f:
@@ -117,7 +153,7 @@ class TestWriteGuardProbes(unittest.TestCase):  # G2, G3, G11
 
     def test_probes_inside_root_pass(self):  # G11: same writes into a fixture root are allowed
         root = _util.tmpdir(self)
-        for name, src, event in PROBES_13 + PROBES_HANDOFF:
+        for name, src, event in platform_probes():
             with self.subTest(probe=name):
                 a = os.path.join(root, f"a-{secrets.token_hex(4)}.bin")
                 with open(a, "wb") as f:
@@ -139,6 +175,7 @@ class TestWriteGuardProbes(unittest.TestCase):  # G2, G3, G11
                 if name not in ("_winapi.CreateFile DELETE_ON_CLOSE", "os.open(p,O_RDONLY|O_TEMPORARY)"):
                     self.assertTrue(os.path.lexists(p), name)     # (those two delete it: allowed in a root)
 
+    @unittest.skipUnless(WINDOWS, "Windows only: _winapi.CreateFile with FILE_FLAG_DELETE_ON_CLOSE")
     def test_read_only_delete_on_close_probe(self):  # CONTRACT-export XP14 (WG10 (c) 4): no DELETE bit at all
         """GENERIC_READ + FILE_FLAG_DELETE_ON_CLOSE on an existing file outside every root: blocked, file kept.
 
@@ -222,6 +259,7 @@ class TestWriteGuardProbes(unittest.TestCase):  # G2, G3, G11
         for ev in ("os.system", "os.startfile", "os.exec", "os.spawn", "os.posix_spawn"):
             self.assertIsNotNone(_writeguard.judge(ev, ("x",)), ev)
 
+    @unittest.skipUnless(WINDOWS, "Windows only: the cmd /c mklink /J junction exemption")
     def test_mklink_exemption_is_exact(self):  # patch WG3 (tightened 2026-10-09)
         root = _util.tmpdir(self)
         report = _writeguard._report_dir
@@ -246,6 +284,24 @@ class TestWriteGuardProbes(unittest.TestCase):  # G2, G3, G11
             with self.subTest(bad=bad):
                 self.assertIsNotNone(popen(bad))
 
+    @unittest.skipIf(WINDOWS, "POSIX only: Popen starts processes through os.posix_spawn there")
+    def test_posix_spawn_permit(self):
+        self.assertTrue(subprocess._USE_POSIX_SPAWN)
+        self.assertIsNotNone(_writeguard.judge("os.posix_spawn", ("/bin/true", ["true"], {})))   # no approved Popen
+        # an approved Popen that takes the posix_spawn path (absolute executable, no cwd, close_fds=False) runs
+        r = subprocess.run([*_util.guarded_python(), "-c", "print('ok')"], capture_output=True, close_fds=False)
+        self.assertEqual((r.returncode, r.stdout.strip()), (0, b"ok"))
+        self.assertFalse(_writeguard.popen_permit())               # nothing left behind
+        with _writeguard.expect_violation() as ev:                 # a direct os.posix_spawn is still blocked
+            subprocess.run([sys.executable, "-s", "-c", "pass"], capture_output=True, close_fds=False)
+        self.assertEqual(ev.caught[0]["event"], "subprocess.Popen")
+        p = outside_path()
+        with _writeguard.expect_violation() as ev:
+            run_as_product("import os\nos.posix_spawn('/bin/sh', ['sh', '-c', 'echo x>' + p], {})", p=p)
+        self.assertEqual(ev.caught[0]["event"], "os.posix_spawn")
+        self.assertFalse(os.path.lexists(p))
+
+    @unittest.skipUnless(WINDOWS, "Windows only: taskkill and _winapi.CreateProcess")
     def test_createprocess_permit_cannot_be_reused(self):  # patch WG9 (tightened 2026-10-09)
         mp = ("import multiprocessing\nfrom pathlib import Path\n"
               "q = multiprocessing.Process(target=Path(p).write_bytes, args=(b'x',))\nq.start()\nq.join()")
@@ -341,7 +397,8 @@ class TestWriteGuardProbes(unittest.TestCase):  # G2, G3, G11
         self.assertEqual(cat(os.path.join(_util.REPO, "darkroom_app", "x.py")), "product")
         self.assertEqual(cat(os.path.join(_util.REPO, "darkroom", "x.py")), "product")
         self.assertEqual(cat(os.path.join(TESTS, "x.py")), "test")
-        self.assertEqual(cat(os.path.join(sys.base_prefix, "Lib", "site-packages", "torch", "x.py")), "third-party")
+        site = os.path.join(sys.base_prefix, "Lib", "site-packages") if WINDOWS else sysconfig.get_paths()["purelib"]
+        self.assertEqual(cat(os.path.join(site, "torch", "x.py")), "third-party")
         self.assertEqual(cat(os.path.join(sys.base_prefix, "python313.zip", "subprocess.pyc")), "stdlib")
         self.assertEqual(cat("<string>"), "other")
         self.assertEqual(_writeguard.split_cmdline('"C:\\a b\\python.exe" -s x "y z" "q\\"r"'),
@@ -517,13 +574,17 @@ class TestGuardWiring(unittest.TestCase):  # G1, G4, G7
         self.assertNotIn(_writeguard._norm(d), _writeguard.roots())
 
     def test_protected_folders(self):  # G7
-        local = os.environ.get("LOCALAPPDATA")
+        if sys.platform == "win32":
+            data = os.path.join(os.environ.get("LOCALAPPDATA"), "darkroom")
+        else:
+            from darkroom_app.domain import settings
+            data = settings.default_data_dir(os.environ, sys.platform)
         self.assertEqual(_writeguard.protected_folders(),
-                         [_util.PHOTOS, os.path.dirname(os.path.abspath(_util.preset_dir())),
-                          os.path.join(local, "darkroom")])
+                         [_util.PHOTOS, os.path.dirname(os.path.abspath(_util.preset_dir())), data])
         snap = _writeguard.arm_snapshot()
         lib = snap[os.path.dirname(os.path.abspath(_util.preset_dir()))]
-        self.assertEqual(sum(1 for k in lib if k.lower().endswith(".xmp") and os.path.dirname(k) == "xmp"), 1466)
+        self.assertEqual(sum(1 for k in lib if k.lower().endswith(".xmp") and os.path.dirname(k) == "xmp"),
+                         _util.LIBRARY_SIZE)
         self.assertTrue(snap[_util.PHOTOS])
 
     def test_protect_fixture(self):  # G7: a fixture-protected synthetic photo folder
@@ -586,9 +647,12 @@ class TestSafeWrite(unittest.TestCase):  # G8
         self.refused(f"refused: {p} is outside {root}", safe_write.create_new, p, root, b"x")       # root outside
         p = os.path.join(root, "..", "x.bin")
         self.refused(f"refused: {p} is outside {root}", safe_write.create_new, p, root, b"x")       # .. escape
-        import _winapi
         j = os.path.join(root, "jx")
-        _winapi.CreateJunction(self.other, j)                                    # junction pointing out of root
+        if WINDOWS:
+            import _winapi
+            _winapi.CreateJunction(self.other, j)                                # junction pointing out of root
+        else:
+            os.symlink(self.other, j)                                            # POSIX: a symlink does the same
         p = os.path.join(j, "x.bin")
         self.refused(f"refused: {p} is outside {root}", safe_write.create_new, p, root, b"x")
         jd = os.path.join(j, "d")

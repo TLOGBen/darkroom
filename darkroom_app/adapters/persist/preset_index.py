@@ -344,9 +344,12 @@ class PresetLibraryStore:
         when every name is taken."""
         try:
             self._make_dir(folder)
+            taken = {n.casefold() for n in os.listdir(folder)}  # K11: names compared without case, on POSIX too
             for s in stems:
                 path = os.path.join(folder, s + ".xmp")
                 if os.path.dirname(os.path.abspath(path)) != os.path.abspath(folder):    # K14: stays in folder
+                    continue
+                if (s + ".xmp").casefold() in taken:
                     continue
                 try:
                     safe_write.create_new(path, self.root, data, preset_dir=self.preset_dir)

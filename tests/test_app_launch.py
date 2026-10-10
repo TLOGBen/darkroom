@@ -33,7 +33,10 @@ def small_presets(testcase):
 
 
 def kill_tree(proc):
-    subprocess.run(["taskkill", "/T", "/F", "/PID", str(proc.pid)], capture_output=True)
+    if sys.platform == "win32":
+        subprocess.run(["taskkill", "/T", "/F", "/PID", str(proc.pid)], capture_output=True)
+    else:
+        proc.kill()                     # POSIX: the guarded child runs the app in its own process (runpy)
     try:
         proc.wait(timeout=20)
     except subprocess.TimeoutExpired:
@@ -114,8 +117,13 @@ class TestModuleLaunch(unittest.TestCase):
             kill_tree(p)
 
 
+# tools/start.ps1 runs the author's dedicated Python, found through config.local.json (localllms_root)
+HAS_LOCAL_CONFIG = os.path.isfile(os.path.join(_util.REPO, "config.local.json"))
+
+
 @unittest.skipUnless(PWSH, "needs pwsh")
 class TestScripts(unittest.TestCase):
+    @unittest.skipUnless(HAS_LOCAL_CONFIG, "needs config.local.json and the dedicated Python it leads to (author setup)")
     def test_start_ps1_runs_server_on_given_port(self):
         port = free_port()
         script = os.path.join(_util.REPO, "tools", "start.ps1")
@@ -145,6 +153,7 @@ class TestScripts(unittest.TestCase):
         self.assertIn("http://127.0.0.1:", src)
         self.assertIn("'-s'", src)
 
+    @unittest.skipUnless(sys.platform == "win32", "Windows only: a .lnk made through WScript.Shell")
     def test_make_shortcut_to_given_folder(self):
         dest = _util.tmpdir(self)
         script = os.path.join(_util.REPO, "tools", "make-shortcut.ps1")
@@ -159,6 +168,9 @@ class TestScripts(unittest.TestCase):
         target, args = out.splitlines()[:2]
         self.assertTrue(target.lower().endswith("pwsh.exe"), target)
         self.assertIn(os.path.join(_util.REPO, "tools", "start.ps1"), args)
+
+
+ABS_P = "D:/abs/P" if os.name == "nt" else "/abs/P"         # an absolute path on this platform
 
 
 class TestConfig(unittest.TestCase):
@@ -178,8 +190,8 @@ class TestConfig(unittest.TestCase):
             json.dump({"localllms_root": "Q", "preset_dir": "P"}, f)
         self.assertEqual(config.preset_dir(cfg, env={}), os.path.join(d, "P"))   # S2 E19: relative to the file
         with open(cfg, "w", encoding="utf-8") as f:
-            json.dump({"localllms_root": "Q", "preset_dir": "D:/abs/P"}, f)
-        self.assertEqual(config.preset_dir(cfg, env={}), "D:/abs/P")
+            json.dump({"localllms_root": "Q", "preset_dir": ABS_P}, f)
+        self.assertEqual(config.preset_dir(cfg, env={}), ABS_P)
 
     def test_gitignore(self):
         with open(os.path.join(_util.REPO, ".gitignore"), encoding="utf-8") as f:

@@ -121,14 +121,14 @@ class TestPresetsApi(AppCase):  # B3 (the user's real library)
         text = await r.text()
         rows = json.loads(text)
         self.assertIsInstance(rows, list)
-        self.assertEqual(len(rows), 1466)
+        self.assertEqual(len(rows), _util.LIBRARY_SIZE)
         for row in rows:
             self.assertEqual(set(row), {"id", "group", "name", "supported", "skipped", "favorite", "tags"})   # K9
             self.assertIs(row["supported"], True)
             self.assertIsInstance(row["skipped"], list)
             self.assertIsInstance(row["group"], str)
             self.assertTrue(row["name"])
-        self.assertEqual(len({r["id"] for r in rows}), 1466)
+        self.assertEqual(len({r["id"] for r in rows}), _util.LIBRARY_SIZE)
         ids = {os.path.splitext(f)[0] for f in os.listdir(self.presets) if f.endswith(".xmp")}
         self.assertEqual({r["id"] for r in rows}, ids)
         # no full preset path in the response, in any spelling

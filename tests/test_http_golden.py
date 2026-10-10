@@ -10,6 +10,7 @@ import unittest
 from unittest import mock
 
 import _heicgen
+import _util
 import _writeguard  # noqa: F401  (CONTRACT-write-guard G1)
 from darkroom import read_image
 from test_app_server import AppCase, write_photo
@@ -309,20 +310,13 @@ class TestGoldenS2(GoldenCase):  # CONTRACT-s2-export-detect E28: the new routes
         r = await self.client.delete("/api/export-presets", params={"name": "網頁"})
         self.assertEqual((r.status, list(await r.json())), (200, ["name", "settings"]))
         # conflict: another program holds the lock
-        import msvcrt
         from unittest import mock
         from darkroom_app.services import export_presets
         from darkroom_app.adapters.persist import locks
-        fd = os.open(os.path.join(self.data, "export-presets.json.lock"), os.O_RDWR | os.O_BINARY)
-        try:
-            msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+        with _util.held_lock(os.path.join(self.data, "export-presets.json.lock")):
             with mock.patch.object(locks, "LOCK_WAIT_S", 0.2):
                 await self.err("PUT", "/api/export-presets", 409, "匯出預設正被其他程式修改，請稍後再試",
                                json={"name": "x", "settings": {}})
-            os.lseek(fd, 0, os.SEEK_SET)
-            msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
-        finally:
-            os.close(fd)
 
     async def test_export_presets_unavailable(self):  # the data folder lies inside the preset folder (PLP1 sentence)
         from darkroom_app.composition import build_facade

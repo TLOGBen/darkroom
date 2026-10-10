@@ -17,6 +17,7 @@ import re
 import secrets
 import shutil
 import sys
+import sysconfig
 import tempfile
 import threading
 import traceback
@@ -33,7 +34,8 @@ VIOLATION_LINE = "寫檔守門：{event} → {target}（測試 {test_id}）"    
 CHILD_EXIT = 86                                                           # verbatim (G6)
 PYCACHE_NAME = re.compile(r"^[^\\/]+\.cpython-\d+(\.opt-\d)?\.pyc(\.\d+)?$")   # verbatim (G4)
 WRITE_FLAGS = (os.O_WRONLY | os.O_RDWR | os.O_CREAT | os.O_TRUNC | os.O_APPEND   # verbatim (G2)
-               | os.O_TEMPORARY | os.O_SHORT_LIVED)                                # patch WG13: delete on close
+               | getattr(os, "O_TEMPORARY", 0) | getattr(os, "O_SHORT_LIVED", 0))  # patch WG13: delete on close
+#   (O_TEMPORARY / O_SHORT_LIVED exist on Windows only; elsewhere they count as 0)
 WRITE_MODE_CHARS = frozenset("wax+")                                       # verbatim (G2)
 TEST_EXECUTABLES = ("python.exe", "node.exe", "pwsh.exe", "taskkill.exe")  # verbatim (G3); python only via _guardrun;
 #   cmd.exe (WG3 constant row) is NOT in this tuple: only the exact mklink /J shape in _popen_allowed lets it run
@@ -41,8 +43,12 @@ PRODUCT_SUBPROCESSES = {"darkroom_app/utils/gpucheck.py": ("nvidia-smi.exe",),  
                         "darkroom_app/services/semantic_index.py": ("op.exe",)}   # verbatim (G3, patch WG15)
 OP_REF = re.compile(r'^op://[^\s/"&|<>^%!]+(/[^\s/"&|<>^%!]+){2,3}$')     # verbatim (WG15): the 1Password reference
 OP_MODULE = "darkroom_app/services/semantic_index.py"
-ALWAYS_VIOLATION = ("os.system", "os.exec", "os.spawn", "os.posix_spawn", "os.startfile")   # G3
+ALWAYS_VIOLATION = ("os.system", "os.exec", "os.spawn", "os.posix_spawn", "os.startfile",   # G3
+                    "os.fork", "os.forkpty")      # POSIX: multiprocessing's fork start (Windows: _winapi.CreateProcess)
 PHOTOS = os.path.join(REPO, ".claude", "wayfinder", "darkroom", "prototypes", "llm-pick-experiment", "photos")
+SYNTHETIC_PREFIX = "darkroom-synthetic-presets-"
+PRESET_DIR = None            # parent: the preset folder the tests use (set when armed)
+REAL_PRESETS = False         # parent: True when PRESET_DIR is the user's real library, False for the synthetic one
 
 PATH_EVENTS = {     # event -> indexes of the target arguments (G2; patch WG2 adds the _winapi events)
     "open": (0,), "os.rename": (0, 1), "os.remove": (0,), "os.rmdir": (0,), "os.mkdir": (0,), "os.chmod": (0,),
@@ -51,7 +57,10 @@ PATH_EVENTS = {     # event -> indexes of the target arguments (G2; patch WG2 ad
     "shutil.unpack_archive": (1,), "tempfile.mkstemp": (0,), "tempfile.mkdtemp": (0,), "sqlite3.connect": (0,),
     "dbm.open": (0,), "_winapi.CopyFile2": (1,), "_winapi.CreateJunction": (1,), "_winapi.CreateFile": (0,),
 }
-PROCESS_EVENTS = ("subprocess.Popen", "_winapi.CreateProcess")                   # patch WG9
+PROCESS_EVENTS = ("subprocess.Popen", "_winapi.CreateProcess", "os.posix_spawn")   # patch WG9 (+ POSIX Popen)
+# POSIX: the event's dir_fd argument for each relative target (shutil.rmtree removes entries by name + dir_fd)
+DIR_FD_ARGS = {"os.remove": {0: 1}, "os.rmdir": {0: 1}, "os.mkdir": {0: 2}, "os.chmod": {0: 2}, "os.utime": {0: 3},
+               "os.rename": {0: 2, 1: 3}, "os.link": {0: 2, 1: 3}, "os.symlink": {1: 2}}
 CMD_SPECIAL = frozenset('&|<>^%!"' + chr(13) + chr(10))                                         # patch WG3
 WATCHED = frozenset(PATH_EVENTS) | frozenset(ALWAYS_VIOLATION) | frozenset(PROCESS_EVENTS) | {"ctypes.dlopen",
                                                                                               "ctypes.dlsym"}
@@ -60,8 +69,11 @@ _WRITE_ACCESS = (0x40000000 | 0x10000000 | 0x02000000 | 0x2 | 0x4 | 0x10 | 0x100
 _DELETE_ON_CLOSE, _CREATE_DISPOSITIONS = 0x04000000, (1, 2, 4, 5)
 
 _BASE = os.path.normcase(os.path.realpath(sys.base_prefix))
-_STDLIB = (os.path.join(_BASE, "python313.zip") + os.sep, os.path.join(_BASE, "lib") + os.sep)
-_SITE = os.path.join(_BASE, "lib", "site-packages") + os.sep
+_PATHS = sysconfig.get_paths()        # also covers a POSIX layout (lib/python3.13/...) and a virtual environment
+_STDLIB = tuple(dict.fromkeys(os.path.normcase(p) + os.sep for p in (
+    os.path.join(_BASE, "python313.zip"), os.path.join(_BASE, "lib"), _PATHS["stdlib"], _PATHS["platstdlib"])))
+_SITE = tuple(dict.fromkeys(os.path.normcase(p) + os.sep for p in (
+    os.path.join(_BASE, "lib", "site-packages"), _PATHS["purelib"], _PATHS["platlib"])))
 _HERE = os.path.normcase(os.path.abspath(__file__))
 _N_TESTS = os.path.normcase(TESTS) + os.sep
 _N_PRODUCT = (os.path.normcase(os.path.join(REPO, "darkroom_app")) + os.sep,
@@ -164,7 +176,7 @@ def split_cmdline(s):
     return out
 
 
-def _outside(target):
+def _outside(target, mkdir=False):
     """None when the target may be written, else its normalized spelling (G2, G4)."""
     if isinstance(target, int):
         return None
@@ -180,6 +192,8 @@ def _outside(target):
     parts = n.split(os.sep)
     if "__pycache__" in parts[:-1] and PYCACHE_NAME.match(parts[-1]):
         return None
+    if mkdir and parts[-1] == "__pycache__":
+        return None                     # G4: the bytecode cache folder itself (a stdlib not compiled ahead, POSIX)
     with _lock:
         if any(_inside(n, r) for r in _roots):
             return None
@@ -198,7 +212,7 @@ def _frame_file(f):
     return gf if isinstance(gf, str) and os.path.isabs(gf) else f.f_code.co_filename
 
 
-_HOOK_FUNCS = ("_hook", "judge", "_report_cleanup", "_from_cleanup", "_caller_frame")
+_HOOK_FUNCS = ("_hook", "judge", "_report_cleanup", "_from_cleanup", "_caller_frame", "_posix_spawn_permitted")
 
 
 def _caller_frame():
@@ -267,11 +281,21 @@ def _sqlite_target(db):
     return _outside(db)
 
 
+def exe_name(path):
+    """The executable's name as the tables above spell it (Windows names, lower case)."""
+    exe = os.path.basename(path).lower()
+    if os.name == "nt":
+        if exe and not os.path.splitext(exe)[1]:
+            exe += ".exe"                # what CreateProcess does with a bare name (taskkill, cmd, nvidia-smi)
+        return exe
+    if re.fullmatch(r"python3(\.\d+)?", exe):
+        exe = "python"                   # POSIX interpreters are python3 / python3.13 as often as python
+    return exe + ".exe" if exe and not exe.endswith(".exe") else exe
+
+
 def _popen_allowed(executable, args, who):
     argv = split_cmdline(args) if isinstance(args, str) else [os.fsdecode(a) for a in args]
-    exe = os.path.basename(os.fsdecode(executable) if executable else (argv[0] if argv else "")).lower()
-    if exe and not os.path.splitext(exe)[1]:
-        exe += ".exe"                    # what CreateProcess does with a bare name (taskkill, cmd, nvidia-smi)
+    exe = exe_name(os.fsdecode(executable) if executable else (argv[0] if argv else ""))
     cat, rel = who
     if cat == "product":
         if exe not in PRODUCT_SUBPROCESSES.get(rel, ()):
@@ -298,11 +322,50 @@ def _popen_allowed(executable, args, who):
     return exe in TEST_EXECUTABLES
 
 
+def _fd_folder(fd):
+    """POSIX: the folder an open dir_fd refers to (None when it cannot be told)."""
+    try:
+        return os.readlink(f"/proc/self/fd/{fd}")
+    except (OSError, ValueError):
+        return None
+
+
+def _with_dir_fd(event, args):
+    """args with every relative target that came with a dir_fd made absolute (POSIX rmtree, os.*(dir_fd=...))."""
+    pairs = DIR_FD_ARGS.get(event)
+    if not pairs:
+        return args
+    out = list(args)
+    for i, j in pairs.items():
+        fd = args[j] if j < len(args) else None
+        if i >= len(args) or not isinstance(fd, int) or isinstance(fd, bool) or isinstance(args[i], int):
+            continue
+        try:
+            raw = os.fsdecode(os.fspath(args[i]))
+        except TypeError:
+            continue
+        folder = _fd_folder(fd)
+        if not os.path.isabs(raw) and folder:
+            out[i] = os.path.join(folder, raw)
+    return tuple(out)
+
+
+def _posix_spawn_permitted():
+    """POSIX (WG9 counterpart): os.posix_spawn straight from the approved Popen's own _posix_spawn call."""
+    import subprocess
+    permit, _tl.permit_frame = getattr(_tl, "permit_frame", None), None
+    spawn = getattr(subprocess.Popen, "_posix_spawn", None)
+    f = _caller_frame()
+    return (permit is not None and spawn is not None and f is not None and f.f_code is spawn.__code__
+            and f.f_back is permit and permit.f_code is _execute_child_code())
+
+
 def judge(event, args):
     """None, or the target string of a violation."""
     if event not in PROCESS_EVENTS:
         _tl.permit_frame = None         # WG9: any other watched event clears the CreateProcess permit
     if event in PATH_EVENTS:
+        args = _with_dir_fd(event, args)
         if event == "open":
             path, mode, flags = args
             if isinstance(path, int):
@@ -322,9 +385,11 @@ def judge(event, args):
             return None
         for i in PATH_EVENTS[event]:
             if i < len(args):
-                bad = _outside(args[i])
+                bad = _outside(args[i], mkdir=event == "os.mkdir")
                 if bad is not None:
                     return bad
+        return None
+    if event == "os.posix_spawn" and _posix_spawn_permitted():
         return None
     if event in ALWAYS_VIOLATION:
         return str(args[0] if args else "")
@@ -426,14 +491,61 @@ def roots():
 
 
 # ---------------------------------------------------------------- protected folders (G7)
-def protected_folders():
-    """The three folders snapshotted at arming and in test_zz_writeguard."""
-    d = os.environ.get("DARKROOM_PRESET_DIR")         # same resolution as _util.preset_dir()
+def _configured_preset_dir():
+    """The user's preset folder (DARKROOM_PRESET_DIR, else darkroom_app.config), or None when none is set up or it
+    does not exist (a clean checkout / CI: no config.local.json, no LocalLLMs)."""
+    d = os.environ.get("DARKROOM_PRESET_DIR")
     if not d:
         from darkroom_app import config
-        d = config.preset_dir()
-    local = os.environ.get("LOCALAPPDATA") or os.path.join(os.path.expanduser("~"), "AppData", "Local")
-    return [PHOTOS, os.path.dirname(os.path.abspath(d)), os.path.join(local, "darkroom")]
+        try:
+            d = config.preset_dir()
+        except config.ConfigError:
+            return None
+    return d if os.path.isdir(d) else None
+
+
+def _synthetic_preset_dir():
+    """A small synthetic preset library (tests/_xmpgen.synthetic_library) made under %TEMP% BEFORE the hook is armed,
+    so it is protected like the real one (snapshot at arming, compared in test_zz_writeguard), plus a settings file
+    whose localllms_root leads to it (the product then finds it the way it finds the user's). Folders of earlier runs
+    older than a day are removed here, also before arming."""
+    import time
+    import _xmpgen
+    base = tempfile.gettempdir()
+    for name in os.listdir(base):
+        old = os.path.join(base, name)
+        if name.startswith(SYNTHETIC_PREFIX) and os.path.isdir(old) and time.time() - os.path.getmtime(old) > 86400:
+            shutil.rmtree(old, True)
+    top = os.path.join(base, f"{SYNTHETIC_PREFIX}{os.getpid()}-{secrets.token_hex(6)}")
+    xmp = os.path.join(top, "llm", "artifact", "11_preset", "xmp")    # the author's LocalLLMs layout
+    os.makedirs(xmp)
+    _xmpgen.synthetic_library(xmp)
+    with open(os.path.join(top, "config.json"), "w", encoding="utf-8") as f:   # what _util points DARKROOM_CONFIG at
+        json.dump({"localllms_root": os.path.join(top, "llm")}, f)
+    return xmp
+
+
+def _data_folder():
+    """The real default photo-library data folder of this platform (G7), or None when none is known."""
+    if sys.platform == "win32":
+        local = os.environ.get("LOCALAPPDATA") or os.path.join(os.path.expanduser("~"), "AppData", "Local")
+        return os.path.join(local, "darkroom")
+    from darkroom_app.domain import settings
+    return settings.default_data_dir(os.environ, sys.platform)
+
+
+def synthetic_config():
+    """The settings file next to the synthetic library, or None when the tests use the user's own library."""
+    if REAL_PRESETS or not PRESET_DIR:
+        return None
+    return os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(PRESET_DIR)))), "config.json")
+
+
+def protected_folders():
+    """The folders snapshotted at arming and in test_zz_writeguard: the photo prototypes, the preset library in use
+    (the user's, or the synthetic one when there is none) and the real default data folder."""
+    folders = [PHOTOS, os.path.dirname(os.path.abspath(PRESET_DIR)) if PRESET_DIR else None, _data_folder()]
+    return [f for f in folders if f]
 
 
 def snapshot_folder(root):
@@ -624,7 +736,11 @@ def _arm_child(argv):
 
 
 def _arm_parent():
-    global _report_dir, _snapshot_at_arm
+    global _report_dir, _snapshot_at_arm, PRESET_DIR, REAL_PRESETS
+    PRESET_DIR = _configured_preset_dir()
+    REAL_PRESETS = PRESET_DIR is not None
+    if not REAL_PRESETS:
+        PRESET_DIR = _synthetic_preset_dir()
     _snapshot_at_arm = snapshot()
     _report_dir = os.path.join(tempfile.gettempdir(), f"darkroom-guard-{os.getpid()}-{secrets.token_hex(6)}")
     os.mkdir(_report_dir)                       # the guard's own report folder, made before the hook exists

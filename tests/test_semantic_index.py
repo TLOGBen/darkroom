@@ -454,19 +454,12 @@ class TestBuild(unittest.TestCase):  # SI3, SI6, SI7, SI9, SI10
         self.assertEqual(h.clients[-1].api_key, "sk-ant-ENVSECRET")                # SIP6 (c): stripped
 
     def test_lock_held_means_no_batch(self):  # SIP6 (b): no lock, no money
-        import msvcrt
         from unittest import mock
         h = Harness(self)
-        fd = os.open(os.path.join(h.tmp, "semantic.json.lock"), os.O_RDWR | os.O_CREAT | os.O_BINARY)
-        try:
-            msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+        with _util.held_lock(os.path.join(h.tmp, "semantic.json.lock"), create=True):
             with mock.patch.object(locks, "LOCK_WAIT_S", 0.2):
                 with self.assertRaises(DarkroomError) as cm:
                     h.f.semantic_build(wait_seconds=0)
-        finally:
-            os.lseek(fd, 0, os.SEEK_SET)
-            msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
-            os.close(fd)
         self.assertEqual((cm.exception.kind, cm.exception.message),
                          ("conflict", "preset 庫正被其他程式修改，請稍後再試"))
         self.assertEqual(h.batches.created, [])                                      # nothing was sent

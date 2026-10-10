@@ -107,3 +107,48 @@ def write(dirpath, filename, text):
     with open(p, "w", encoding="utf-8", newline="\n") as f:
         f.write(text)
     return p
+
+
+def _look(name):
+    return f'   <crs:Look>\n    <rdf:Description crs:Name="{name}" crs:Amount="1"/>\n   </crs:Look>\n'
+
+
+# A stand-in for the user's preset library where there is none (a clean checkout / CI): one file per kind of preset
+# the library tests look for (find_preset patterns), every one of them supported (no PV2010) and without a crop.
+SYNTHETIC_LIBRARY = [
+    ("a-pv67.xmp", {"ProcessVersion": "6.7", "Contrast2012": "+10", "Exposure2012": "+0.20"}, {}),
+    ("b-pv10.xmp", {"ProcessVersion": "10.0", "Exposure2012": "-0.30", "Clarity2012": "+15", "Vibrance": "+12"}, {}),
+    ("c-pv11-curves.xmp", {"ProcessVersion": "11.0", "Highlights2012": "-40", "Shadows2012": "+30"},
+     {"curves": {"ToneCurvePV2012": [(0, 18), (64, 60), (192, 200), (255, 245)],
+                 "ToneCurvePV2012Red": [(0, 0), (128, 136), (255, 255)],
+                 "ToneCurvePV2012Blue": [(0, 8), (128, 122), (255, 250)]}}),
+    ("d-pv154-color.xmp", {"ProcessVersion": "15.4", "HueAdjustmentOrange": "-10", "SaturationAdjustmentBlue": "-25",
+                           "LuminanceAdjustmentGreen": "+15", "ColorGradeMidtoneHue": "30", "ColorGradeMidtoneSat": "10",
+                           "ColorGradeBlending": "60", "SplitToningHighlightHue": "45",
+                           "SplitToningHighlightSaturation": "15"}, {}),
+    ("e-wb-temperature.xmp", {"WhiteBalance": "Custom", "Temperature": "5500", "Tint": "+10",
+                              "IncrementalTemperature": "+8"}, {}),
+    ("f-look-color.xmp", {"Exposure2012": "+0.15"}, {"extra": _look("Adobe Color")}),
+    ("g-look-mono.xmp", {"Contrast2012": "+20"}, {"extra": _look("Adobe Monochrome")}),
+    ("h-hdr.xmp", {"HDREditMode": "1", "Exposure2012": "+0.10"}, {}),
+    ("i-mask-radial.xmp", {"Exposure2012": "+0.10"},
+     {"extra": radial_mask(0.2, 0.2, 0.8, 0.8, {"LocalExposure2012": "-0.40"}, feather=50)}),
+    ("j-mask-linear.xmp", {"Contrast2012": "+5"},
+     {"extra": linear_mask((0.5, 0.0), (0.5, 0.4), {"LocalExposure2012": "-0.30", "LocalDehaze": "+10"})}),
+    ("k-bw-plain.xmp", {"ConvertToGrayscale": "True", "GrayMixerOrange": "+20", "GrayMixerBlue": "-30",
+                        "Contrast2012": "+15"}, {}),
+    ("l-bw-toned.xmp", {"ConvertToGrayscale": "True", "SplitToningShadowHue": "30",
+                        "SplitToningShadowSaturation": "25"}, {}),
+    ("m-film.xmp", {"GrainAmount": "25", "GrainSize": "30", "PostCropVignetteAmount": "-15", "Dehaze": "+8",
+                    "Texture": "+10", "Saturation": "-10", "Sharpness": "30", "ParametricShadows": "+10"}, {}),
+]
+
+
+def synthetic_library(xmp_dir):
+    """Write SYNTHETIC_LIBRARY into xmp_dir (an existing folder); returns the paths."""
+    out = []
+    for filename, attrs, kw in SYNTHETIC_LIBRARY:
+        stem = filename[:-4]
+        out.append(write(xmp_dir, filename, xmp_text(attrs, name=f"Synthetic {stem}", group=f"Synthetic - {stem[0]}",
+                                                    **kw)))
+    return out

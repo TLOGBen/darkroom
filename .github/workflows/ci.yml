@@ -44,7 +44,9 @@ jobs:
           python -m pip install -r requirements.txt
 
       # The server tests use the small fixed page under tests/web_dist_fixture (tests/_util.py), so this job needs
-      # no node and no web build.
+      # no node and no web build. There is no config.local.json and no preset library here: the write guard
+      # (tests/_writeguard.py) makes a small synthetic one under the temp folder and _util points DARKROOM_CONFIG at
+      # it; assertions about the author's own 1466 presets use its size instead or are left out.
       - name: Unit tests
         run: python -s -m unittest discover -s tests
 

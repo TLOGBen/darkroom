@@ -43,7 +43,7 @@ class TestSchema(unittest.TestCase):
             self.assertEqual(back, p, path)
             self.assertEqual(back.to_json(), p.to_json())
             n += 1
-        self.assertEqual(n, 1466)
+        self.assertEqual(n, _util.LIBRARY_SIZE)
 
     def test_known_lightroom_keys(self):
         d = _util.tmpdir(self)

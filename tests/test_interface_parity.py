@@ -739,15 +739,12 @@ class TestPresetLibraryParity(unittest.IsolatedAsyncioTestCase):  # CONTRACT-pre
         self.assertEqual(got["http"][1], ["p-skip", "p-expo"])
 
     async def test_lock_held_parity(self):  # K15 / K17: the lock is held by someone else -> conflict everywhere
-        import msvcrt
         from darkroom_app.services import preset_library as pl
         from darkroom_app.adapters.persist import locks
         got = {}
         for name in ("http", "cli", "mcp"):
             root, _ = self.fresh()
-            fd = os.open(os.path.join(root, "library.json.lock"), os.O_RDWR | os.O_CREAT | os.O_BINARY)
-            try:
-                msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+            with _util.held_lock(os.path.join(root, "library.json.lock"), create=True):
                 with mock.patch.object(locks, "LOCK_WAIT_S", 0.2):
                     if name == "http":
                         got[name] = await self.http("POST", "/api/preset-library/favorite",
@@ -756,10 +753,6 @@ class TestPresetLibraryParity(unittest.IsolatedAsyncioTestCase):  # CONTRACT-pre
                         got[name] = self.cli(["presets", "favorite", "p-expo", "on"])
                     else:
                         got[name] = self.mcp("darkroom_preset_favorite", {"preset_id": "p-expo", "favorite": True})
-                os.lseek(fd, 0, 0)
-                msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
-            finally:
-                os.close(fd)
             self.assertFalse(os.path.exists(os.path.join(root, "library.json")), name)
         self.assertEqual({k: v[0] for k, v in got.items()},
                          dict.fromkeys(got, Outcome(False, "conflict", "preset 庫正被其他程式修改，請稍後再試")))

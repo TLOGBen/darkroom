@@ -13,6 +13,7 @@ import json
 import os
 import shutil
 import struct
+import sys
 import threading
 import unittest
 from unittest import mock
@@ -171,14 +172,15 @@ class PhotoLibCase(unittest.TestCase):
 class TestDataDirAndFingerprint(PhotoLibCase):
     def test_data_dir_config(self):  # PL1
         cfg = os.path.join(self.tmp, "c.json")
+        abs_data = "D:/x/data" if os.name == "nt" else "/x/data"     # absolute on this platform
         with open(cfg, "w", encoding="utf-8") as f:
-            json.dump({"data_dir": "D:/x/data"}, f)
-        self.assertEqual(config.data_dir(cfg, {"LOCALAPPDATA": "C:/L"}), "D:/x/data")
+            json.dump({"data_dir": abs_data}, f)
+        self.assertEqual(config.data_dir(cfg, {"LOCALAPPDATA": "C:/L"}, "win32"), abs_data)
         with open(cfg, "w", encoding="utf-8") as f:
             json.dump({"data_dir": ""}, f)
-        self.assertEqual(config.data_dir(cfg, {"LOCALAPPDATA": "C:/L"}), os.path.join("C:/L", "darkroom"))
+        self.assertEqual(config.data_dir(cfg, {"LOCALAPPDATA": "C:/L"}, "win32"), os.path.join("C:/L", "darkroom"))
         with self.assertRaises(config.ConfigError) as cm:
-            config.data_dir(cfg, {})
+            config.data_dir(cfg, {}, "win32")              # the Windows rule and sentence on every platform
         self.assertEqual(str(cm.exception), CONFIG_ERROR)
 
     def test_reads_create_nothing(self):  # PL1: only a write creates edits/, thumbs/, index/
@@ -244,7 +246,11 @@ class TestDataDirAndFingerprint(PhotoLibCase):
 
     def test_tests_never_touch_real_data_dir(self):  # PL1 / G7
         real = _writeguard.protected_folders()[2]
-        self.assertTrue(real.lower().endswith(os.path.join("appdata", "local", "darkroom").lower()))
+        if sys.platform == "win32":
+            self.assertEqual(real, os.path.join(os.environ["LOCALAPPDATA"], "darkroom"))
+        else:
+            from darkroom_app.domain import settings
+            self.assertEqual(real, settings.default_data_dir(os.environ, sys.platform))
         self.assertEqual(_writeguard.snapshot([real]), {real: _writeguard.arm_snapshot()[real]})
 
 

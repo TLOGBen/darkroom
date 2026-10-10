@@ -10,8 +10,8 @@ class TestPresetIntegrity(unittest.TestCase):
     def test_presets_untouched_hash(self):
         rc, out, err = _util.run_cli("scan", _util.preset_dir())  # scan runs in this session before the check
         self.assertEqual(rc, 0, err)
-        self.assertEqual(len(_util.preset_files()), 1466)
-        self.assertEqual(_util.presets_hash(), EXPECTED_HASH)
+        self.assertEqual(len(_util.preset_files()), _util.LIBRARY_SIZE)
+        self.assertEqual(_util.presets_hash(), EXPECTED_HASH if _util.REAL_PRESETS else _util.SYNTHETIC_HASH)
 
 
 if __name__ == "__main__":

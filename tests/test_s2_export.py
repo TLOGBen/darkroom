@@ -9,12 +9,12 @@ import hashlib
 import io
 import json
 import math
-import msvcrt
 import os
 import shutil
 import struct
 import subprocess
 import sys
+import tempfile
 import unittest
 import zlib
 from unittest import mock
@@ -650,18 +650,12 @@ class TestExportPresets(S2Case):
         self.assertTrue(os.path.exists(bad + "-2"))
         # the cross-process lock: held elsewhere -> conflict, nothing written
         before = read_bytes(path)
-        fd = os.open(os.path.join(self.data, "export-presets.json.lock"), os.O_RDWR)
-        try:
-            msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+        with _util.held_lock(os.path.join(self.data, "export-presets.json.lock")):
             with mock.patch.object(locks, "LOCK_WAIT_S", 0.2):
                 self.assertEqual(self.err(self.f.save_export_preset, "y", {}),
                                  ("conflict", "匯出預設正被其他程式修改，請稍後再試"))
                 self.assertEqual(self.err(self.f.delete_export_preset, "新"),
                                  ("conflict", "匯出預設正被其他程式修改，請稍後再試"))
-            os.lseek(fd, 0, os.SEEK_SET)
-            msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
-        finally:
-            os.close(fd)
         self.assertEqual(read_bytes(path), before)
         self.assertFalse([n for n in os.listdir(self.data) if ".tmp-" in n])
         # a failed replace never leaves the temporary file
@@ -965,9 +959,11 @@ class TestConfig(unittest.TestCase):
 
     def test_data_dir_platform_defaults(self):  # E18 (PLP18)
         from darkroom_app import config
-        home = "D:\\home\\tester"
-        self.write({"data_dir": "D:/x/data"})
-        self.assertEqual(config.data_dir(self.cfg, {}, "darwin", home), "D:/x/data")             # the key first
+        # absolute paths of the platform the test runs on (a Windows spelling is relative on POSIX)
+        home, data, xdg = (("D:\\home\\tester", "D:/x/data", "D:\\xdg") if os.name == "nt"
+                           else ("/home/tester", "/x/data", "/xdg"))
+        self.write({"data_dir": data})
+        self.assertEqual(config.data_dir(self.cfg, {}, "darwin", home), data)                     # the key first
         self.write({})
         self.assertEqual(config.data_dir(self.cfg, {"LOCALAPPDATA": "C:/L"}, "win32", home),
                          os.path.join("C:/L", "darkroom"))
@@ -976,8 +972,8 @@ class TestConfig(unittest.TestCase):
         self.assertEqual(str(cm.exception), "找不到照片庫資料區：請在 config.local.json 設定 data_dir，或確認 LOCALAPPDATA 存在")
         self.assertEqual(config.data_dir(self.cfg, {}, "darwin", home),
                          os.path.join(home, "Library", "Application Support", "darkroom"))
-        self.assertEqual(config.data_dir(self.cfg, {"XDG_DATA_HOME": "D:\\xdg"}, "linux", home),
-                         os.path.join("D:\\xdg", "darkroom"))
+        self.assertEqual(config.data_dir(self.cfg, {"XDG_DATA_HOME": xdg}, "linux", home),
+                         os.path.join(xdg, "darkroom"))
         self.assertEqual(config.data_dir(self.cfg, {"XDG_DATA_HOME": "relative"}, "linux", home),
                          os.path.join(home, ".local", "share", "darkroom"))
         self.assertEqual(config.data_dir(self.cfg, {}, "linux", home), os.path.join(home, ".local", "share", "darkroom"))
@@ -988,7 +984,8 @@ class TestConfig(unittest.TestCase):
 
     def test_relative_data_dir_is_made_absolute(self):  # E19
         from darkroom_app import config
-        self.write({"data_dir": "rel/data", "preset_dir": "xmp", "preset_library_dir": "..\\lib"})
+        up_lib = "..\\lib" if os.name == "nt" else "../lib"       # the platform's separator
+        self.write({"data_dir": "rel/data", "preset_dir": "xmp", "preset_library_dir": up_lib})
         self.assertEqual(config.data_dir(self.cfg), os.path.normpath(os.path.join(self.tmp, "rel/data")))
         self.assertEqual(config.preset_dir(self.cfg, env={}), os.path.join(self.tmp, "xmp"))
         self.assertEqual(config.preset_library_dir(self.cfg), os.path.normpath(os.path.join(self.tmp, "..", "lib")))
@@ -1033,14 +1030,16 @@ class TestConfig(unittest.TestCase):
             f.write(b"{oops")
         out, err = io.StringIO(), io.StringIO()
         import contextlib
+        no_env_file = {k: v for k, v in os.environ.items() if k != "DARKROOM_CONFIG"}   # CONFIG_FILE is the one read
         with mock.patch.object(config, "CONFIG_FILE", self.cfg), contextlib.redirect_stdout(out), \
-                contextlib.redirect_stderr(err):
+                contextlib.redirect_stderr(err), mock.patch.dict(os.environ, no_env_file, clear=True):
             rc = cli.main(["presets", "flags", "--json"])
         line = "darkroom：c.json 不是正確的 JSON（第 1 行第 2 欄）：Expecting property name enclosed in double quotes\n"
         self.assertEqual((rc, out.getvalue(), err.getvalue()), (2, "", line))
         from darkroom_app import __main__ as app_main
         err = io.StringIO()
-        with mock.patch.object(config, "CONFIG_FILE", self.cfg), contextlib.redirect_stderr(err):
+        with mock.patch.object(config, "CONFIG_FILE", self.cfg), contextlib.redirect_stderr(err), \
+                mock.patch.dict(os.environ, no_env_file, clear=True):
             self.assertEqual(app_main.main([]), 2)
         self.assertEqual(err.getvalue(), line)
 
@@ -1112,11 +1111,12 @@ class TestLibraryInPhotoFolder(S2Case):
         lib = os.path.join(top, "lib")
         os.makedirs(lib)
         write_jpeg(os.path.join(top, "me.jpg"), pattern(4, 4))
-        temp = {"TEMP": os.environ["TEMP"]}                    # %TEMP% itself holds other programs' pictures
+        system_temp = os.environ.get("TEMP") or tempfile.gettempdir()      # POSIX has no TEMP variable
+        temp = {"TEMP": system_temp}                            # %TEMP% itself holds other programs' pictures
         self.assertEqual(photo_folder_of(lib, env=temp), os.path.realpath(top))
         self.assertIsNone(photo_folder_of(lib, home=top, env=temp))                   # the home folder itself
-        self.assertIsNone(photo_folder_of(lib, env={"TEMP": top, "TMP": os.environ["TEMP"]}))   # a temp folder
-        self.assertIsNone(photo_folder_of(lib, env={"TMP": top, "TMPDIR": os.environ["TEMP"]}))
+        self.assertIsNone(photo_folder_of(lib, env={"TEMP": top, "TMP": system_temp}))   # a temp folder
+        self.assertIsNone(photo_folder_of(lib, env={"TMP": top, "TMPDIR": system_temp}))
         seen = []
         real = os.scandir
 

@@ -8,7 +8,6 @@ import contextlib
 import hashlib
 import io
 import json
-import msvcrt
 import os
 import re
 import subprocess
@@ -153,7 +152,7 @@ class TestLocationAndReadOnly(LibCase):
         lib = Library(real)
         from darkroom_app.adapters.persist.preset_index import PresetLibraryStore
         ps, pl = PresetService(lib), PresetLibraryService(lib, PresetLibraryStore(lib, real))   # v2: the store
-        self.assertEqual(ps.list_presets()["total"], 1466)
+        self.assertEqual(ps.list_presets()["total"], _util.LIBRARY_SIZE)
         ps.list_presets(favorites=True)
         pl.preset_groups()
         ps.preset_flags()
@@ -345,18 +344,12 @@ class TestOrganise(LibCase):
         from darkroom_app.adapters.persist import locks
         self.assertEqual(locks.LOCK_WAIT_S, 5.0)
         self.assertEqual((locks.REPLACE_RETRIES, locks.REPLACE_RETRY_S), (200, 0.01))    # KP21
-        fd = os.open(os.path.join(self.root, "library.json.lock"), os.O_RDWR | os.O_CREAT | os.O_BINARY)
-        try:
-            msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+        with _util.held_lock(os.path.join(self.root, "library.json.lock"), create=True):
             with mock.patch.object(locks, "LOCK_WAIT_S", 0.3):
                 t0 = time.monotonic()
                 self.assertEqual(self.err(self.f.set_favorite, "p-plain", True),
                                  ("conflict", "preset 庫正被其他程式修改，請稍後再試"))
                 self.assertGreaterEqual(time.monotonic() - t0, 0.3)
-            os.lseek(fd, 0, 0)
-            msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
-        finally:
-            os.close(fd)
         self.assertTrue(self.f.set_favorite("p-plain", True)["favorite"])
         self.assertEqual([n for n in os.listdir(self.root) if ".tmp-" in n], [])
 

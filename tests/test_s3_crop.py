@@ -377,7 +377,7 @@ class TestPresetCrop(unittest.TestCase):
     def test_library_has_no_crop_presets(self):  # C10: the user's 1466 presets carry no crop (G3); read only
         from darkroom import UnsupportedPresetError
         files = _util.preset_files()
-        self.assertEqual(len(files), 1466)
+        self.assertEqual(len(files), _util.LIBRARY_SIZE)
         hits = 0
         for f in files:
             try:

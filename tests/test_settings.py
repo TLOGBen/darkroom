@@ -64,8 +64,9 @@ class TestDomain(unittest.TestCase):
     def test_flatten_reads_new_and_old_keys(self):
         obj = {"anthropic_api_key_ref": "op://v/i/f", "semantic_index_budget_usd": 2.5, "language": "en-US",
                "data_dir": "rel", "agent": {"model": "m"}, "other": 1}
-        flat = S.flatten(obj, base_dir="C:\\base")
-        self.assertEqual(flat, {"language": "en-US", "data_dir": os.path.normpath("C:\\base\\rel"),
+        base = "C:\\base" if os.name == "nt" else "/base"            # absolute on this platform
+        flat = S.flatten(obj, base_dir=base)
+        self.assertEqual(flat, {"language": "en-US", "data_dir": os.path.normpath(os.path.join(base, "rel")),
                                 "agent.api_key_ref": "op://v/i/f", "agent.model": "m", "agent.budget_usd": 2.5})
         obj["agent"]["api_key_ref"] = "op://new/i/f"                 # the new key wins over the old name
         self.assertEqual(S.flatten(obj)["agent.api_key_ref"], "op://new/i/f")
@@ -80,15 +81,16 @@ class TestDomain(unittest.TestCase):
         self.assertEqual(obj["agent"], {"model": "m"})                # the input is not changed
 
     def test_effective_sources_and_defaults(self):
-        env = {"LOCALLLMS_ROOT": "E:\\llm", "LOCALAPPDATA": "C:\\L"}
+        llm, local = ("E:\\llm", "C:\\L") if os.name == "nt" else ("/e/llm", "/c/L")   # absolute on this platform
+        env = {"LOCALLLMS_ROOT": llm, "LOCALAPPDATA": local}
         settings, defaults, sources = S.effective({"language": "en-US", "localllms_root": "X:\\ignored"}, env, "win32")
         self.assertEqual(list(settings), list(S.KEYS))
         self.assertEqual(sources["localllms_root"], "env")             # LOCALLLMS_ROOT wins (as config.load)
         self.assertEqual(sources["language"], "file")
         self.assertEqual(sources["preset_dir"], "default")
-        self.assertEqual(settings["preset_dir"], os.path.join("E:\\llm", "artifact", "11_preset", "xmp"))
-        self.assertEqual(settings["preset_library_dir"], os.path.join("E:\\llm", "artifact", "11_preset"))
-        self.assertEqual(settings["data_dir"], os.path.join("C:\\L", "darkroom"))
+        self.assertEqual(settings["preset_dir"], os.path.join(llm, "artifact", "11_preset", "xmp"))
+        self.assertEqual(settings["preset_library_dir"], os.path.join(llm, "artifact", "11_preset"))
+        self.assertEqual(settings["data_dir"], os.path.join(local, "darkroom"))
         self.assertEqual((settings["comfyui_url"], settings["agent.model"], settings["agent.budget_usd"]),
                          ("http://127.0.0.1:8188", "claude-haiku-5-5", 5.0))
         self.assertEqual(defaults["language"], "zh-TW")

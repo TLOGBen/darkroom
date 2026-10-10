@@ -60,7 +60,7 @@ class TestIdentity(unittest.TestCase):
 
     def test_strength_zero_identity_many_presets(self):
         img = photo(max_side=256)
-        for path in _util.preset_files()[::60]:
+        for path in _util.preset_files()[::60 if _util.REAL_PRESETS else 1]:
             try:
                 p = load_preset(path)
             except UnsupportedPresetError:
@@ -188,7 +188,10 @@ class TestColor(unittest.TestCase):
             else:
                 self.assertLessEqual(d, 1e-4, path)
             n += 1
-        self.assertEqual(n, 21)
+        if _util.REAL_PRESETS:
+            self.assertEqual(n, 21)             # the user's library has 21 B&W presets
+        else:
+            self.assertGreaterEqual(n, 2)       # synthetic: one plain and one toned
 
     def test_absolute_wb_skipped_non_raw(self):  # A12
         img = photo(max_side=256)

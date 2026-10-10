@@ -181,7 +181,10 @@ class TestSkipped(unittest.TestCase):
             m = re.search(r"<crs:Look>.*?crs:Name=\"([^\"]*)\"", text, re.S)
             if m and MONOCHROME_LOOK.search(m.group(1)):
                 hits.append((path, m.group(1)))
-        self.assertEqual(len(hits), 8)
+        if _util.REAL_PRESETS:
+            self.assertEqual(len(hits), 8)
+        else:
+            self.assertTrue(hits)               # the synthetic library has one
         for path, name in hits:
             p = load_preset(path)
             self.assertIs(p.values.get("ConvertToGrayscale"), True, path)
@@ -300,8 +303,9 @@ class TestCoverage(unittest.TestCase):  # A13 (full library)
             for m in p.masks:
                 check(m["values"], p.skipped, LOCAL_RENDERED_KEYS, path)
         # the three keys found unreported in seal round 1 (F3) are now reported wherever they have an effect
-        self.assertEqual(counts, {"GrainFrequency": 173, "PostCropVignetteHighlightContrast": 20,
-                                  "PostCropVignetteRoundness": 4})
+        if _util.REAL_PRESETS:                  # counts of the user's library
+            self.assertEqual(counts, {"GrainFrequency": 173, "PostCropVignetteHighlightContrast": 20,
+                                      "PostCropVignetteRoundness": 4})
         for k in ("GrainFrequency", "PostCropVignetteHighlightContrast", "PostCropVignetteStyle"):
             self.assertNotIn(k, RENDERED_KEYS)
 

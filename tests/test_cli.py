@@ -55,7 +55,7 @@ class TestScan(unittest.TestCase):
     def test_scan_exact_line(self):  # A3
         rc, out, err = _util.run_cli("scan", _util.preset_dir())
         self.assertEqual(rc, 0, err)
-        self.assertEqual(out.splitlines(), [MSG_SCAN.format(ok=1466, total=1466, unsupported=0, failed=0)])
+        self.assertEqual(out.splitlines(), [MSG_SCAN.format(ok=_util.LIBRARY_SIZE, total=_util.LIBRARY_SIZE, unsupported=0, failed=0)])
 
     def test_scan_counts_failures(self):
         d = _util.tmpdir(self)
@@ -80,7 +80,7 @@ class TestAnyDirectory(unittest.TestCase):  # A21
         for cwd in (os.path.abspath(os.sep), _util.tmpdir(self)):
             rc, out, err = _util.run_cli("scan", _util.preset_dir(), cwd=cwd)
             self.assertEqual(rc, 0, (cwd, err))
-            self.assertEqual(out.splitlines(), [MSG_SCAN.format(ok=1466, total=1466, unsupported=0, failed=0)])
+            self.assertEqual(out.splitlines(), [MSG_SCAN.format(ok=_util.LIBRARY_SIZE, total=_util.LIBRARY_SIZE, unsupported=0, failed=0)])
 
 
 class TestApply(unittest.TestCase):
@@ -149,21 +149,26 @@ class TestApply(unittest.TestCase):
         preset = _xmpgen.write(d, "p.xmp", _xmpgen.xmp_text({"Exposure2012": "+1.00"}))
         os.makedirs(os.path.join(d, "sub"))
         spellings = [  # (output as typed, cwd)
-            (os.path.join(d, "IN.PNG"), None),                                  # different case
-            (os.path.join(os.path.dirname(d), os.path.basename(d).upper(), "In.Png"), None),
             ("in.png", d),                                                      # relative vs absolute
             (os.path.join("sub", "..", "in.png"), d),
             (os.path.join(d, "sub", "..", "in.png"), None),
             (src.replace("\\", "/"), None),                                     # slash direction
-            (src.replace("/", "\\"), None),
         ]
+        if os.name == "nt":     # Windows only: names without case and "\\" are the same file there, not on POSIX
+            spellings += [
+                (os.path.join(d, "IN.PNG"), None),                              # different case
+                (os.path.join(os.path.dirname(d), os.path.basename(d).upper(), "In.Png"), None),
+                (src.replace("/", "\\"), None),
+            ]
         hard = os.path.join(d, "hard.png")
         os.link(src, hard)                                                      # hard link = same file
         spellings.append((hard, None))
         import subprocess
         junction = os.path.join(d, "jx")
-        r = subprocess.run(["cmd", "/c", "mklink", "/J", junction, d], capture_output=True)
-        made_junction = r.returncode == 0
+        made_junction = False
+        if os.name == "nt":                                                     # junctions are Windows only
+            r = subprocess.run(["cmd", "/c", "mklink", "/J", junction, d], capture_output=True)
+            made_junction = r.returncode == 0
         if made_junction:
             spellings.append((os.path.join(junction, "in.png"), None))
         try:
@@ -178,7 +183,8 @@ class TestApply(unittest.TestCase):
             self.assertIn(MSG_EXISTS.format(output_path=out_path), err.splitlines())
             with open(src, "rb") as f:
                 self.assertEqual(f.read(), original, out_path)
-        self.assertTrue(made_junction, r.stderr)
+        if os.name == "nt":
+            self.assertTrue(made_junction, r.stderr)
         if made_junction:
             os.rmdir(junction)  # removes only the junction, not its target
 
