@@ -1,0 +1,34 @@
+@use '../styles/tokens' as *;
+
+.editor {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+}
+
+.lib {
+  flex: none;
+  width: var(--dr-lib-w);
+  min-height: 0;
+  border-right: 1px solid var(--dr-line);
+}
+
+.center {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+}
+
+.sl {
+  flex: none;
+  width: var(--dr-sl-w);
+  min-height: 0;
+  border-left: 1px solid var(--dr-line);
+}
+
+.drawer {
+  width: 280px;
+  border-radius: 0 !important;
+}

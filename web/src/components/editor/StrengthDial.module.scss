@@ -1,0 +1,75 @@
+@use '../../styles/tokens' as *;
+
+.box {
+  flex: none;
+  padding: dr-space(1_5) dr-space(3) dr-space(2);
+  border-top: 1px solid var(--dr-line);
+  background: var(--dr-bg-panel);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: dr-space(2);
+  min-height: 24px;
+
+  & + & {
+    margin-top: dr-space(1);
+  }
+}
+
+.mute {
+  color: var(--dr-text-3);
+  font-size: $dr-text-sm;
+}
+
+.pname {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lbl {
+  font-weight: $dr-weight-strong;
+}
+
+.track {
+  flex: 1;
+  min-width: 200px; // 舊合約 R6／S18：強度滑桿 ≥ 200px
+  padding: 0 6px 12px;
+}
+
+// 每 25% 的小刻度（MUI 的 marks 只畫 0／100／200）
+.slider {
+  &::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: calc(50% + 6px);
+    height: 4px;
+    background-image: linear-gradient(to right, var(--dr-text-3) 1px, transparent 1px);
+    background-size: 12.5% 100%;
+    opacity: 0.6;
+    pointer-events: none;
+  }
+}
+
+.readout {
+  display: inline-flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  min-width: 64px;
+  cursor: text;
+}
+
+.pct {
+  margin-left: 1px;
+  font-size: $dr-text-md;
+  color: var(--dr-text-2);
+}
+
+.edit {
+  width: 64px;
+}

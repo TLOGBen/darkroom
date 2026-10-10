@@ -1,0 +1,40 @@
+@use '../styles/tokens' as *;
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-width: 820px; // DESIGN.md §5：最小要撐住 820×600
+  background: var(--dr-bg-frame);
+}
+
+// 頂列：以間距分組，不畫分隔線（DESIGN.md §5）
+.bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: dr-space(2);
+  height: $dr-bar-h;
+  padding: 0 dr-space(2);
+  border-bottom: 1px solid var(--dr-line);
+  background: var(--dr-bg-frame);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.brand {
+  font-weight: $dr-weight-strong;
+  letter-spacing: 0.02em;
+  color: var(--dr-text);
+  padding: 0 dr-space(1);
+}
+
+.sp {
+  flex: 1;
+}
+
+.body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}

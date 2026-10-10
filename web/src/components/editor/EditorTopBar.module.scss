@@ -1,0 +1,48 @@
+@use '../../styles/tokens' as *;
+
+.brand {
+  font-weight: $dr-weight-strong;
+  padding: 0 dr-space(1);
+}
+
+.open {
+  display: flex;
+  align-items: center;
+  gap: dr-space(1);
+  flex: 0 1 380px;
+  min-width: 140px;
+}
+
+.path {
+  flex: 1;
+  min-width: 0;
+}
+
+.seg {
+  display: inline-flex;
+  align-items: center;
+  gap: dr-space(0_5);
+  min-width: 0;
+}
+
+.position {
+  @include dr-num;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: $dr-text-sm;
+  color: var(--dr-text-2);
+}
+
+.hint {
+  font-size: $dr-text-sm;
+  color: var(--dr-tweak);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 0 1 auto;
+}
+
+.sp {
+  flex: 1;
+}

@@ -1,0 +1,39 @@
+@use '../../styles/tokens' as *;
+
+.bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: dr-space(1_5);
+  min-height: $dr-toolbar-h;
+  padding: dr-space(1) dr-space(2);
+  border-bottom: 1px solid var(--dr-line);
+  background: var(--dr-bg-panel);
+  flex-wrap: wrap;
+}
+
+.lbl {
+  font-size: $dr-text-sm;
+  color: var(--dr-text-2);
+}
+
+.angle {
+  flex: none;
+  width: 140px !important; // MUI Slider 預設 width:100%，在換行的工具列裡會吃掉整行
+  margin: 0 dr-space(2);
+}
+
+.num {
+  flex: none;
+  width: 72px;
+}
+
+.hint {
+  font-size: $dr-text-sm;
+  color: var(--dr-text-3);
+  min-width: 0;
+}
+
+.sp {
+  flex: 1;
+}

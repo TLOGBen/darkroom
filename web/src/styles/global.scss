@@ -1,0 +1,193 @@
+// darkroom 全域樣式：reset、custom properties、捲軸、焦點、照片底色、減少動態。
+//
+// 在 main.tsx 只 import 一次（在 MUI ThemeProvider 之前或之後都可以；這裡不覆蓋 MUI 元件，
+// MUI 元件的外觀全部在 theme.ts 的 components overrides）。
+// 這裡處理的是 MUI 管不到的東西：<html>/<body>、原生捲軸、沒有用 MUI 的自繪區塊（預覽、裁切框、縮圖格）。
+
+@use 'tokens' as *;
+
+// 輸出所有 --dr-* 變數（深色預設、淺色跟著 <html data-theme="light">）。整個 App 只輸出這一次。
+@include dr-custom-properties;
+
+// ---------------------------------------------------------------------------------------------------------------------
+// reset：只做會影響版面的最小集合
+// ---------------------------------------------------------------------------------------------------------------------
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  // App 是固定版面的工具：整頁不捲，各欄自己捲（見 .scroll 慣例：overflow:auto + min-height:0）。
+  overflow: hidden;
+  background: var(--dr-bg-frame);
+  color: var(--dr-text);
+  font-family: var(--dr-font-ui);
+  font-size: $dr-text-md;
+  line-height: $dr-line-ui;
+  // 介面上的數字預設等寬，數值變動時欄位不會左右跳。
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+h1,
+h2,
+h3,
+h4,
+p,
+ul,
+ol,
+figure {
+  margin: 0;
+}
+
+ul,
+ol {
+  padding: 0;
+  list-style: none;
+}
+
+img,
+svg,
+canvas,
+video {
+  display: block;
+  max-width: 100%;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+// [hidden] 一定要贏過元件自己的 display（舊版 R5／S11 的教訓：程式說藏就是藏）。
+[hidden] {
+  display: none !important;
+}
+
+// 反白選字用中性灰（track-2），深淺色都跟文字有足夠對比；不用藍色。
+::selection {
+  background: var(--dr-track-2);
+  color: var(--dr-text);
+}
+
+// 數字工具類：給不是 MUI Typography 的地方用（例如自繪的強度讀數）。
+.dr-num {
+  @include dr-num;
+}
+
+.dr-mono {
+  font-family: var(--dr-font-mono);
+  font-size: 0.92em;
+}
+
+.dr-visually-hidden {
+  @include dr-visually-hidden;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// 焦點：只在鍵盤操作時出現（:focus-visible），全站同一個 2px 中性框
+// ---------------------------------------------------------------------------------------------------------------------
+
+:focus {
+  outline: none;
+}
+
+:focus-visible {
+  @include dr-focus-ring;
+}
+
+// MUI 的 ButtonBase 在鍵盤焦點時加 .Mui-focusVisible；theme.ts 也畫一次，這裡是保險（自訂 component 用到 ButtonBase 時）。
+.Mui-focusVisible {
+  @include dr-focus-ring;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// 捲軸：細、灰、不搶照片
+// ---------------------------------------------------------------------------------------------------------------------
+
+* {
+  // Firefox
+  scrollbar-width: thin;
+  scrollbar-color: var(--dr-track) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  // 用透明邊框把把手「縮」在 10px 軌道中間，看起來 4px 寬，但抓得到 10px。
+  background: var(--dr-track);
+  background-clip: padding-box;
+  border: 3px solid transparent;
+  border-radius: 6px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--dr-track-2);
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// 照片底色：三段中性灰，記在 localStorage `darkroom.canvas`，寫到 <html data-canvas>
+// ---------------------------------------------------------------------------------------------------------------------
+
+:root[data-canvas='dark'] {
+  --dr-canvas: var(--dr-canvas-dark);
+}
+
+:root[data-canvas='black'] {
+  --dr-canvas: var(--dr-canvas-black);
+}
+
+:root[data-canvas='mid'] {
+  --dr-canvas: var(--dr-canvas-mid);
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// 減少動態：使用者在系統設定要求時，所有轉場與動畫全關（S17）
+// ---------------------------------------------------------------------------------------------------------------------
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+    animation: none !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+// 高對比模式（Windows 對比佈景主題）：讓系統顏色接手，焦點框改用系統色。
+@media (forced-colors: active) {
+  :focus-visible,
+  .Mui-focusVisible {
+    outline-color: Highlight;
+  }
+}
+
+// MUI 的輸入框字型（emotion 後注入）會蓋過單一 class；路徑欄位要等寬字（DESIGN.md §6.7）
+.MuiInputBase-input.dr-mono {
+  font-family: var(--dr-font-mono);
+  font-size: 12px;
+}

@@ -1,0 +1,291 @@
+// darkroom 設計 token（Sass 端）
+//
+// 這支檔是 web/DESIGN.md 的「數值表」，跟 web/src/styles/theme.ts 的 `tokens` 物件一一對應（同名、同值）。
+// 改一邊就要改另一邊；DESIGN.md 列了對照。
+//
+// 為什麼這支檔「不輸出任何 CSS」：
+//   每個 CSS module（*.module.scss）都會 `@use '../styles/tokens' as *;` 來拿間距、圓角、斷點。
+//   如果這裡直接寫 `:root { ... }`，每個 module 編譯出來都會多一份 :root，整包 CSS 會重複幾十次。
+//   所以這裡只放 Sass 變數、map 與 mixin；真正的 CSS custom properties 由 global.scss 呼叫
+//   `@include dr-custom-properties;` 輸出一次。
+//
+// 顏色在元件裡一律用 CSS custom property（`var(--dr-text)`），不要用 Sass 顏色變數：
+//   深色／淺色是執行時切換（<html data-theme="dark|light">，跟 MUI 的 colorSchemeSelector 同一個屬性），
+//   Sass 變數在編譯時就定死了，切換不了。Sass 顏色 map 只拿來產生 custom properties。
+//
+// 色彩規則（沿用 CONTRACT-s1-experience S16）：介面色一律 R = G = B 的中性灰；
+// 只有四個語意色（tweak／clamp／err／ok）與 HSL 色相點帶彩度，而且只出現在小記號、細線與文字上。
+
+@use 'sass:map';
+
+// ---------------------------------------------------------------------------------------------------------------------
+// 1. 顏色：深色（預設）與淺色兩套，鍵名完全相同
+// ---------------------------------------------------------------------------------------------------------------------
+
+// 深色：修圖的主場。四層灰由暗到亮＝外框 → 面板 → 控制項 → 滑過。
+$dr-colors-dark: (
+  'bg-frame': #121212,        // 頂列、整個 App 的底
+  'bg-panel': #191919,        // 左右欄、對話框
+  'bg-control': #202020,      // 按鈕底、選單
+  'bg-hover': #2a2a2a,        // 滑過
+  'bg-well': #121212,         // 輸入框（凹下去的井）
+  'line': rgba(255, 255, 255, 0.07),     // 欄與欄、區塊之間的細線
+  'line-strong': rgba(255, 255, 255, 0.12),  // 控制項外框
+  'text': #e6e6e6,
+  'text-2': #a9a9a9,          // 標籤、次要說明
+  'text-3': #8a8a8a,          // 計數、提示、佔位字（在 bg-panel 上對比 5.1:1）
+  'select-bg': #e6e6e6,       // 選取／按下＝白底黑字（不用藍色）
+  'select-fg': #141414,
+  'select-soft': rgba(255, 255, 255, 0.07),  // preset 樹的目前列
+  'focus': #e6e6e6,           // 鍵盤焦點框
+  'track': #3a3a3a,           // 滑桿軌道
+  'track-2': #4a4a4a,         // 雙向滑桿中點、強度 >100% 半段
+  'thumb': #ececec,
+  'tweak': #d9a85b,           // 琥珀：你的微調（差值段、已微調的點、未儲存）
+  'clamp': #d27a7a,           // 夾值：超出範圍被夾住
+  'err': #e06b6b,
+  'on-err': #141414,          // 紅底上的字：白字在 #e06b6b 上只有 3.2:1，所以深色用黑字（5.6:1）
+  'ok': #8fbf93,
+  'tweak-soft': rgba(217, 168, 91, 0.12),    // 警告條底
+  'scrim': rgba(0, 0, 0, 0.55),              // 對話框背後、裁切框外
+  'overlay': rgba(18, 18, 18, 0.78),         // 疊在照片上的小標籤底
+  'shadow-float': 0 8px 24px rgba(0, 0, 0, 0.5),
+  'shadow-dialog': 0 16px 48px rgba(0, 0, 0, 0.6),
+);
+
+// 淺色：給白天、明亮環境或習慣淺色的人。照片底（canvas）不跟著變亮，見下方 $dr-canvas。
+$dr-colors-light: (
+  'bg-frame': #dedede,
+  'bg-panel': #ebebeb,
+  'bg-control': #f5f5f5,
+  'bg-hover': #d9d9d9,        // 淺色的滑過是「變暗」
+  'bg-well': #ffffff,
+  'line': rgba(0, 0, 0, 0.08),
+  'line-strong': rgba(0, 0, 0, 0.16),
+  'text': #1c1c1c,
+  'text-2': #4d4d4d,
+  'text-3': #5f5f5f,          // 在 bg-frame 上 4.8:1、bg-panel 上 5.4:1
+  'select-bg': #1c1c1c,       // 淺色的選取＝黑底白字（白的反轉）
+  'select-fg': #ffffff,
+  'select-soft': rgba(0, 0, 0, 0.07),
+  'focus': #1c1c1c,
+  'track': #c2c2c2,
+  'track-2': #a3a3a3,
+  'thumb': #262626,
+  'tweak': #8a5a12,           // 琥珀加深，才在淺底上過 4.5:1
+  'clamp': #a83e3e,
+  'err': #b3261e,
+  'on-err': #ffffff,          // 6.5:1
+  'ok': #2f6b35,
+  'tweak-soft': rgba(138, 90, 18, 0.12),
+  'scrim': rgba(0, 0, 0, 0.4),
+  'overlay': rgba(18, 18, 18, 0.78),         // 疊在照片上：照片不分主題，所以維持深色
+  'shadow-float': 0 8px 24px rgba(0, 0, 0, 0.18),
+  'shadow-dialog': 0 16px 48px rgba(0, 0, 0, 0.24),
+);
+
+// 照片底色：三段中性灰，是「看照片用的」設定，不是主題的一部分，所以深淺色共用。
+// 值與舊版 `body[data-canvas]` 完全相同（S17 釘死）。
+$dr-canvas: (
+  'dark': #151515,
+  'black': #000000,
+  'mid': #4a4a4a,
+);
+
+// HSL 色相點（6px 圓點，只出現在 HSL 列標籤前，永遠不上軌道）。值與舊 logic.js HUE_DOTS 相同。
+$dr-hue: (
+  'red': #e04848,
+  'orange': #e08a3c,
+  'yellow': #d9c43a,
+  'green': #4fb24f,
+  'aqua': #3fb8a8,
+  'blue': #4a7fe0,
+  'purple': #8c5fd6,
+  'magenta': #d65aa8,
+);
+
+// 品牌暗房紅：只用在 logo、banner、bootstrap 歡迎頁。編輯器裡一律不用（會汙染對顏色的判斷）。
+$dr-safelight: #c0392b;
+
+// ---------------------------------------------------------------------------------------------------------------------
+// 2. 字體
+// ---------------------------------------------------------------------------------------------------------------------
+
+// 不從網路載字型：darkroom 是本機 App，離線也要長得一樣。用各平台內建字型。
+$dr-font-ui: 'Segoe UI Variable Text', 'Segoe UI', 'Noto Sans TC', 'Microsoft JhengHei UI', 'Noto Sans CJK TC',
+  'PingFang TC', system-ui, sans-serif;
+// 數字：Bahnschrift 是 Windows 內建的 DIN 系可變字型，窄體（font-stretch 87.5%）像放大機計時器的讀數。
+$dr-font-num: 'Bahnschrift', 'DIN Alternate', 'Segoe UI Variable Small', 'Segoe UI', system-ui, sans-serif;
+// 等寬：只給檔案路徑、xmp 鍵名（例如 SharpenEdgeMasking）、設定檔路徑，不拿來裝飾小標籤。
+$dr-font-mono: 'Cascadia Mono', 'Consolas', 'DejaVu Sans Mono', ui-monospace, monospace;
+
+// 字級（px）：介面是密集工具，基準 13。
+$dr-text-xs: 11px;       // 計數、刻度數字、縮圖檔名
+$dr-text-sm: 12px;       // 滑桿標籤與數值、狀態列、說明
+$dr-text-md: 13px;       // 內文、按鈕、樹
+$dr-text-lg: 15px;       // 對話框標題、設定頁區塊標題
+$dr-text-xl: 20px;       // 設定頁頁名
+$dr-text-readout: 22px;  // 強度讀數（整個介面唯一的大數字）
+
+$dr-line-tight: 1.2;
+$dr-line-ui: 1.45;
+$dr-line-prose: 1.6;     // 說明段落、錯誤全文
+
+$dr-weight-regular: 400;
+$dr-weight-readout: 350; // 讀數用細一點，大字才不笨重
+$dr-weight-strong: 600;
+$dr-num-stretch: 87.5%;
+
+// ---------------------------------------------------------------------------------------------------------------------
+// 3. 間距、尺寸、圓角
+// ---------------------------------------------------------------------------------------------------------------------
+
+// 4px 格；2、6、10 是密集列需要的半格。
+$dr-space: (
+  0: 0,
+  '0_5': 2px,
+  1: 4px,
+  '1_5': 6px,
+  2: 8px,
+  '2_5': 10px,
+  3: 12px,
+  4: 16px,
+  6: 24px,
+  8: 32px,
+);
+
+@function dr-space($key) {
+  @return map.get($dr-space, $key);
+}
+
+$dr-control-h: 26px;     // 按鈕、輸入框、下拉
+$dr-row-h: 24px;         // preset 樹列、滑桿列
+$dr-section-h: 34px;     // 右欄手風琴標題列
+$dr-bar-h: 44px;         // 頂列
+$dr-toolbar-h: 38px;     // 預覽工具列、縮圖格工具列
+$dr-lib-w: 280px;        // 左欄（preset 庫）
+$dr-sl-w: 390px;         // 右欄（滑桿）
+
+// 圓角依層級，不是一個值套全部：越大、越浮在上面的東西圓角越大。
+$dr-radius-xs: 2px;      // 夾值方把手、強度把手
+$dr-radius-sm: 3px;      // 縮圖、照片上的小標籤
+$dr-radius-md: 5px;      // 按鈕、輸入框（MUI shape.borderRadius）
+$dr-radius-lg: 8px;      // 選單、彈出框、對話框
+$dr-radius-round: 50%;   // 狀態點、色相點、滑桿把手
+
+// ---------------------------------------------------------------------------------------------------------------------
+// 4. 動效、層級、斷點
+// ---------------------------------------------------------------------------------------------------------------------
+
+$dr-motion-fast: 120ms;  // 回應操作：滑過、展開箭頭、把手放大
+$dr-motion-panel: 180ms; // 面板／對話框進出
+$dr-ease: cubic-bezier(0.2, 0, 0, 1);
+
+$dr-z-overlay: 3;        // 疊在預覽上的說明
+$dr-z-drawer: 5;         // 窄視窗的 preset 抽屜
+$dr-z-toast: 10;
+$dr-z-menu: 20;
+$dr-z-dialog: 30;
+
+$dr-bp-medium: 1280px;   // 以下：左右欄變窄
+$dr-bp-narrow: 960px;    // 以下：preset 欄收成抽屜、按鈕只剩圖示（820 寬也要全部可見）
+
+@mixin dr-below($bp) {
+  @media (max-width: $bp) {
+    @content;
+  }
+}
+
+// 數字樣式：任何會變動的數字（滑桿數值、強度、尺寸、計數）都套這個，寬度才不會跳。
+@mixin dr-num {
+  font-family: var(--dr-font-num);
+  font-variant-numeric: tabular-nums;
+  font-stretch: $dr-num-stretch;
+}
+
+// 鍵盤焦點框：全站同一個樣子。
+@mixin dr-focus-ring($offset: 1px) {
+  outline: 2px solid var(--dr-focus);
+  outline-offset: $offset;
+}
+
+// 視覺上隱藏、讀屏還念得到（窄視窗按鈕只剩圖示時，文字用這個藏）。
+@mixin dr-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// 5. CSS custom properties：只在 global.scss 呼叫一次
+// ---------------------------------------------------------------------------------------------------------------------
+
+@mixin dr-color-vars($colors) {
+  @each $name, $value in $colors {
+    --dr-#{$name}: #{$value};
+  }
+}
+
+@mixin dr-custom-properties {
+  // 深色是預設：還沒載入 JS（MUI 還沒寫上 data-theme）時也是深色，不會先閃一下白。
+  :root,
+  :root[data-theme='dark'] {
+    color-scheme: dark;
+    @include dr-color-vars($dr-colors-dark);
+  }
+
+  :root[data-theme='light'] {
+    color-scheme: light;
+    @include dr-color-vars($dr-colors-light);
+  }
+
+  // 不分主題的 token
+  :root {
+    @each $name, $value in $dr-canvas {
+      --dr-canvas-#{$name}: #{$value};
+    }
+    @each $name, $value in $dr-hue {
+      --dr-hue-#{$name}: #{$value};
+    }
+    --dr-canvas: var(--dr-canvas-dark);   // 目前的照片底；由 <html data-canvas> 切換（見 global.scss）
+
+    --dr-font-ui: #{$dr-font-ui};
+    --dr-font-num: #{$dr-font-num};
+    --dr-font-mono: #{$dr-font-mono};
+
+    @each $key, $value in $dr-space {
+      --dr-space-#{$key}: #{$value};
+    }
+    --dr-control-h: #{$dr-control-h};
+    --dr-row-h: #{$dr-row-h};
+    --dr-bar-h: #{$dr-bar-h};
+    --dr-toolbar-h: #{$dr-toolbar-h};
+    --dr-lib-w: #{$dr-lib-w};
+    --dr-sl-w: #{$dr-sl-w};
+
+    --dr-radius-xs: #{$dr-radius-xs};
+    --dr-radius-sm: #{$dr-radius-sm};
+    --dr-radius-md: #{$dr-radius-md};
+    --dr-radius-lg: #{$dr-radius-lg};
+
+    --dr-motion-fast: #{$dr-motion-fast};
+    --dr-motion-panel: #{$dr-motion-panel};
+    --dr-ease: #{$dr-ease};
+  }
+
+  @include dr-below($dr-bp-medium) {
+    :root {
+      --dr-lib-w: 230px;
+      --dr-sl-w: 340px;
+    }
+  }
+
+  @include dr-below($dr-bp-narrow) {
+    :root {
+      --dr-sl-w: 290px;
+    }
+  }
+}

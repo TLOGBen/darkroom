@@ -1,0 +1,154 @@
+@use '../../styles/tokens' as *;
+
+// DESIGN.md §6.2：24px 列；資料夾 text、preset text-2；目前＝select-soft 底＋左緣 2px select-bg＋亮字
+.tree {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: dr-space(1) 0 dr-space(4);
+}
+
+.node {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: dr-space(1_5);
+  height: $dr-row-h;
+  padding-right: dr-space(1_5);
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+
+  &:hover {
+    background: var(--dr-bg-hover);
+  }
+
+  &:focus-visible {
+    @include dr-focus-ring(-2px);
+  }
+
+  &:hover .act,
+  &:focus-visible .act,
+  &:focus-within .act {
+    opacity: 1;
+  }
+}
+
+.folder {
+  color: var(--dr-text);
+}
+
+.preset {
+  color: var(--dr-text-2);
+}
+
+.active {
+  background: var(--dr-select-soft);
+  color: var(--dr-text);
+
+  &::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: var(--dr-select-bg);
+  }
+}
+
+.unsupported {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.tw {
+  flex: none;
+  width: 10px;
+  font-size: 8px;
+  color: var(--dr-text-3);
+  transition: transform $dr-motion-fast $dr-ease;
+}
+
+.twOpen {
+  transform: rotate(90deg);
+}
+
+.nm {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.path {
+  min-width: 0;
+  flex: 0 100 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: $dr-text-xs;
+  color: var(--dr-text-3);
+}
+
+.cnt {
+  @include dr-num;
+  font-size: $dr-text-xs;
+  color: var(--dr-text-3);
+}
+
+.flag {
+  flex: none;
+  font-size: $dr-text-xs;
+}
+
+.major {
+  color: var(--dr-tweak);
+}
+
+.minor {
+  color: var(--dr-text-3);
+}
+
+.sp {
+  flex: 1;
+}
+
+// 最愛星號與「⋯」：平常 35% 透明，滑過或鍵盤焦點才全亮（不靠 media query，觸控也看得到）
+.act {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: $dr-radius-sm;
+  background: transparent;
+  color: var(--dr-text-2);
+  opacity: 0.35;
+  cursor: pointer;
+  line-height: 20px;
+
+  &:hover {
+    background: var(--dr-bg-control);
+    color: var(--dr-text);
+  }
+
+  &:disabled {
+    cursor: default;
+  }
+}
+
+.fav {
+  font-size: 12px;
+}
+
+.favOn {
+  color: var(--dr-tweak);
+  opacity: 1;
+}
+
+.secTitle,
+.empty {
+  padding: dr-space(1) dr-space(3);
+  font-size: $dr-text-xs;
+  color: var(--dr-text-3);
+  white-space: normal;
+}

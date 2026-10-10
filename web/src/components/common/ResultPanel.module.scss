@@ -1,0 +1,27 @@
+@use '../../styles/tokens' as *;
+
+.panel {
+  max-height: 180px;
+  overflow: auto;
+  padding: dr-space(1_5) dr-space(3);
+  border-bottom: 1px solid var(--dr-line);
+  font-size: $dr-text-sm;
+  line-height: $dr-line-ui;
+  overflow-wrap: anywhere;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: dr-space(2);
+  font-weight: $dr-weight-strong;
+}
+
+.ok {
+  color: var(--dr-text-2);
+}
+
+.err {
+  color: var(--dr-err);
+}

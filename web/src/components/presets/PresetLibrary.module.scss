@@ -1,0 +1,28 @@
+@use '../../styles/tokens' as *;
+
+.col {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  background: var(--dr-bg-panel);
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: dr-space(1);
+  padding: dr-space(2);
+}
+
+.search {
+  flex: 1;
+  min-width: 0;
+}
+
+.count {
+  padding: dr-space(1) dr-space(3);
+  font-size: $dr-text-xs;
+  color: var(--dr-text-3);
+  border-bottom: 1px solid var(--dr-line);
+}

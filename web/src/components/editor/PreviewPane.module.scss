@@ -1,0 +1,321 @@
+@use '../../styles/tokens' as *;
+
+.col {
+  flex: 1;
+  min-width: 400px; // 舊合約 R6／S18：預覽 ≥ 400px
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--dr-bg-frame);
+}
+
+// 預覽工具列：固定一行 38px，不換行；放不下時文字縮成省略號，按鈕不藏（DESIGN.md §6.3）
+.tools {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: dr-space(1_5);
+  height: $dr-toolbar-h;
+  padding: 0 dr-space(2);
+  border-bottom: 1px solid var(--dr-line);
+  background: var(--dr-bg-panel);
+  white-space: nowrap;
+  overflow: hidden;
+
+  > * {
+    flex-shrink: 0;
+  }
+}
+
+.seg {
+  display: inline-flex;
+  gap: dr-space(1);
+}
+
+.sp {
+  flex: 1 1 0 !important;
+  min-width: 0;
+}
+
+.warnbar {
+  flex: 0 1 auto !important;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 2px 8px;
+  border-radius: $dr-radius-sm;
+  background: var(--dr-tweak-soft);
+  color: var(--dr-tweak);
+  font-size: $dr-text-sm;
+  cursor: pointer;
+}
+
+.skipnote {
+  flex: 0 100 auto !important;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--dr-text-3);
+  font-size: $dr-text-sm;
+  cursor: pointer;
+}
+
+.editstatus {
+  flex: 0 1 auto !important;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--dr-tweak);
+  font-size: $dr-text-sm;
+}
+
+.size {
+  @include dr-num;
+  font-size: $dr-text-sm;
+  color: var(--dr-text-3);
+}
+
+// 照片：canvas 底、沒有圓角、1px 深色描邊（像相紙的邊），沒有過場
+.wrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: dr-space(4);
+  overflow: hidden;
+  background: var(--dr-canvas);
+}
+
+.img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  user-select: none;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+
+  .ab & {
+    box-shadow: none;
+  }
+}
+
+.empty {
+  max-width: 80%;
+  color: var(--dr-text-3);
+  text-align: center;
+  line-height: 1.8;
+  white-space: normal;
+}
+
+.label,
+.abTag {
+  position: absolute;
+  padding: 1px 7px;
+  border-radius: $dr-radius-sm;
+  background: var(--dr-overlay);
+  color: #dddddd;
+  font-size: $dr-text-xs;
+  pointer-events: none;
+}
+
+.label {
+  top: 24px;
+  left: 24px;
+  font-size: $dr-text-sm;
+}
+
+.abTag {
+  transition: opacity $dr-motion-fast;
+
+  .dragging & {
+    opacity: 0.35;
+  }
+}
+
+// S7：原圖疊在編輯後上面，從 --split 裁開；分隔線是中性白
+.abOrig {
+  position: absolute;
+  max-width: none;
+  pointer-events: none;
+  user-select: none;
+}
+
+.abDivider {
+  position: absolute;
+  z-index: 2;
+  width: 1px;
+  background: rgba(236, 236, 236, 0.9);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45);
+  cursor: ew-resize;
+  touch-action: none;
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: -8px;
+    width: 17px;
+  }
+}
+
+.abHandle {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  width: 30px;
+  height: 30px;
+  transform: translate(-50%, -50%);
+  border: 1px solid rgba(236, 236, 236, 0.9);
+  border-radius: 50%;
+  background: var(--dr-overlay);
+  color: #ececec;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
+  cursor: ew-resize;
+
+  &:focus-visible {
+    outline: 2px solid #e6e6e6;
+    outline-offset: 2px;
+  }
+
+  i {
+    width: 0;
+    height: 0;
+    border-top: 4px solid transparent;
+    border-bottom: 4px solid transparent;
+  }
+
+  i:first-child {
+    border-right: 5px solid currentColor;
+  }
+
+  i:last-child {
+    border-left: 5px solid currentColor;
+  }
+}
+
+// 裁切框：框外用 scrim 壓暗；拖動時才出現三分線
+.cropBox {
+  position: absolute;
+  z-index: 2;
+  cursor: move;
+  touch-action: none;
+  outline: 1px solid rgba(255, 255, 255, 0.9);
+  box-shadow: 0 0 0 9999px var(--dr-scrim);
+
+  &:focus-visible {
+    outline: 2px solid #ffffff;
+  }
+}
+
+.handle {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  margin: -7px 0 0 -7px;
+  border: 1px solid #121212;
+  border-radius: $dr-radius-xs;
+  background: #ececec;
+
+  &[data-h='nw'] { left: 0; top: 0; cursor: nwse-resize; }
+  &[data-h='n'] { left: 50%; top: 0; cursor: ns-resize; }
+  &[data-h='ne'] { left: 100%; top: 0; cursor: nesw-resize; }
+  &[data-h='e'] { left: 100%; top: 50%; cursor: ew-resize; }
+  &[data-h='se'] { left: 100%; top: 100%; cursor: nwse-resize; }
+  &[data-h='s'] { left: 50%; top: 100%; cursor: ns-resize; }
+  &[data-h='sw'] { left: 0; top: 100%; cursor: nesw-resize; }
+  &[data-h='w'] { left: 0; top: 50%; cursor: ew-resize; }
+}
+
+$third: rgba(255, 255, 255, 0.55);
+
+.thirds {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  background:
+    linear-gradient(to right, transparent calc(33.333% - 0.5px), $third 0, $third calc(33.333% + 0.5px), transparent 0,
+      transparent calc(66.667% - 0.5px), $third 0, $third calc(66.667% + 0.5px), transparent 0),
+    linear-gradient(to bottom, transparent calc(33.333% - 0.5px), $third 0, $third calc(33.333% + 0.5px), transparent 0,
+      transparent calc(66.667% - 0.5px), $third 0, $third calc(66.667% + 0.5px), transparent 0);
+
+  .boxDragging & {
+    opacity: 1;
+  }
+}
+
+// S12：套不上的設定全文開在預覽上方；工具列那行高度不變
+.skipDetail {
+  position: absolute;
+  z-index: $dr-z-overlay;
+  top: 12px;
+  left: 12px;
+  right: 12px;
+  max-height: 60%;
+  overflow: auto;
+  padding: 10px 14px;
+  border: 1px solid var(--dr-line-strong);
+  border-radius: 6px;
+  background: rgba(18, 18, 18, 0.92);
+  color: #e6e6e6;
+  font-size: $dr-text-md;
+  line-height: 1.55;
+  white-space: normal;
+  cursor: pointer;
+
+  p + p {
+    margin-top: 6px;
+  }
+}
+
+.skipNoteFull {
+  color: #a9a9a9;
+}
+
+// 照片底色三段（S17）
+.canvasPick {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  display: flex;
+  gap: 6px;
+  opacity: 0.55;
+  transition: opacity $dr-motion-fast;
+
+  .wrap:hover &,
+  &:focus-within {
+    opacity: 1;
+  }
+
+  button {
+    width: 16px;
+    height: 16px;
+    padding: 0;
+    border: 1px solid rgba(0, 0, 0, 0.6);
+    border-radius: 50%;
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.3);
+    cursor: pointer;
+  }
+
+  button[aria-pressed='true'] {
+    box-shadow: 0 0 0 2px #e6e6e6;
+  }
+}
+
+.c_dark {
+  background: var(--dr-canvas-dark);
+}
+
+.c_black {
+  background: var(--dr-canvas-black);
+}
+
+.c_mid {
+  background: var(--dr-canvas-mid);
+}

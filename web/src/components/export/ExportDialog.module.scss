@@ -1,0 +1,72 @@
+@use '../../styles/tokens' as *;
+
+.title {
+  display: flex;
+  align-items: baseline;
+  gap: dr-space(2);
+}
+
+.sub {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: $dr-text-sm;
+  font-weight: $dr-weight-regular;
+  color: var(--dr-text-2);
+}
+
+.body {
+  display: grid;
+  gap: dr-space(1);
+}
+
+// 表單列：標籤 96px｜控制項，最少 36px 高（DESIGN.md §6.4）
+.row {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  align-items: center;
+  min-height: 36px;
+}
+
+.label {
+  font-size: $dr-text-sm;
+  color: var(--dr-text-2);
+}
+
+.ctl {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: dr-space(2);
+}
+
+.subLabel {
+  font-size: $dr-text-sm;
+  color: var(--dr-text-2);
+}
+
+.num {
+  width: 88px;
+}
+
+.check {
+  margin: 0 !important;
+
+  :global(.MuiFormControlLabel-label) {
+    font-size: $dr-text-sm;
+  }
+}
+
+.mute {
+  font-size: $dr-text-sm;
+  color: var(--dr-text-3);
+}
+
+.summary {
+  margin-top: dr-space(2);
+  padding-top: dr-space(2);
+  border-top: 1px solid var(--dr-line);
+  font-size: $dr-text-sm;
+  color: var(--dr-text-2);
+}

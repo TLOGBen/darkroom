@@ -1,0 +1,150 @@
+@use '../../styles/tokens' as *;
+
+.col {
+  height: 100%;
+  overflow: auto;
+  background: var(--dr-bg-panel);
+}
+
+.gname {
+  flex: 1;
+}
+
+// 分區有微調：琥珀點＋「微調 N 項」
+.tc {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: $dr-text-xs;
+  font-weight: $dr-weight-regular;
+  color: var(--dr-tweak);
+}
+
+.tdot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--dr-tweak);
+}
+
+// 標籤 84｜滑桿｜數值 96｜重設 18，列高 24（DESIGN.md §6.1）
+.row {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr) 96px 18px;
+  align-items: center;
+  column-gap: dr-space(2);
+  min-height: $dr-row-h;
+}
+
+.label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  font-size: $dr-text-sm;
+  color: var(--dr-text-2);
+  cursor: default;
+  user-select: none;
+
+  .adjusted &::before {
+    content: '';
+    flex: none;
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: var(--dr-tweak);
+  }
+}
+
+.labelText {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hue {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.slider {
+  margin: 0 5px;
+  width: calc(100% - 10px) !important;
+}
+
+.vals {
+  display: flex;
+  justify-content: flex-end;
+  align-items: baseline;
+  gap: 3px;
+  min-width: 0;
+  white-space: nowrap;
+  cursor: text;
+}
+
+.v {
+  @include dr-num;
+  font-size: $dr-text-sm;
+  color: var(--dr-text);
+
+  .adjusted & {
+    color: var(--dr-tweak);
+  }
+
+  .clamped & {
+    color: var(--dr-clamp);
+  }
+}
+
+.cn {
+  @include dr-num;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: $dr-text-xs;
+  color: var(--dr-clamp);
+}
+
+.edit {
+  width: 96px;
+}
+
+.reset {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: $dr-radius-sm;
+  background: transparent;
+  color: var(--dr-text-3);
+  cursor: pointer;
+  visibility: hidden;
+
+  .adjusted & {
+    visibility: visible;
+  }
+
+  &:hover {
+    background: var(--dr-bg-hover);
+    color: var(--dr-text);
+  }
+}
+
+.curve {
+  margin: dr-space(1) 0 dr-space(2);
+
+  svg {
+    width: 200px;
+    max-width: 100%;
+    height: auto;
+    background: var(--dr-bg-well);
+    border: 1px solid var(--dr-line);
+  }
+}
+
+.note {
+  margin-top: dr-space(1);
+  font-size: $dr-text-xs;
+  color: var(--dr-text-3);
+}

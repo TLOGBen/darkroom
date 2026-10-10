@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="zh-Hant-TW" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark light" />
+    <title>darkroom</title>
+    <link rel="icon" href="/logo.svg" type="image/svg+xml" />
+    <script>
+      // 載入前先套上記住的主題與照片底色，避免畫面先閃一下（MUI 的 InitColorSchemeScript 同樣的作法，
+      // 但它要等 React 跑起來；這裡更早）。鍵：mui-mode（MUI 預設）、darkroom.canvas（跟舊版同一個鍵）。
+      (function () {
+        try {
+          var m = localStorage.getItem('mui-mode');
+          if (m === 'system') m = matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+          if (m === 'light' || m === 'dark') document.documentElement.setAttribute('data-theme', m);
+          var c = JSON.parse(localStorage.getItem('darkroom.canvas') || '"dark"');
+          if (c === 'dark' || c === 'black' || c === 'mid') document.documentElement.setAttribute('data-canvas', c);
+        } catch (e) {
+          /* 沒有 localStorage 也照常（深色、深灰底） */
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
