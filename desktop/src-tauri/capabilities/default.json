@@ -1,0 +1,17 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "The bundled bootstrap page (local origin only): read the runtime status, install it after consent, ask for the preset folder (folder picker), start the backend, and listen to progress events. Remote pages (the editor on 127.0.0.1) get no IPC at all.",
+  "windows": ["main"],
+  "permissions": [
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
+    "allow-runtime-status",
+    "allow-install-runtime",
+    "allow-cancel-install",
+    "allow-preset-setup-status",
+    "allow-set-preset-dir",
+    "dialog:allow-open",
+    "allow-start-backend"
+  ]
+}

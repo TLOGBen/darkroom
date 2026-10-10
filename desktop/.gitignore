@@ -1,0 +1,3 @@
+# Build output and installed tooling of the desktop workspace.
+/target/
+/node_modules/

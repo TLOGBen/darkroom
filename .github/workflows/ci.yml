@@ -1,0 +1,127 @@
+# Continuous integration (plan-v2 §4): every push and pull request runs
+#   python - the unittest suite on Ubuntu and Windows with the CPU build of torch (no GPU on hosted runners; GPU
+#            code paths fall back to the CPU or skip themselves), plus a wheel build smoke test
+#   web    - lint / typecheck / test (vitest) / build of the React front end (web/)
+#   rust   - version sync check, cargo fmt / clippy / test of the desktop workspace (Tauri shell + CLI launcher)
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Same pin as requirements.txt's install note and desktop/src-tauri/src/paths.rs TORCH_VERSION.
+  TORCH_VERSION: "2.14.0"
+
+jobs:
+  python:
+    name: python (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install torch (CPU build) and requirements
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "torch==${{ env.TORCH_VERSION }}" --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install -r requirements.txt
+
+      # The server tests use the small fixed page under tests/web_dist_fixture (tests/_util.py), so this job needs
+      # no node and no web build.
+      - name: Unit tests
+        run: python -s -m unittest discover -s tests
+
+      - name: Wheel builds (smoke)
+        if: runner.os == 'Linux'
+        run: |
+          python -m pip install build
+          python -m build --wheel --outdir "${{ runner.temp }}/wheel"
+          ls -l "${{ runner.temp }}/wheel"
+
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: npm ci
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+  rust:
+    name: rust (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Tauri system dependencies (Linux)
+        if: runner.os == 'Linux'
+        working-directory: .
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev \
+            librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev build-essential pkg-config
+
+      - name: Rust toolchain (stable, rustfmt, clippy)
+        run: |
+          rustup toolchain install stable --profile minimal --component rustfmt,clippy
+          rustup default stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop
+
+      - name: Versions in sync with darkroom_app.__version__
+        run: node scripts/sync-version.mjs --check
+
+      - name: cargo fmt
+        run: cargo fmt --all --check
+
+      - name: cargo clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: cargo test
+        run: cargo test --workspace

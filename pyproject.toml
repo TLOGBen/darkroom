@@ -1,0 +1,79 @@
+# darkroom Python package (plan-v2 §4).
+#
+# One wheel carries both packages: `darkroom` (the core library: xmp parsing, parameters, torch rendering, image
+# I/O, geometry) and `darkroom_app` (the App shell: HTTP server, CLI, MCP server, persistence, services).
+# The desktop installer (desktop/, Tauri) ships this wheel as a resource; on first launch the bootstrap page
+# installs it into the managed Python environment with the bundled `uv`.
+#
+# Build:  uv build --wheel            (or: python -m build --wheel)
+# The built web front end (web/dist, produced by `npm run build` in web/) is copied into the wheel at
+# `darkroom_app/web_dist/` when it exists; without it the wheel still builds (see desktop/scripts/hatch_build.py).
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "darkroom"
+description = "Local professional photo editing with your Lightroom XMP presets, rendered on the GPU."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.13"
+# Single source of the version: darkroom_app/__init__.py `__version__` (plan-v2 §0); see [tool.hatch.version].
+dynamic = ["version"]
+classifiers = [
+    "Programming Language :: Python :: 3.13",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Topic :: Multimedia :: Graphics :: Editors :: Raster-Based",
+]
+# Same pins as requirements.txt (the versions darkroom is developed and tested with).
+#
+# torch is deliberately NOT a dependency: the right build depends on the machine (CUDA 13.0 build from
+# https://download.pytorch.org/whl/cu130 on NVIDIA machines, the CPU build from .../whl/cpu otherwise), and a plain
+# `pip install torch` from PyPI would pick the wrong one on Windows. Install it first, from PyTorch's own index:
+#   python -m pip install torch==2.14.0 --index-url https://download.pytorch.org/whl/cu130
+# The desktop bootstrap does exactly this (it detects NVIDIA with nvidia-smi and falls back to the CPU index).
+dependencies = [
+    "aiohttp==3.14.3",
+    "numpy==2.5.3",
+    "opencv-python-headless==5.0.0.93",
+    "pillow==12.3.0",
+    "tifffile==2026.9.20",
+]
+
+[project.optional-dependencies]
+# HEIC / HEIF (iPhone photos). Without it HEIC files are refused with a clear message.
+heic = ["pillow-heif==1.8.0"]
+# The preset semantic index (`presets semantic build`). Without it the feature stays off and says why.
+semantic = ["anthropic==1.13.0"]
+
+[project.urls]
+Homepage = "https://github.com/TLOGBen/darkroom"
+
+# No console_scripts: the `darkroom` command is the Rust launcher in desktop/cli, which finds the managed
+# environment and runs `python -s -m darkroom_app.cli ...` (a pip-generated script would not add `-s`).
+
+[tool.hatch.version]
+path = "darkroom_app/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["darkroom", "darkroom_app"]
+exclude = ["__pycache__", "*.pyc"]
+
+[tool.hatch.build.targets.wheel.hooks.custom]
+# Adds web/dist as package data only when it exists (hatch's static force-include fails on a missing path).
+path = "desktop/scripts/hatch_build.py"
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "darkroom/",
+    "darkroom_app/",
+    "desktop/scripts/hatch_build.py",
+    "README.md",
+    "LICENSE",
+    "requirements.txt",
+    "pyproject.toml",
+]
+exclude = ["__pycache__", "*.pyc"]

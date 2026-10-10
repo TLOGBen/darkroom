@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-set-preset-dir"
+description = "Enables the set_preset_dir command without any pre-configured scope."
+commands.allow = ["set_preset_dir"]
+
+[[permission]]
+identifier = "deny-set-preset-dir"
+description = "Denies the set_preset_dir command without any pre-configured scope."
+commands.deny = ["set_preset_dir"]

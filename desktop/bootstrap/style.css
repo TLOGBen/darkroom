@@ -1,0 +1,95 @@
+/* darkroom first-run page. Colours follow the logo: darkroom black, print paper, developer red. */
+:root {
+  --bg: #141414;
+  --card: #1e1c1a;
+  --line: #34302c;
+  --text: #f3ede2;
+  --muted: #a8a096;
+  --accent: #c0392b;
+  --accent-hover: #d6473a;
+  --ok: #6fbf73;
+  --radius: 12px;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+html, body { margin: 0; min-height: 100%; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.6 system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei UI", "Noto Sans TC", sans-serif;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 16px;
+}
+
+.card {
+  width: min(680px, 100%);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 28px 32px;
+}
+
+.brand { display: flex; align-items: center; gap: 16px; margin-bottom: 20px; }
+.brand img { border-radius: 12px; }
+h1 { margin: 0; font-size: 22px; letter-spacing: 0.02em; }
+h2 { margin: 0 0 8px; font-size: 18px; }
+p { margin: 0 0 12px; }
+.muted { color: var(--muted); font-size: 13px; margin: 0; }
+code { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 13px; word-break: break-all; }
+
+.busy { display: flex; align-items: center; gap: 12px; }
+.spinner {
+  width: 18px; height: 18px; flex: none;
+  border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.facts { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 16px 0; }
+.facts dt { color: var(--muted); }
+.facts dd { margin: 0; }
+
+.note { border-left: 3px solid var(--accent); padding-left: 12px; }
+.error { color: #d9534f; white-space: pre-wrap; }
+.promises { margin: 12px 0 0; padding-left: 20px; color: var(--muted); }
+
+.actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px; flex-wrap: wrap; }
+button {
+  font: inherit; border-radius: 8px; padding: 8px 18px; cursor: pointer;
+  border: 1px solid var(--line); background: transparent; color: var(--text);
+}
+button:disabled { opacity: 0.5; cursor: default; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.primary:hover { background: var(--accent-hover); }
+button.secondary:hover:not(:disabled) { border-color: var(--muted); }
+button:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+
+.steps { list-style: none; padding: 0; margin: 16px 0; }
+.steps li { display: flex; align-items: center; gap: 10px; color: var(--muted); padding: 3px 0; }
+.steps .dot { width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--line); flex: none; }
+.steps li.active { color: var(--text); }
+.steps li.active .dot { border-color: var(--accent); background: var(--accent); animation: pulse 1.2s ease-in-out infinite; }
+.steps li.done .dot { border-color: var(--ok); background: var(--ok); }
+@keyframes pulse { 50% { opacity: 0.4; } }
+
+.bar { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; margin-bottom: 12px; }
+.bar-fill { height: 100%; width: 0; background: var(--accent); transition: width 0.4s ease; }
+
+.log {
+  background: #0d0d0d; border: 1px solid var(--line); border-radius: 8px;
+  padding: 10px 12px; margin: 12px 0 0; height: 180px; overflow: auto;
+  font: 12px/1.5 ui-monospace, "Cascadia Mono", Consolas, monospace; color: var(--muted);
+  white-space: pre-wrap; word-break: break-all;
+}
+
+[hidden] { display: none !important; }
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner, .steps li.active .dot { animation: none; }
+  .bar-fill { transition: none; }
+}

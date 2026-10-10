@@ -1,0 +1,17 @@
+[package]
+name = "darkroom-cli"
+# Written by ../scripts/sync-version.mjs from darkroom_app/__init__.py `__version__`; do not edit by hand.
+version = "0.1.0"
+description = "The `darkroom` command: runs the darkroom CLI / MCP server / App from the managed Python environment"
+edition = "2024"
+rust-version = "1.90"
+license = "MIT"
+publish = false
+
+# The executable is `darkroom` (`darkroom.exe` on Windows); the package name only distinguishes it in the workspace.
+[[bin]]
+name = "darkroom"
+path = "src/main.rs"
+
+# No dependencies on purpose: the launcher must start instantly and never fail to build.
+[dependencies]

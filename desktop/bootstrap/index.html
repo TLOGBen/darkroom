@@ -1,0 +1,105 @@
+<!doctype html>
+<!--
+  darkroom first-run page (bundled into the desktop app as Tauri's frontendDist; plan-v2 §4).
+  Plain HTML/CSS/JS on purpose: it must work before anything is installed and does not depend on web/.
+  Flow: runtime_status -> (ready) preset_setup_status -> (no usable preset folder) pick one -> set_preset_dir
+                                 -> start_backend -> the window navigates to the editor
+                       -> (missing/outdated) explain the download -> only on "agree": install_runtime -> (as above)
+  All visible text comes from i18n.js (zh-TW / en-US, chosen from the system language); data-i18n marks it.
+-->
+<html lang="zh-TW">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>darkroom</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="card">
+    <header class="brand">
+      <img src="logo.svg" alt="" width="56" height="56">
+      <div>
+        <h1>darkroom</h1>
+        <p class="muted" id="version"></p>
+      </div>
+    </header>
+
+    <!-- checking / starting: a single line with a spinner -->
+    <section id="view-busy" class="view">
+      <p class="busy"><span class="spinner" aria-hidden="true"></span><span id="busy-text" data-i18n="checking"></span></p>
+    </section>
+
+    <!-- consent: nothing is downloaded before "agree" -->
+    <section id="view-consent" class="view" hidden>
+      <h2 id="consent-title"></h2>
+      <p id="consent-lead"></p>
+      <dl class="facts">
+        <dt data-i18n="whatLabel"></dt><dd id="fact-what"></dd>
+        <dt data-i18n="downloadLabel"></dt><dd id="fact-download"></dd>
+        <dt data-i18n="diskLabel"></dt><dd id="fact-disk"></dd>
+        <dt data-i18n="whereLabel"></dt><dd><code id="fact-where"></code></dd>
+      </dl>
+      <p id="gpu-note" class="note"></p>
+      <ul class="promises">
+        <li data-i18n="promiseCancel"></li>
+        <li data-i18n="promiseLocal"></li>
+        <li data-i18n="promisePhotos"></li>
+      </ul>
+      <div class="actions">
+        <button id="btn-decline" class="secondary" data-i18n="decline"></button>
+        <button id="btn-agree" class="primary" data-i18n="agree"></button>
+      </div>
+    </section>
+
+    <!-- declined: nothing happened -->
+    <section id="view-declined" class="view" hidden>
+      <h2 data-i18n="declinedTitle"></h2>
+      <p data-i18n="declinedBody"></p>
+      <div class="actions"><button id="btn-back" class="secondary" data-i18n="back"></button></div>
+    </section>
+
+    <!-- installing: three steps, live output, cancel -->
+    <section id="view-install" class="view" hidden>
+      <h2 data-i18n="installTitle"></h2>
+      <ol class="steps">
+        <li data-step="python"><span class="dot"></span><span data-i18n="stepPython"></span></li>
+        <li data-step="torch"><span class="dot"></span><span data-i18n="stepTorch"></span></li>
+        <li data-step="darkroom"><span class="dot"></span><span data-i18n="stepDarkroom"></span></li>
+      </ol>
+      <div class="bar" aria-hidden="true"><div class="bar-fill" id="bar-fill"></div></div>
+      <p class="muted" data-i18n="installHint"></p>
+      <pre id="log" class="log" aria-live="polite"></pre>
+      <div class="actions"><button id="btn-cancel" class="secondary" data-i18n="cancel"></button></div>
+    </section>
+
+    <!-- presets: an installed copy has no other place to say where the presets are; the backend needs it to start -->
+    <section id="view-presets" class="view" hidden>
+      <h2 data-i18n="presetsTitle"></h2>
+      <p data-i18n="presetsLead"></p>
+      <p id="presets-missing" class="note" hidden></p>
+      <dl class="facts">
+        <dt data-i18n="presetsChosenLabel"></dt><dd><code id="presets-chosen"></code></dd>
+        <dt data-i18n="presetsConfigLabel"></dt><dd><code id="presets-config"></code></dd>
+      </dl>
+      <p id="presets-error" class="error" role="alert" hidden></p>
+      <div class="actions">
+        <button id="btn-presets-pick" class="secondary" data-i18n="presetsPick"></button>
+        <button id="btn-presets-use" class="primary" data-i18n="presetsUse" disabled></button>
+      </div>
+    </section>
+
+    <!-- problem: a translated sentence plus the raw detail, never a guess -->
+    <section id="view-problem" class="view" hidden>
+      <h2 id="problem-title"></h2>
+      <p id="problem-body"></p>
+      <pre id="problem-detail" class="log"></pre>
+      <div class="actions">
+        <button id="btn-presets-again" class="secondary" data-i18n="presetsChange" hidden></button>
+        <button id="btn-retry" class="primary" data-i18n="retry"></button>
+      </div>
+    </section>
+  </main>
+  <script src="i18n.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-preset-setup-status"
+description = "Enables the preset_setup_status command without any pre-configured scope."
+commands.allow = ["preset_setup_status"]
+
+[[permission]]
+identifier = "deny-preset-setup-status"
+description = "Denies the preset_setup_status command without any pre-configured scope."
+commands.deny = ["preset_setup_status"]

@@ -1,0 +1,14 @@
+# darkroom desktop workspace (plan-v2 §4).
+#   src-tauri/  the Tauri 2 shell: window, first-run bootstrap, backend child-process management
+#   cli/        the `darkroom` command-line launcher (finds the managed Python environment, runs darkroom_app.cli)
+# Versions in both crates are written by scripts/sync-version.mjs from darkroom_app/__init__.py `__version__`.
+[workspace]
+resolver = "3"
+members = ["src-tauri", "cli"]
+
+[profile.release]
+# Small installers: the shell and the launcher only start processes and show one page.
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true

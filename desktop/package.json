@@ -1,0 +1,12 @@
+{
+  "name": "darkroom-desktop",
+  "private": true,
+  "description": "Pins the Tauri CLI used to build the darkroom desktop installers (npm run tauri build).",
+  "scripts": {
+    "tauri": "tauri",
+    "sync-version": "node scripts/sync-version.mjs"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "2.12.1"
+  }
+}
