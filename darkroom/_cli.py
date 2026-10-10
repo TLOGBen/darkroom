@@ -1,4 +1,17 @@
-"""Command line: `python -m darkroom apply ...` and `python -m darkroom scan <preset_dir>`."""
+"""Command line: `python -m darkroom apply ...` and `python -m darkroom scan <preset_dir>`.
+
+Layer: core library (its own tiny entry point; not the App CLI in darkroom_app). Depends on `_xmp`, `_io`,
+`_render` (imported inside the commands so `scan` never loads torch).
+
+- apply: read one preset + one photo, render at --strength (0..200%), write a NEW file. The output may never be
+  the input photo, however it is spelled (contract A16 = "refuse when output equals input or already exists
+  without --overwrite; exit code 2, nothing written").
+- scan: parse every .xmp below a folder read-only and print one summary line (contract A3 / A15 = "one line of
+  counts; the preset folder is opened read-only and stays byte-identical").
+
+User-facing strings are the verbatim Chinese constants below (pinned by tests); exit codes: 0 ok, 1 scan had
+failures, 2 bad input.
+"""
 import argparse
 import os
 import sys
@@ -23,6 +36,7 @@ USAGE_SCAN = "python -m darkroom scan <preset_dir>"
 
 
 def _err(msg):
+    """Print one user-facing error line to stderr (stdout stays reserved for results)."""
     print(msg, file=sys.stderr)
 
 
@@ -39,10 +53,14 @@ def _same_file(a, b):
 
 
 def _fmt_strength(v):
+    """80.0 -> "80", 12.5 -> "12.5" (as the user typed it, without a trailing .0)."""
     return f"{v:g}"
 
 
 def cmd_apply(a):
+    """`apply`: validate everything first (strength, output path, extension, preset, photo), then render and
+    write. Every refusal returns 2 before anything is written. Side effect: writes `a.output` (16-bit PNG/TIFF or
+    8-bit JPEG). Prints the success line and, if any, one line listing skipped / clamped settings."""
     from . import _io, _xmp
     if not (0.0 <= a.strength <= 200.0):
         _err(MSG_STRENGTH.format(strength=_fmt_strength(a.strength)))
@@ -79,6 +97,10 @@ def cmd_apply(a):
 
 
 def cmd_scan(a):
+    """`scan`: parse every .xmp under `a.preset_dir` (recursive, sorted) and print the counts line.
+
+    Unsupported process versions are counted, not errors; any other parse failure is printed to stderr and makes
+    the exit code 1. Read-only: no file is opened for writing."""
     from ._xmp import read_preset
     if not os.path.isdir(a.preset_dir):
         _err(MSG_NODIR.format(preset_dir=a.preset_dir))
@@ -101,6 +123,10 @@ def cmd_scan(a):
 
 
 def main(argv=None):
+    """Parse `argv` (None = sys.argv[1:]) and run one command; returns the process exit code.
+
+    stdout/stderr are switched to UTF-8 first because the messages are Chinese and the Windows console default
+    code page would otherwise raise UnicodeEncodeError."""
     for s in (sys.stdout, sys.stderr):
         try:
             s.reconfigure(encoding="utf-8")

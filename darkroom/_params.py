@@ -1,4 +1,19 @@
-"""Versioned parameter object: Lightroom crs key names, one defaults table, strength interpolation."""
+"""Versioned parameter object: Lightroom crs key names, one defaults table, strength interpolation.
+
+Layer: core library. Depends on the standard library only (no torch), so the App can parse / list / store
+parameters without loading the GPU stack. Produced by `_xmp` (parsing a preset), consumed by `_render`, and stored
+as JSON by the App (preset snapshots inside photo edits, user presets), which is why the format is versioned
+(SCHEMA_VERSION; contract A6 = "the JSON shape is {schema, values, curves, masks, skipped} and survives a round
+trip unchanged").
+
+Key ideas:
+- Keys are Lightroom's own crs attribute names without the "crs:" prefix (e.g. "Exposure2012"), so an xmp file,
+  a stored edit and a slider in the UI all speak the same vocabulary.
+- One defaults table (DEFAULTS) defines the "does nothing" position of every slider; strength scales the distance
+  from that default (contract A7 = "slider = default + s * (v - default)", hue angles untouched).
+- One range table (RANGES) defines Lightroom's slider limits; values are clamped right before rendering (contract
+  A19 = "every value is clamped before rendering so absurd numbers cannot blow up time or memory").
+"""
 import copy
 import json
 import math
@@ -36,10 +51,12 @@ LOCAL_HUE_KEYS = frozenset({"LocalToningHue"})
 
 
 def default(key):
+    """The value at which slider `key` has no effect (DEFAULTS, else 0.0)."""
     return DEFAULTS.get(key, 0.0)
 
 
 def value_range(key):
+    """(lo, hi) slider limits of `key` as in Lightroom: explicit table, hue angles 0..360, everything else +-100."""
     if key in RANGES:
         return RANGES[key]
     if is_hue_angle(key) or key == "LocalToningHue":
@@ -62,6 +79,7 @@ def is_hue_angle(key):
 
 
 def _check_strength(s):
+    """Coerce `s` to float and require 0 <= s <= 2 (0..200%); raises ValueError otherwise (NaN included)."""
     s = float(s)
     if not (0.0 <= s <= 2.0) or math.isnan(s):
         raise ValueError(f"strength must be within 0..2 (0..200%), got {s}")
@@ -84,14 +102,22 @@ class Params:
 
     # ---- serialisation
     def to_dict(self):
+        """Plain JSON-able dict (deep copies, so mutating the result never changes this object)."""
         return {"schema": SCHEMA_VERSION, "values": copy.deepcopy(self.values), "curves": copy.deepcopy(self.curves),
                 "masks": copy.deepcopy(self.masks), "skipped": list(self.skipped)}
 
     def to_json(self, **kw):
+        """JSON text of to_dict(); `kw` is passed to json.dumps (e.g. indent=2). Non-ASCII stays readable."""
         return json.dumps(self.to_dict(), ensure_ascii=False, **kw)
 
     @classmethod
     def from_dict(cls, d):
+        """Rebuild Params from to_dict() output.
+
+        Raises ValueError when the schema tag is missing / different (a future format must never be misread as
+        this one) or one of the four sections is missing; numbers are coerced to float (bool for BOOL_KEYS) so a
+        JSON file written by hand with integers still loads identically.
+        """
         if not isinstance(d, dict) or d.get("schema") != SCHEMA_VERSION:
             raise ValueError(f"not a {SCHEMA_VERSION} parameter object (schema={d.get('schema') if isinstance(d, dict) else None!r})")
         missing = [k for k in ("values", "curves", "masks", "skipped") if k not in d]
@@ -105,12 +131,23 @@ class Params:
 
     @classmethod
     def from_json(cls, text):
+        """from_dict(json.loads(text)); raises ValueError (json.JSONDecodeError is a ValueError) on bad input."""
         return cls.from_dict(json.loads(text))
 
     # ---- strength
     def at_strength(self, s):
         """New Params at strength s in [0, 2]: slider = default + s*(v - default); hue angles fixed;
-        curve y = x + s*(y - x) clamped to 0..255; boolean keys on only when s > 0; local mask amounts s*v."""
+        curve y = x + s*(y - x) clamped to 0..255; boolean keys on only when s > 0; local mask amounts s*v.
+
+        Why this shape: 100% must be exactly the preset, 0% exactly the untouched photo, and in between every
+        control moves proportionally from its neutral position, like Lightroom's "Amount" slider for profiles /
+        presets. A hue angle is a direction on the colour wheel, not an amount, so scaling it would change the
+        colour instead of its intensity (the paired saturation key is scaled instead). Tone curve points move
+        toward the identity diagonal y = x. Above 100% values may leave the slider range; they are clamped later
+        in render(), and the CLI reports which keys were clamped.
+
+        Raises ValueError for s outside 0..2. Returns a new object; `self` is not modified.
+        """
         s = _check_strength(s)
         values = {}
         for k, v in self.values.items():
@@ -154,5 +191,5 @@ class Params:
         return Params(values=values, curves=curves, masks=masks, skipped=list(self.skipped))
 
     def get(self, key):
-        """Value of `key`, falling back to the defaults table."""
+        """Value of `key`, falling back to the defaults table (so absent keys read as "no effect")."""
         return self.values.get(key, default(key))

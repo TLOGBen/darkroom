@@ -234,7 +234,7 @@ class TestGoldenCrossSite(GoldenCase):  # CONTRACT-export XP16 / app shell R10: 
 class TestGoldenRoutes(GoldenCase):
     async def test_exactly_thirty_five_routes(self):  # nine of L8 + export (XP1) + nine library (K16) + seven photo library (PL6, PLP2) + restore (S1 S4) + two semantic (SI11) + six S2 (E28)
         routes = sorted((r.method, r.resource.canonical) for r in self.app.router.routes()
-                        if r.method != "HEAD" and not r.resource.canonical.startswith("/static"))
+                        if r.method != "HEAD")       # v2: no /static/ folder any more (the page is web/dist)
         self.assertEqual(routes, sorted([
             ("GET", "/"), ("GET", "/api/health"), ("GET", "/api/presets"), ("GET", "/api/preset_flags"),
             ("GET", "/api/presets/{id}"), ("GET", "/api/sliders"), ("POST", "/api/open"), ("POST", "/api/preview"),
@@ -248,6 +248,9 @@ class TestGoldenRoutes(GoldenCase):
             ("POST", "/api/edit/save-preset"), ("GET", "/api/folder/thumbnails"), ("GET", "/api/thumbnail"),
             ("POST", "/api/edit/restore"),   # CONTRACT-s1-experience S4
             ("POST", "/api/preset-library/semantic/build"), ("GET", "/api/preset-library/semantic"),
+            ("GET", "/api/settings"), ("PUT", "/api/settings"), ("GET", "/api/settings/export"),   # plan-v2 §3
+            ("POST", "/api/settings/import"), ("GET", "/api/version"),
+            ("GET", "/assets/{path}"), ("GET", "/{tail}"),        # v2: the React build (web/dist), else 503
             ("GET", "/api/export-presets"), ("PUT", "/api/export-presets"), ("DELETE", "/api/export-presets"),
             ("POST", "/api/preset-library/files"), ("POST", "/api/preset-library/export"),
             ("GET", "/api/capabilities")]))                                  # CONTRACT-s2-export-detect E25 / E28
@@ -309,10 +312,11 @@ class TestGoldenS2(GoldenCase):  # CONTRACT-s2-export-detect E28: the new routes
         import msvcrt
         from unittest import mock
         from darkroom_app.services import export_presets
+        from darkroom_app.adapters.persist import locks
         fd = os.open(os.path.join(self.data, "export-presets.json.lock"), os.O_RDWR | os.O_BINARY)
         try:
             msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
-            with mock.patch.object(export_presets, "LOCK_WAIT_S", 0.2):
+            with mock.patch.object(locks, "LOCK_WAIT_S", 0.2):
                 await self.err("PUT", "/api/export-presets", 409, "匯出預設正被其他程式修改，請稍後再試",
                                json={"name": "x", "settings": {}})
             os.lseek(fd, 0, os.SEEK_SET)
@@ -350,7 +354,7 @@ class TestGoldenS2(GoldenCase):  # CONTRACT-s2-export-detect E28: the new routes
         body = await r.json()
         self.assertEqual(list(body), ["features"])
         self.assertEqual(list(body["features"]), ["gpu", "heic", "webp", "photo_library", "preset_library_writes",
-                                                  "semantic_index", "onepassword"])
+                                                  "semantic_index", "onepassword", "comfyui", "agent_sdk"])
         self.assertEqual(body["features"]["onepassword"], {"available": False, "reason": "假的 1Password"})
         r = await self.client.get("/api/capabilities?refresh=1")
         self.assertEqual((r.status, await r.json()), (200, body))

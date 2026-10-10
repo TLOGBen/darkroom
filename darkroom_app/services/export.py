@@ -15,6 +15,26 @@ writer threads at once, but names are claimed strictly in item order (seal F2: t
 (seal F1: OpenCV raises cv2.error, not ValueError, on some damaged TIFFs). Files are written only
 through `safe_write.create_new` into the export folder, which is that call's root, with the preset folder in use
 (CONTRACT-write-guard G10, export XP10 / XP12). `SafeWriteRefused` is never caught here (G8).
+
+Layer: services. Depends on domain (`Adjustment`, `export_options`, errors, messages), utils (encoders, the write
+module, fingerprint) and what the composition hands in (the Engine, the photo library, the export presets, the
+capability check). The exported files are the one kind of file a service writes directly: they are the product the
+user asked for, written into the export folder through the write module's `create_new` (never a store's data).
+
+Why three overlapping stages: a 24 MP export spends comparable time reading / decoding, rendering on the GPU and
+encoding / writing. Overlapping them keeps the GPU busy while the CPU threads decode the next photo and encode the
+previous one; MAX_IN_FLIGHT bounds the memory (each image in flight is ~300 MB as float32).
+
+Contract codes used here (CONTRACT-export unless noted): X1 / XP2 = request-level checks are invalid for the whole
+call; XP17 = a failed item is {ok: false, source, error: "匯出失敗：..."} and the rest continue; X2 = the final
+parameters use the same functions as the preview; X8 = the default output folder "<photo folder>/darkroom 匯出";
+X9 = names "{stem}.ext", "{stem} (2).ext", ...; X11 = GPU out-of-memory is reported per item and the cache freed;
+X12 = a read failure's reason is passed through; XP7 = the three-stage pipeline and its in-flight limit; XP10 /
+XP12 / G8 / G10 = files are only written through the guarded write module, protecting the preset folder;
+XP35 / C19 = per-item geometry (left out = the saved crop). CONTRACT-s2-export-detect: E1 / E2 = settings and
+check order; E6 = WebP limits; E7 = the JPEG size cap; E9 = metadata filtering; E10 = output sharpening; E11 = the
+order resize -> sharpen -> quantise; E14 = export presets; E15 = no colour keys = the saved edit; E21 = a photo in
+the preset folder is never exported next to it; E23 = WebP availability; D1 = the `used` report per item.
 """
 import contextlib
 import math
@@ -25,30 +45,21 @@ from dataclasses import dataclass
 
 from darkroom import Geometry, read_image
 
-from .. import encoding
-from .. import messages as M
-from .. import preview as semantics
-from .. import safe_write
-from ..errors import DarkroomError
+from ..domain import messages as M
+from ..domain.adjustment import DEFAULT_STRENGTH, Adjustment, validate_geometry
+from ..domain.errors import DarkroomError
+from ..domain.export_options import (DEFAULT_BITS, DEFAULT_QUALITY, EDGE_MAX, FORMATS, KB,  # noqa: F401
+                                     MAX_KB_MAX, MAX_KB_MIN, METADATA, MP_MAX, PERCENT_MAX, RESIZE_MODES,
+                                     SETTING_KEYS, SHARPEN, SHARPEN_AMOUNTS, SHARPEN_TARGETS, normalize_settings,
+                                     resize_target)
+from ..utils import encoding
+from ..utils import safe_write
+from ..utils.imaging import fingerprint
+from ..utils.text import one_line as _one_line
 from . import on_gpu
-from .photo_library import fingerprint
-from .photos import _photo_ext
+from .photos import is_photo_name
 
 EXPORT_DIR = "darkroom 匯出"            # verbatim (X8)
-DEFAULT_QUALITY = 92                    # verbatim (X4)
-FORMATS = {"jpeg": ".jpg", "png": ".png", "tiff": ".tif", "webp": ".webp"}   # verbatim values / extensions (E1)
-DEFAULT_BITS = {"jpeg": 8, "png": 8, "tiff": 16, "webp": 8}                   # verbatim (E1, D14)
-SETTING_KEYS = ("format", "bit_depth", "quality", "max_kb", "resize", "metadata", "remove_gps", "sharpen")   # E1
-RESIZE_MODES = ("long_edge", "short_edge", "width", "height", "megapixels", "percent")                       # E8
-EDGE_MAX = 65535
-MP_MAX, PERCENT_MAX = 1000, 100
-MAX_KB_MIN, MAX_KB_MAX = 10, 1048576    # verbatim (E7)
-KB = 1024                               # verbatim (E7, D13)
-METADATA = ("all", "copyright", "none")  # verbatim (E9)
-SHARPEN = {"screen": {"low": (0.5, 0.35), "standard": (0.6, 0.55), "high": (0.7, 0.80)},
-           "glossy": {"low": (0.7, 0.45), "standard": (0.8, 0.70), "high": (1.0, 1.00)},
-           "matte": {"low": (0.8, 0.60), "standard": (1.0, 0.90), "high": (1.2, 1.25)}}   # verbatim (E10): (sigma, a)
-SHARPEN_TARGETS, SHARPEN_AMOUNTS = ("screen", "matte", "glossy"), ("low", "standard", "high")
 LUMA = (0.2126, 0.7152, 0.0722)         # verbatim (E10)
 WEBP_MAX_EDGE = 16383                   # verbatim (E6)
 COPYRIGHT_TAG = 33432
@@ -56,124 +67,6 @@ N_MAX = 9999                            # verbatim (XP2)
 MAX_IN_FLIGHT = 3                       # verbatim (XP7)
 ITEM_KEYS = ("image_id", "path", "preset_id", "strength", "overrides", "geometry")   # + geometry (S3 C19)
 PARAM_KEYS = ("preset_id", "strength", "overrides", "geometry")     # none of these = the saved edit (E15, XP35)
-
-
-# ---------------------------------------------------------------------- settings (E1, E2)
-def _is_int(v):
-    return isinstance(v, int) and not isinstance(v, bool)
-
-
-def _is_num(v):
-    return (isinstance(v, (int, float)) and not isinstance(v, bool)) and math.isfinite(v)
-
-
-def _invalid(text):
-    return DarkroomError("invalid", text)
-
-
-def _resize(r):
-    if not isinstance(r, dict) or set(r) != {"mode", "value"}:
-        raise _invalid(M.EXPORT_BAD_RESIZE + str(r))
-    mode, v = r["mode"], r["value"]
-    if not isinstance(mode, str) or mode not in RESIZE_MODES:
-        raise _invalid(M.EXPORT_BAD_RESIZE_MODE.format(mode=mode))
-    if mode == "megapixels":
-        if not _is_num(v) or not 0 < v <= MP_MAX:
-            raise _invalid(M.EXPORT_BAD_RESIZE_MP.format(value=v))
-    elif mode == "percent":
-        if not _is_num(v) or not 0 < v <= PERCENT_MAX:
-            raise _invalid(M.EXPORT_BAD_RESIZE_PERCENT.format(value=v))
-    elif not _is_int(v) or not 1 <= v <= EDGE_MAX:
-        raise _invalid(M.EXPORT_BAD_RESIZE_EDGE.format(mode=mode, value=v))
-    return {"mode": mode, "value": v}
-
-
-def _sharpen(s):
-    if not isinstance(s, dict) or set(s) != {"target", "amount"}:
-        raise _invalid(M.EXPORT_BAD_SHARPEN + str(s))
-    if not isinstance(s["target"], str) or s["target"] not in SHARPEN_TARGETS:
-        raise _invalid(M.EXPORT_BAD_SHARPEN_TARGET.format(target=s["target"]))
-    if not isinstance(s["amount"], str) or s["amount"] not in SHARPEN_AMOUNTS:
-        raise _invalid(M.EXPORT_BAD_SHARPEN_AMOUNT.format(amount=s["amount"]))
-    return {"target": s["target"], "amount": s["amount"]}
-
-
-def normalize_settings(given, preset=None):
-    """E1 / E2: the 8 export settings, every key present, checked in the E2 order. Each key: the value given now
-    (not None) -> the export preset's -> the constant default. bit_depth, quality and max_kb depend on the format,
-    so the preset's are used only when the final format is the preset's own (IP5). DarkroomError invalid with the
-    constant sentence on the first bad value."""
-    given = {k: given.get(k) for k in SETTING_KEYS}
-    pre = preset or {}
-
-    def pick(key, same=True):
-        if given[key] is not None:
-            return given[key]
-        return pre.get(key) if same else None
-
-    fmt = pick("format")
-    fmt = "jpeg" if fmt is None else fmt
-    if not isinstance(fmt, str) or fmt not in FORMATS:
-        raise _invalid(M.EXPORT_BAD_FORMAT.format(format=fmt))
-    same = bool(pre) and pre.get("format") == fmt
-    bits = pick("bit_depth", same)
-    bits = DEFAULT_BITS[fmt] if bits is None else bits
-    if not _is_int(bits) or bits not in (8, 16):
-        raise _invalid(M.EXPORT_BAD_BIT_DEPTH.format(bit_depth=bits))
-    if bits == 16 and fmt == "jpeg":
-        raise _invalid(M.EXPORT_JPEG_8BIT.format(bit_depth=bits))
-    if bits == 16 and fmt == "webp":
-        raise _invalid(M.EXPORT_WEBP_8BIT.format(bit_depth=bits))
-    quality = None
-    if fmt in ("jpeg", "webp"):                         # png / tiff: ignored, never judged (X13, XP31)
-        quality = pick("quality", same)
-        quality = DEFAULT_QUALITY if quality is None else quality
-        if not _is_int(quality) or not 1 <= quality <= 100:
-            text = M.EXPORT_BAD_QUALITY if fmt == "jpeg" else M.EXPORT_BAD_WEBP_QUALITY
-            raise _invalid(text.format(quality=quality))
-    max_kb = given["max_kb"]
-    if max_kb is not None and fmt != "jpeg":
-        raise _invalid(M.EXPORT_MAX_KB_JPEG_ONLY)
-    if max_kb is None and same:
-        max_kb = pre.get("max_kb")
-    if max_kb is not None and (not _is_int(max_kb) or not MAX_KB_MIN <= max_kb <= MAX_KB_MAX):
-        raise _invalid(M.EXPORT_BAD_MAX_KB.format(max_kb=max_kb))
-    resize = pick("resize")
-    resize = None if resize is None else _resize(resize)
-    metadata = pick("metadata")
-    metadata = "all" if metadata is None else metadata
-    if not isinstance(metadata, str) or metadata not in METADATA:
-        raise _invalid(M.EXPORT_BAD_METADATA.format(metadata=metadata))
-    remove_gps = pick("remove_gps")
-    remove_gps = False if remove_gps is None else remove_gps
-    if not isinstance(remove_gps, bool):
-        raise _invalid(M.EXPORT_BAD_REMOVE_GPS)
-    sharpen = pick("sharpen")
-    sharpen = None if sharpen is None else _sharpen(sharpen)
-    return {"format": fmt, "bit_depth": bits, "quality": quality, "max_kb": max_kb, "resize": resize,
-            "metadata": metadata, "remove_gps": remove_gps, "sharpen": sharpen}
-
-
-def resize_target(width, height, resize):
-    """E8: (w', h') of an upright width x height image; never enlarged (s >= 1 keeps the size)."""
-    if resize is None:
-        return width, height
-    mode, v = resize["mode"], resize["value"]
-    s = {"long_edge": lambda: v / max(width, height), "short_edge": lambda: v / min(width, height),
-         "width": lambda: v / width, "height": lambda: v / height,
-         "megapixels": lambda: math.sqrt(v * 1e6 / (width * height)), "percent": lambda: v / 100}[mode]()
-    if s >= 1:
-        return width, height
-
-    def rnd(x):
-        return max(1, math.floor(x + 0.5))
-    if mode == "megapixels":
-        return max(1, math.floor(width * s)), max(1, math.floor(height * s))
-    if mode == "percent":
-        return rnd(width * s), rnd(height * s)
-    if mode == "width" or (mode == "long_edge" and width >= height) or (mode == "short_edge" and width <= height):
-        return v, rnd(height * s)
-    return rnd(width * s), v
 
 
 def output_sharpen(rgb, target, amount):
@@ -202,6 +95,7 @@ def filtered_exif(exif, metadata, remove_gps):
 # ---------------------------------------------------------------------- jobs
 @dataclass
 class _Job:
+    """One item that passed its checks: where it goes in `results`, its name and path, and what to render."""
     index: int
     source: str
     path: str
@@ -218,6 +112,9 @@ class _Turns:
 
     @contextlib.contextmanager
     def turn(self, w):
+        """Context manager: block until it is claim w's turn, run the body, then let w + 1 go.
+
+        Raises _Aborted when the batch is being torn down, so a waiting writer thread never hangs forever."""
         with self.cv:
             while self.next != w:
                 if self.abort.is_set():
@@ -232,6 +129,8 @@ class _Turns:
 
 
 class _ItemFailed(Exception):
+    """One item cannot be exported: `source` is the file name shown, `reason` the one-line why."""
+
     def __init__(self, source, reason):
         super().__init__(reason)
         self.source, self.reason = source, reason
@@ -241,20 +140,19 @@ class _Refused(Exception):
     """An item that cannot be encoded as asked (size limit, WebP size): the reason is a constant sentence."""
 
 
-def _one_line(e):
-    return " ".join(str(e).split()) or type(e).__name__
-
-
 def _failed(source, reason):
+    """The result entry of a failed item (XP17 shape and sentence)."""
     return {"ok": False, "source": source, "error": M.EXPORT_FAILED.format(file_name=source, reason=reason)}
 
 
 def _is_oom(e):
+    """Is `e` CUDA running out of memory? (torch is imported here only; it is already loaded by then)."""
     import torch
     return isinstance(e, torch.cuda.OutOfMemoryError)
 
 
 def _under(path, folder):
+    """Is `path` the folder or inside it, after resolving links and case? False across drives."""
     a, b = os.path.normcase(os.path.realpath(path)), os.path.normcase(os.path.realpath(folder))
     try:
         return os.path.commonpath([a, b]) == b
@@ -263,7 +161,11 @@ def _under(path, folder):
 
 
 def output_folder(photo, dest_dir):
-    """(folder, root for creating it or None): X8."""
+    """(folder, root for creating it or None): X8.
+
+    With dest_dir: that folder (it must already exist; nothing is created). Without: "<photo folder>/darkroom 匯出",
+    created on demand with the photo's folder as the write root (one level only); a photo that already sits in such
+    a folder exports next to itself instead of into a nested one."""
     if dest_dir is not None:
         return dest_dir, None
     folder = os.path.dirname(os.path.abspath(photo))
@@ -303,7 +205,10 @@ def jpeg_within(bgr8, quality, max_kb, exif, icc):
 
 
 class ExportService:
+    """The export operation (see the module docstring for the whole flow)."""
+
     def __init__(self, library, engine_ref, preset_dir, photo_library, export_presets=None, feature=None):
+        """All dependencies are handed in by the composition; nothing is read from the configuration here."""
         self.library = library
         self.engine_ref = engine_ref
         self.preset_dir = preset_dir            # the preset folder in use, for safe_write (XP12)
@@ -320,6 +225,8 @@ class ExportService:
         return normalize_settings(given, preset)
 
     def _request(self, items, dest_dir, export_preset, given):
+        """Request-level checks (whole call refused): items non-empty, settings valid, dest_dir an existing absolute
+        folder, WebP available. Returns the normalised settings."""
         if not isinstance(items, list) or not items:
             raise DarkroomError("invalid", M.EXPORT_NOTHING)
         s = self.settings(export_preset, **given)
@@ -351,17 +258,23 @@ class ExportService:
         name = os.path.basename(path)
         if not os.path.isfile(path):
             raise _ItemFailed(name, M.PHOTO_NOT_FOUND.format(path=path))
-        if os.path.splitext(path)[1].lower() not in _photo_ext():
+        if not is_photo_name(path):
+
             raise _ItemFailed(name, M.UNSUPPORTED_FORMAT)
         return name, os.path.abspath(path)
 
     def _fingerprint(self, name, path):
+        """Content fingerprint of the photo; a read error fails this item only."""
         try:
             return fingerprint(path)
         except OSError as e:
             raise _ItemFailed(name, _one_line(e)) from None
 
     def _job(self, index, item, dest_dir):
+        """Turn one request item into a _Job (what to read and render), or raise _ItemFailed.
+
+        Without any of preset_id / strength / overrides / geometry the photo library's saved edit decides (E15;
+        params_from "edit" or "original"); otherwise the item's own values do (params_from "request")."""
         if not isinstance(item, dict):
             raise _ItemFailed("", M.EXPORT_ITEM_NOT_OBJECT)
         for key in item:
@@ -385,25 +298,28 @@ class ExportService:
                 params = self.photo_library.resolve_params(fp, preset_id)
             except DarkroomError as e:
                 raise _ItemFailed(name, e.message) from None
-        try:
-            strength = semantics.validate_strength(item.get("strength", 100))
-            overrides = semantics.validate_overrides(item.get("overrides"))
-        except ValueError as e:
-            raise _ItemFailed(name, str(e)) from None
+        try:                                    # VO -> BO; a refused value fails this item only (XP17)
+            adj = Adjustment.from_request(item.get("strength", DEFAULT_STRENGTH), item.get("overrides"))
+        except DarkroomError as e:
+            raise _ItemFailed(name, e.message) from None
         try:                                    # XP35 (D4): left out = the photo's saved geometry, null = none
             if "geometry" in item:
-                geometry = semantics.validate_geometry(item["geometry"])
+                geometry = validate_geometry(item["geometry"])
             else:
                 geometry = Geometry.from_dict(self.photo_library.saved_geometry(
                     fp if fp is not None else self._fingerprint(name, path)))
         except DarkroomError as e:
             raise _ItemFailed(name, e.message) from None
-        return _Job(index, name, path, semantics.effective_params(params, strength, overrides), "request",
-                    geometry)                                                                              # X2
+        return _Job(index, name, path, adj.final(params), "request", geometry)                       # X2
 
     # ------------------------------------------------------------------ the operation
     def export(self, items, format=None, quality=None, dest_dir=None, *, bit_depth=None, max_kb=None, resize=None,
                metadata=None, remove_gps=None, sharpen=None, export_preset=None):
+        """Export every item -> {"results": [one entry per item, in order]}.
+
+        Raises DarkroomError for request-level problems (nothing exported). Per-item problems become ok:false
+        entries. Side effects: new files in the output folder(s) (and the "darkroom 匯出" folder when it was
+        missing); photos and presets are never written. SafeWriteRefused propagates (it means a bug)."""
         s = self._request(items, dest_dir, export_preset,
                           {"format": format, "bit_depth": bit_depth, "quality": quality, "max_kb": max_kb,
                            "resize": resize, "metadata": metadata, "remove_gps": remove_gps, "sharpen": sharpen})
@@ -425,6 +341,12 @@ class ExportService:
         return 16 if (s["resize"] is not None or s["sharpen"] is not None) else s["bit_depth"]
 
     def _run(self, jobs, s, dest_dir):
+        """Run the read -> render -> write pipeline over `jobs`; returns one result per job, in job order.
+
+        The calling thread is the conductor: it takes decoded images from the reader in order, renders them on the
+        GPU executor (one at a time) and hands the pixels to the writer pool. A semaphore of MAX_IN_FLIGHT slots is
+        taken when a read starts and released when the write ends, which bounds memory. On any escape (abort) every
+        pool is shut down and the GPU cache released."""
         bits = self._render_bits(s)
         eng = self.engine_ref.get()
         slots = threading.BoundedSemaphore(MAX_IN_FLIGHT)
@@ -536,6 +458,10 @@ class ExportService:
         return encoding.tiff_bytes(rgb, exif, icc), None
 
     def _write(self, job, pixels, exif, s, bits, dest_dir, claim=contextlib.nullcontext):
+        """Finish, encode and write one item (runs on a writer thread) -> its result entry.
+
+        Encoding happens outside the name turn (in parallel); only claiming a file name waits for the turn, so names
+        are deterministic while the expensive work overlaps."""
         icc = encoding.srgb_icc()
         try:
             img = self._finish(pixels, s, bits)
@@ -554,6 +480,10 @@ class ExportService:
             return self._claim(job, data, FORMATS[s["format"]], dest_dir, used)
 
     def _claim(self, job, data, ext, dest_dir, used):
+        """Write `data` under the first free name in the output folder -> the result entry.
+
+        create_new's O_EXCL makes "free" race-proof against other programs; an OSError (permission, disk full)
+        becomes the "cannot write" sentence for this item."""
         folder, make_root = output_folder(job.path, dest_dir)
         stem = os.path.splitext(job.source)[0]
         try:
@@ -575,4 +505,4 @@ class ExportService:
 
 
 class _Aborted(Exception):
-    pass
+    """Internal: the batch is being torn down; waiting reader / writer threads stop."""

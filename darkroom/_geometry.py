@@ -8,6 +8,19 @@ the CPU application (`apply`, numpy + cv2). Only numpy and math are imported her
 Order (C2): source (upright W x H) -> rotate (clockwise) -> flip (horizontal) -> angle (about the frame centre,
 the canvas W' x H' keeps its size) -> crop. Coordinates use the pixel-centre convention: pixel (i, j) covers
 [i, i + 1) x [j, j + 1) and its centre is (i + 0.5, j + 0.5).
+
+Layer: core library, exported publicly as `darkroom.Geometry`. Used by `_render` (GPU sampling through
+`matrix`), and by the App for edits, thumbnails (CPU `apply`) and the export size (`output_size`).
+
+Relation to Lightroom: this is the equivalent of Lightroom's Crop & Straighten tool plus "Rotate / Flip
+Horizontal" in the Photo menu. Like Lightroom, straightening never shows empty corners: the crop box is always
+shrunk until it fits inside the rotated picture (C3 step 4), and the box keeps the chosen aspect ratio. Unlike a
+Lightroom preset (whose crop keys are ignored, see _xmp CROP_KEYS), the geometry belongs to one photo.
+
+Contract codes used below (CONTRACT-s3-crop): C1 = the geometry object's keys, types and verbatim error
+sentences; C2 = the order of operations and the "inverse map" from output pixels to source pixels; C3 = how the
+crop box is resolved (largest centred box, ratio correction, back to the centre, shrink to fit, round to whole
+pixels); C9 = the CPU path for thumbnails and the crop mode's whole-frame view.
 """
 import math
 
@@ -16,9 +29,10 @@ import numpy as np
 KEYS = ("rotate", "flip", "angle", "aspect", "crop")            # verbatim order (C1 geometry schema)
 CROP_KEYS = ("left", "top", "right", "bottom")
 ROTATIONS = (0, 90, 180, 270)
-ANGLE_MAX = 45.0
+ANGLE_MAX = 45.0                                                  # Lightroom's straighten range is also +-45
 ASPECT_MAX = 65535
-RATIO_TOL = 0.001                                                 # verbatim (C3 step 2)
+RATIO_TOL = 0.001                                                 # verbatim (C3 step 2): relative ratio error
+                                                                  # below which a stored box counts as "on ratio"
 
 # verbatim (C1 / constants "invalid")
 NOT_OBJECT = "幾何要是物件或 null：{geometry}"
@@ -32,6 +46,7 @@ BAD_CROP = ('裁切框要是 {{"left","top","right","bottom"}}，而且 0 ≤ le
 
 
 def _num(v):
+    """A finite JSON number (bool is excluded although Python treats it as an int)."""
     return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
 
 
@@ -64,6 +79,7 @@ def show(v):
 
 
 def _aspect(v):
+    """Validate an aspect value and normalise "w:h" to lowest terms ("8:10" -> "4:5"); ValueError(BAD_ASPECT)."""
     if not isinstance(v, str):
         raise ValueError(BAD_ASPECT.format(aspect=show(v)))
     if v in ("original", "free"):
@@ -79,6 +95,10 @@ def _aspect(v):
 
 
 def _crop(v):
+    """Validate a crop box dict -> (left, top, right, bottom) floats, or None for "automatic"; ValueError(BAD_CROP).
+
+    The box is in 0..1 fractions of the straightened frame (after rotate / flip), so it stays valid at any
+    preview or export resolution."""
     if v is None:
         return None
     ok = isinstance(v, dict) and set(v) == set(CROP_KEYS) and all(_num(v[k]) for k in CROP_KEYS)
@@ -135,6 +155,7 @@ class Geometry:
 
     @property
     def identity(self):
+        """True when this geometry changes nothing (aspect alone does not crop without a box or an angle)."""
         return self.rotate == 0 and not self.flip and self.angle == 0 and self.crop is None
 
     def to_dict(self):
@@ -164,9 +185,11 @@ class Geometry:
 
     # ------------------------------------------------------------------ the crop box (C3)
     def frame_size(self, width, height):
+        """(W', H'): the canvas after the quarter turn (width and height swap for 90 / 270)."""
         return (height, width) if self.rotate in (90, 270) else (width, height)
 
     def ratio(self, width, height):
+        """Target width / height of the crop box: the frame's own ratio for original / free, else w / h."""
         fw, fh = self.frame_size(width, height)
         if self.aspect in ("original", "free"):
             return fw / fh
@@ -174,7 +197,14 @@ class Geometry:
         return int(a) / int(b)
 
     def _limits(self, m, e, fw, fh):
-        """Largest s >= 0 with the box m +- s*e inside the canvas and inside the straightened picture."""
+        """Largest s >= 0 with the box m +- s*e inside the canvas and inside the straightened picture.
+
+        m: box centre in frame pixels; e: half-extent direction (half width, half height) of a box of scale 1.
+        Why it works: the picture rotated by `angle` about the frame centre is a rectangle; a point lies inside it
+        exactly when, rotated back by -angle, it lies inside the axis-aligned W' x H' rectangle. The box is
+        convex, so it is inside when its four corners are. For each corner m + s*(+-e) and each of the two
+        rectangles (the rotated picture and the canvas itself), every coordinate gives a linear inequality
+        |pos + s*val| <= half, solved for s; the smallest bound over all of them is the answer."""
         th = math.radians(self.angle)
         cx, cy = fw / 2.0, fh / 2.0
         d = (m[0] - cx, m[1] - cy)
@@ -190,12 +220,20 @@ class Geometry:
         return max(0.0, best)
 
     def _inside(self, m, fw, fh):
+        """Is the frame point m inside the straightened picture (not in an empty corner)?"""
         a = _rot(-math.radians(self.angle), (m[0] - fw / 2.0, m[1] - fh / 2.0))
         return abs(a[0]) <= fw / 2.0 and abs(a[1]) <= fh / 2.0
 
     def resolve(self, width, height):
         """C3: {"left", "top", "right", "bottom" (frame pixels, int), "width", "height" (output size), "box" (the
-        normalised box after step 4, before rounding)}."""
+        normalised box after step 4, before rounding)}.
+
+        width x height is the upright source size. The steps are numbered in the code: (1) no stored box -> the
+        largest box of the target ratio centred in the frame (what Lightroom shows after straightening); (2) a
+        stored box whose ratio no longer matches the aspect is reshaped around the same centre keeping its area;
+        (3) a centre that ended up in an empty corner returns to the frame centre; (4) the box only ever shrinks
+        until it fits inside the picture; (5) rounding to whole pixels, at least 1 x 1. Pure arithmetic.
+        """
         fw, fh = self.frame_size(width, height)
         rho = self.ratio(width, height)
         if self.crop is None:                                                    # (1) the largest centred box
@@ -223,6 +261,7 @@ class Geometry:
         return {"left": L, "top": T, "right": R, "bottom": B, "width": R - L, "height": B - T, "box": box}
 
     def output_size(self, width, height):
+        """(width, height) in pixels of the cropped result for a width x height upright source (export size)."""
         r = self.resolve(width, height)
         return r["width"], r["height"]
 
@@ -248,7 +287,14 @@ class Geometry:
 
     def matrix(self, img_width, img_height):
         """2x3 float64 map from an output point (X, Y) (pixel centres at i + 0.5) to the image point (x, y) in the
-        same convention (C2 constant "inverse map"), for an img_width x img_height image of the source."""
+        same convention (C2 constant "inverse map"), for an img_width x img_height image of the source.
+
+        Why an inverse map: resampling asks, for every output pixel, "which source point lands here?", which is
+        free of holes and lets the GPU sample with grid_sample. The forward order is rotate -> flip -> straighten
+        -> crop, so the inverse composes the undo steps in reverse: output pixel -> point in the crop rectangle of
+        the frame -> rotate by -angle about the frame centre -> undo the mirror -> undo the quarter turn -> scale
+        from source size to the size of the image actually sampled (a preview may be a downscaled copy).
+        """
         W, H, ow, oh, frame, (L, T, R, B), _ = self.sampling(img_width, img_height)
         fw, fh = self.frame_size(W, H)
         M = np.array([[(R - L) / ow, 0.0, L], [0.0, (B - T) / oh, T], [0.0, 0.0, 1.0]])   # output -> frame point p

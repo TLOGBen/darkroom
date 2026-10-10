@@ -7,6 +7,16 @@ Colours outside the sRGB gamut are clipped (the renderer works in linear sRGB).
 Decoded photos are integer codes (8/10/12 bit), so the fast path (Converter.from_codes) evaluates the tone curve
 once per code level (lookup table), mixes in float32 and encodes through a 65536-entry sRGB table, in row
 chunks on a few threads (24 MP in about 0.3 s instead of 4 s with float64 arrays; difference about 1e-4).
+
+Layer: core library, used by `_heif` (HEIC files carry Display P3 most of the time). Depends on numpy, and on
+Pillow's ImageCms only for the LUT-profile fallback. No file IO: profiles arrive as bytes.
+
+Why the ICC maths looks like this: an ICC profile describes a colour space relative to the Profile Connection
+Space (PCS), which is CIE XYZ with a D50 white. A "matrix/TRC" profile stores, per channel, a tone response curve
+(TRC: encoded value -> linear light) and the XYZ of its red / green / blue primaries. Converting to sRGB is then
+"undo the source curve, multiply by (source RGB -> XYZ D50), multiply by (XYZ D50 -> linear sRGB), apply the sRGB
+curve". Both matrices are folded into one 3x3 (Converter.m). This is the standard colour-managed conversion any
+ICC-aware viewer performs, so an untouched P3 photo keeps the colours it shows in other colour-managed apps.
 """
 import os
 import struct
@@ -24,22 +34,27 @@ P3_TO_XYZ_D50 = np.array([[0.515121, 0.291977, 0.157104],
                           [0.241196, 0.692245, 0.066574],
                           [-0.001053, 0.041885, 0.784073]])
 
-ENC_SIZE = 1 << 16
-ROWS = 128
+ENC_SIZE = 1 << 16      # entries of the linear -> sRGB lookup table (16-bit resolution of linear light)
+ROWS = 128              # rows per work chunk: small enough to stay in cache, large enough to amortise threads
 WORKERS = max(1, min(8, os.cpu_count() or 1))
-_ENC = None
+_ENC = None             # the encode table, built on first use and shared afterwards
 
 
 def srgb_decode(v):
+    """sRGB-encoded numpy values 0..1 -> linear (exact IEC 61966-2-1 curve; float64)."""
     return np.where(v <= 0.04045, v / 12.92, ((v + 0.055) / 1.055) ** 2.4)
 
 
 def srgb_encode(v):
+    """Linear numpy values -> sRGB-encoded 0..1 (clipped first; out-of-gamut colours are clipped, not mapped)."""
     v = np.clip(v, 0.0, 1.0)
     return np.where(v <= 0.0031308, v * 12.92, 1.055 * np.power(v, 1 / 2.4) - 0.055)
 
 
 def _enc_table():
+    """The cached ENC_SIZE-entry float32 table: index round(linear * (ENC_SIZE - 1)) -> sRGB value.
+
+    A lookup replaces a per-pixel power function, which is what makes the 24 MP conversion fast."""
     global _ENC
     if _ENC is None:
         _ENC = srgb_encode(np.linspace(0.0, 1.0, ENC_SIZE)).astype(np.float32)
@@ -70,10 +85,16 @@ def codes_to_float(codes, levels):
 
 
 def _s15(b):
+    """ICC s15Fixed16Number (4 big-endian bytes, signed 16.16 fixed point) -> float."""
     return struct.unpack(">i", b)[0] / 65536.0
 
 
 def _tags(data):
+    """ICC tag table -> {4-byte signature: tag bytes}, or None when `data` is not an ICC profile.
+
+    Layout (ICC.1 spec): a 128-byte header whose bytes 36..40 are the magic "acsp", then a uint32 tag count, then
+    12-byte entries (signature, offset, size). Entries pointing past the end of the data are skipped so a
+    truncated profile degrades to "unusable" instead of raising."""
     if len(data) < 132 or data[36:40] != b"acsp":
         return None
     n = struct.unpack(">I", data[128:132])[0]
@@ -89,13 +110,22 @@ def _tags(data):
 
 
 def _xyz(tag):
+    """An "XYZ " tag (a primary's colorant) -> [X, Y, Z] floats, or None when absent / malformed."""
     if tag is None or tag[:4] != b"XYZ " or len(tag) < 20:
         return None
     return [_s15(tag[8 + 4 * k: 12 + 4 * k]) for k in range(3)]
 
 
 def _curve(tag):
-    """Tone curve tag -> function mapping encoded 0..1 to linear, or None if unsupported."""
+    """Tone curve tag -> function mapping encoded 0..1 to linear, or None if unsupported.
+
+    Two tag kinds exist in the ICC spec:
+    - "curv": 0 entries = identity, 1 entry = a pure gamma (u8Fixed8, so value / 256), n entries = a sampled
+      table interpolated linearly;
+    - "para": parametric curve types 0..4 (ICC.1 parametricCurveType). Type 0 is y = x^g; types 1..4 add an
+      offset / linear toe; type 3 is what sRGB and Display P3 profiles use (linear segment c*x below d, power
+      above).
+    The branches below transcribe those formulas literally."""
     if tag is None or len(tag) < 12:
         return None
     kind = tag[:4]
@@ -137,6 +167,11 @@ def _curve(tag):
 
 
 class Converter:
+    """Source RGB colour space -> sRGB, built from three per-channel TRC functions and a primaries matrix.
+
+    curves: three functions (encoded 0..1 -> linear) for R, G, B; rgb_to_xyz_d50: 3x3 matrix whose columns are
+    the primaries' XYZ (D50). `m` is the single combined matrix source-linear -> linear sRGB."""
+
     def __init__(self, curves, rgb_to_xyz_d50):
         self.curves = curves
         self.m = XYZ_D50_TO_SRGB @ np.asarray(rgb_to_xyz_d50, dtype=np.float64)
@@ -148,7 +183,12 @@ class Converter:
         return srgb_encode(lin @ self.m.T).astype(np.float32)
 
     def from_codes(self, codes, levels):
-        """Fast path for integer codes HxWx3 (or more channels: extra ones ignored)."""
+        """Fast path for integer codes HxWx3 (or more channels: extra ones ignored).
+
+        Steps: build one lookup table per channel (code -> linear, evaluated once per level instead of once per
+        pixel), mix with the float32 matrix row by row, clip to 0..1, then index the sRGB encode table. Work is
+        split into row chunks on a thread pool. Raises ValueError if a curve yields NaN / inf (a damaged
+        profile), which _heif turns into its PROFILE_BROKEN message."""
         xs = np.arange(levels, dtype=np.float64) / (levels - 1)
         luts = [np.asarray(self.curves[k](xs), dtype=np.float32) for k in range(3)]
         if any(not np.isfinite(t).all() for t in luts):
@@ -175,7 +215,10 @@ class Converter:
 
 
 def from_icc(data):
-    """Converter for a matrix/TRC RGB profile, else None (unusable or other kind of profile)."""
+    """Converter for a matrix/TRC RGB profile, else None (unusable or other kind of profile).
+
+    Requires an RGB data colour space (header bytes 16..20) with an XYZ PCS (bytes 20..24), all three colorant
+    tags and all three TRC tags. None tells the caller to use the LittleCMS fallback instead."""
     tags = _tags(data or b"")
     if tags is None or data[16:20] != b"RGB " or data[20:24] != b"XYZ ":
         return None
@@ -194,7 +237,10 @@ def from_nclx(nclx):
 
 
 def littlecms_8bit(img, icc):
-    """Fallback for other ICC profiles (LUT based): LittleCMS at 8 bits (known precision limit)."""
+    """Fallback for other ICC profiles (LUT based): LittleCMS at 8 bits (known precision limit).
+
+    img: HxWx3 float 0..1 in the profile's encoding; icc: the profile bytes. Returns float32 sRGB 0..1.
+    Pillow's ImageCms only converts 8-bit images, hence the quantisation; such profiles are rare in photos."""
     import io
 
     from PIL import Image, ImageCms

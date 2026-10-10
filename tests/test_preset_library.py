@@ -151,7 +151,8 @@ class TestLocationAndReadOnly(LibCase):
         root = os.path.dirname(real)
         names = sorted(os.listdir(root))
         lib = Library(real)
-        ps, pl = PresetService(lib), PresetLibraryService(lib, real)
+        from darkroom_app.adapters.persist.preset_index import PresetLibraryStore
+        ps, pl = PresetService(lib), PresetLibraryService(lib, PresetLibraryStore(lib, real))   # v2: the store
         self.assertEqual(ps.list_presets()["total"], 1466)
         ps.list_presets(favorites=True)
         pl.preset_groups()
@@ -341,12 +342,13 @@ class TestOrganise(LibCase):
 
     def test_lock_wait_constant_and_conflict(self):  # K15 / KP8
         from darkroom_app.services import preset_library as pl
-        self.assertEqual(pl.LOCK_WAIT_S, 5.0)
-        self.assertEqual((pl.REPLACE_RETRIES, pl.REPLACE_RETRY_S), (200, 0.01))    # KP21
+        from darkroom_app.adapters.persist import locks
+        self.assertEqual(locks.LOCK_WAIT_S, 5.0)
+        self.assertEqual((locks.REPLACE_RETRIES, locks.REPLACE_RETRY_S), (200, 0.01))    # KP21
         fd = os.open(os.path.join(self.root, "library.json.lock"), os.O_RDWR | os.O_CREAT | os.O_BINARY)
         try:
             msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
-            with mock.patch.object(pl, "LOCK_WAIT_S", 0.3):
+            with mock.patch.object(locks, "LOCK_WAIT_S", 0.3):
                 t0 = time.monotonic()
                 self.assertEqual(self.err(self.f.set_favorite, "p-plain", True),
                                  ("conflict", "preset 庫正被其他程式修改，請稍後再試"))
@@ -361,13 +363,14 @@ class TestOrganise(LibCase):
     def test_replace_retry_then_unavailable(self):  # K15: PermissionError retried, then unavailable, no tmp left
         from darkroom_app import safe_write
         from darkroom_app.services import preset_library as pl
+        from darkroom_app.adapters.persist import locks
         self.f.set_favorite("p-plain", True)
         calls = []
 
         def busy(*a, **k):
             calls.append(1)
             raise PermissionError(5, "Access is denied")
-        with mock.patch.object(safe_write, "replace_into", busy), mock.patch.object(pl, "REPLACE_RETRY_S", 0.001):
+        with mock.patch.object(safe_write, "replace_into", busy), mock.patch.object(locks, "REPLACE_RETRY_S", 0.001):
             kind, msg = self.err(self.f.set_favorite, "p-plain", False)
         self.assertEqual((kind, len(calls)), ("unavailable", 200))     # KP21
         self.assertTrue(msg.startswith("無法寫入 preset 庫索引："), msg)

@@ -94,3 +94,8 @@ preset 合併雜湊：15C015CC0C080FF9 ｜ 數量：1466
 
 WG16 常數：op 形狀另加 op|op.exe whoami（恰 2 參數）｜ 產品可開的子程序：gpucheck → nvidia-smi ｜ services/semantic_index → op read <op://…>（WG15）、op whoami（WG16）
 WG17 常數：safe_write 白名單模組：services/export.py、services/preset_library.py、services/photo_library.py、services/semantic_index.py、services/export_presets.py
+
+## v2 修訂紀錄（2026-10-10，docs/architecture/plan-v2.md §1；不刪上方原文）
+- WV1（G3 產品子程序表，路徑修訂）：`gpucheck.py` 搬到 `darkroom_app/utils/gpucheck.py`，`tests/_writeguard.py` 的 `PRODUCT_SUBPROCESSES` 鍵同步改路徑；`op` 仍只准從 `darkroom_app/services/semantic_index.py` 啟動（WG15／WG16 不變）。
+- WV2（G8 寫檔模組，修訂）：`safe_write` 搬到 `darkroom_app/utils/safe_write.py`（舊路徑是別名 shim），公開函式仍恰 5 個；不再自己讀 `config.preset_dir()`，改由 composition 設定模組變數 `configured_preset_dir`（零參數函式，回傳已設定的 preset 資料夾或 None）；兩者都不知道時照舊 `REFUSED_NO_PRESET`。
+- WV3（G10 白名單，取代 WG17 常數）：能 import 寫檔模組的模組改為 `services/export.py`（匯出檔）、`adapters/persist/locks.py`、`adapters/persist/preset_index.py`、`adapters/persist/data_folder.py`、`adapters/persist/export_presets_store.py`、`adapters/persist/settings_store.py`（設定檔），以及只設定上述 hook 的 `composition.py`；原本的四個 service 不再直接寫檔。

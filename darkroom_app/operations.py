@@ -1,8 +1,24 @@
-"""The registry of facade operations (CONTRACT-layering L2, L10).
+"""The registry of facade operations (CONTRACT-layering L2, L10; plan-v2 §1, §3).
+
+Layer: next to the facade; imported by the three entry adapters (HTTP routes, CLI subcommands, MCP tools), imports
+nothing of darkroom_app. The order is the MCP tool order and the Facade Protocol's order; v2 appended the settings
+and version operations (34..38) after `capabilities`, leaving the first 33 untouched.
 
 Describes only: which HTTP route, CLI subcommand and MCP tool expose each operation, the MCP input schema and
 the MCP defaults and annotations. It does not dispatch and does not validate; whether a value is acceptable is decided by the
 services (the schemas below are descriptions for the agent, nothing checks arguments against them).
+
+Each entry: http (method, route), cli (subcommand words), mcp (tool name), description (shown to the agent),
+input_schema (JSON schema of the arguments; property order = the Facade method's parameter order, checked by a test),
+mcp_defaults (values the MCP server fills in when the agent omits them) and annotations (MCP hints: read-only,
+destructive, idempotent, open-world).
+
+Contract codes used here: L2 = the operations and their order; L10 = MCP tool names and the read-only annotation;
+XP4 = the export tool's annotations; K16 = the preset-library tools (write the index, never a photo or purchased
+preset); PL6 / PLP6 = the photo-library tools (replace a photo's edit: destructive but idempotent); S4 =
+restore_edit; SI1 / SI11 = the semantic index tools (the build tool is the only open-world one and is refused over
+HTTP); E1 / E25 / E27 = export settings and the operations 28..33; E17 = writing preset files is CLI / MCP only;
+C20 = no new operation for geometry, only a `geometry` argument.
 """
 
 MCP_DEFAULT_LIMIT = 50
@@ -25,6 +41,7 @@ def _edits():
 
 
 def _schema(properties, required=()):
+    """An object schema that forbids unknown keys (the MCP server refuses those with -32602)."""
     s = {"type": "object", "properties": properties, "additionalProperties": False}
     if required:
         s["required"] = list(required)
@@ -501,6 +518,66 @@ OPERATIONS = {
                        "photo_library, preset_library_writes, semantic_index, onepassword: {available, reason}}}. "
                        "Kept for the process; refresh measures again. Writes nothing.",
         "input_schema": _schema({"refresh": {"type": "boolean", "default": False}}),
+        "mcp_defaults": {},
+    },
+    # plan-v2 §3: settings and version (operations 34..38)
+    "get_settings": {
+        "http": ("GET", "/api/settings"),
+        "cli": "settings get",
+        "mcp": "darkroom_settings_get",
+        "description": "darkroom's settings: {settings: {key: value in use}, defaults: {key: default}, sources: "
+                       "{key: file | env | default}, config_file}. Keys: language, preset_dir, preset_library_dir, "
+                       "data_dir, localllms_root, comfyui_url, comfyui_root, agent.api_key_ref (a 1Password reference, "
+                       "never a key), agent.model, agent.budget_usd, calibration_sources_dir. Reads only.",
+        "input_schema": _schema({}),
+        "mcp_defaults": {},
+    },
+    "set_settings": {
+        "http": ("PUT", "/api/settings"),
+        "cli": "settings set",
+        "mcp": "darkroom_settings_set",
+        "description": "Change some settings: values = {key: value} (null resets a key to its default). Every value "
+                       "is checked first (folders must exist, comfyui_url must be loopback, agent.api_key_ref must be "
+                       "op://...); when all pass the settings file is replaced and the app uses them at once. Returns "
+                       "{settings, applied: [keys], checks: {comfyui, agent_sdk, photo_library, "
+                       "preset_library_writes: {available, reason}}}. Ask the user before changing folders.",
+        "input_schema": _schema({"values": {"type": "object",
+                                            "description": "{key: value}; keys as darkroom_settings_get lists"}},
+                                ["values"]),
+        "mcp_defaults": {},
+        "mcp_annotations": {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": True,
+                            "openWorldHint": False},
+    },
+    "export_settings": {
+        "http": ("GET", "/api/settings/export"),
+        "cli": "settings export",
+        "mcp": "darkroom_settings_export",
+        "description": "The settings written in the settings file as a document {format: 'darkroom-settings/1', "
+                       "version, settings}; with dest (an absolute path whose folder exists) also written to that new "
+                       "file (never overwrites) and output added.",
+        "input_schema": _schema({"dest": dict(_STR, description="absolute path of a new .json file (optional)")}),
+        "mcp_defaults": {},
+        "mcp_annotations": EXPORT_ANNOTATIONS,
+    },
+    "import_settings": {
+        "http": ("POST", "/api/settings/import"),
+        "cli": "settings import",
+        "mcp": "darkroom_settings_import",
+        "description": "Apply a settings document made by darkroom_settings_export (document: the object, or path: "
+                       "its file; exactly one). Checked and applied exactly like darkroom_settings_set: an unknown key "
+                       "or a wrong format changes nothing.",
+        "input_schema": _schema({"document": {"type": ["object", "string"]},
+                                 "path": dict(_STR, description="absolute path of an exported settings file")}),
+        "mcp_defaults": {},
+        "mcp_annotations": {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": True,
+                            "openWorldHint": False},
+    },
+    "version": {
+        "http": ("GET", "/api/version"),
+        "cli": "version",
+        "mcp": "darkroom_version",
+        "description": "darkroom's version and what it runs on: {version, python, torch, cuda, platform}.",
+        "input_schema": _schema({}),
         "mcp_defaults": {},
     },
 }

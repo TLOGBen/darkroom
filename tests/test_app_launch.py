@@ -99,6 +99,7 @@ class TestModuleLaunch(unittest.TestCase):
         d = small_presets(self)
         port = free_port()
         env = {k: v for k, v in os.environ.items() if k not in ("PYTHONPATH", "PYTHONHOME")}
+        # the page is the fixed fixture build (_util pins DARKROOM_WEB_DIST; the child process inherits it)
         p = subprocess.Popen([*_util.guarded_python(), "-m", "darkroom_app", "--port", str(port), "--preset-dir", d],
                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env, cwd=os.path.dirname(d))
         try:
@@ -108,7 +109,7 @@ class TestModuleLaunch(unittest.TestCase):
             self.assertEqual(status, 200)
             self.assertEqual([r["name"] for r in json.loads(body)], ["A"])
             status, body = get(f"http://127.0.0.1:{port}/")
-            self.assertIn(b'id="preset-tree"', body)
+            self.assertIn(b'data-fixture="web-dist"', body)          # plan-v2 §2: the React build is the page
         finally:
             kill_tree(p)
 

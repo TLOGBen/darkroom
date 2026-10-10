@@ -26,7 +26,9 @@ TOOLS = ["darkroom_presets_list", "darkroom_preset_show", "darkroom_preset_flags
          "darkroom_edit_restore",                                                           # S4: 25
          "darkroom_semantic_build", "darkroom_semantic_status",   # CONTRACT-semantic-index SI1 / SI11: 26, 27 (merge patch)
          "darkroom_export_presets_list", "darkroom_export_preset_save", "darkroom_export_preset_delete",
-         "darkroom_preset_files", "darkroom_presets_export", "darkroom_capabilities"]   # S2 E25: 28..33
+         "darkroom_preset_files", "darkroom_presets_export", "darkroom_capabilities",   # S2 E25: 28..33
+         "darkroom_settings_get", "darkroom_settings_set", "darkroom_settings_export", "darkroom_settings_import",
+         "darkroom_version"]                                                            # plan-v2 §3: 34..38
 SEMANTIC_BUILD_ANNOTATIONS = {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False,
                               "openWorldHint": True}   # verbatim (SI11)
 S2_ANNOTATIONS = {   # verbatim (CONTRACT-s2-export-detect 操作表)
@@ -111,6 +113,10 @@ class TestMcpProtocol(McpCase):
                 want = SEMANTIC_BUILD_ANNOTATIONS
             elif t["name"] in S2_ANNOTATIONS:                    # CONTRACT-s2-export-detect E27 constants
                 want = S2_ANNOTATIONS[t["name"]]
+            elif t["name"] in ("darkroom_settings_set", "darkroom_settings_import"):   # plan-v2 §3: replace settings
+                want = EDIT_ANNOTATIONS
+            elif t["name"] == "darkroom_settings_export":                              # writes a new file with dest
+                want = EXPORT_ANNOTATIONS
             else:
                 want = EXPORT_ANNOTATIONS if t["name"] == "darkroom_export" else {"readOnlyHint": True,
                                                                                   "openWorldHint": False}

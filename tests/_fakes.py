@@ -157,3 +157,24 @@ class FakeDarkroom:
     def capabilities(self, refresh=False):
         return self._do("capabilities", (refresh,), {"features": {"gpu": {"available": True, "reason": None},
                                                                   "webp": {"available": False, "reason": "假原因"}}})
+
+    # plan-v2 §3: operations 34..38 (settings and version)
+    def get_settings(self):
+        return self._do("get_settings", (), {"settings": {"language": "zh-TW"}, "defaults": {"language": "zh-TW"},
+                                             "sources": {"language": "default"}, "config_file": "C:\cfg.json"})
+
+    def set_settings(self, values):
+        return self._do("set_settings", (values,), {"settings": {"language": "en-US"}, "applied": ["language"],
+                                                    "checks": {}})
+
+    def export_settings(self, dest=None):
+        doc = {"format": "darkroom-settings/1", "version": "0.1.0", "settings": {"language": "en-US"}}
+        return self._do("export_settings", (dest,), doc if dest is None else {**doc, "output": dest})
+
+    def import_settings(self, document=None, path=None):
+        return self._do("import_settings", (document, path), {"settings": {"language": "en-US"},
+                                                              "applied": ["language"], "checks": {}})
+
+    def version(self):
+        return self._do("version", (), {"version": "0.1.0", "python": "3.13", "torch": None, "cuda": None,
+                                         "platform": "fake"})

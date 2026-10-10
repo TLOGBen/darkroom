@@ -234,3 +234,6 @@ preset 合併雜湊：15C015CC0C080FF9 ｜ 數量：1466
 - F1、F2、F3、C29 在原引用處回歸皆符合；第 1 次派遣咬到的 3 支探針重打仍各自讓測試變紅；修正回合新判官（退化遮罩線性／放射兩分支、C29 的守門／catch 設旗標／狀態列選字、F3 的 5 條 assertIn 與 ORIENT 常數）各自出生證明全紅；全部逐位元組還原，git status 空。
 - N-1（記錄、不修，低，只是降級不會遺失資料）：C29 的「重讀成功就恢復自動存檔」那一行（`loadEdit` 成功分支清掉 `st.editUnreadable`）沒有測試攔得到；刪掉後只有縮圖格操作後的重讀不會恢復，要重新開啟照片才恢復（狀態列的提示本來就叫使用者重開）。下一片可在 tests/js 的 C29 補「先失敗→重讀成功→動滑桿恰送出一次 PUT」。
 - 備註：F1 對 C8 的補句、F2 對 C22 的改字以第 1 次處置紀錄為準（與條文同等效力）。
+
+## v2 修訂紀錄（2026-10-10，整合；不刪上方原文，提到 `static/`、`app.js`、`logic.js`、`tests/js/test_logic.cjs`、`tests/test_app_frontend.py` 處以本節為準）
+- 舊頁面 `darkroom_app/static/` 由 React 前端 `web/` 取代並已刪除（`docs/architecture/plan-v2.md` §2；細節見 `CONTRACT-layering.md` v2 修訂紀錄 V9）。原本釘在 `tests/js/test_logic.cjs` 的前端行為案例搬到 `web/` 的 vitest（`web/src/domain/__tests__/logic.legacy.test.ts`、`web/src/hooks/__tests__/autosave.test.ts`，期望值不變，共用案例表仍是 `tests/cases/*.json`），由 `cd web && npm test` 與 CI 的 web job 執行；原本釘在 `tests/test_app_frontend.py` 的頁面句子改由 `tests/test_web_page.py` 比對 `web/src/i18n/locales/zh-TW.json`。舊 HTML／app.js 的結構檢查（元素 id、對 app.js 的正規式）對 React 元件沒有意義，不再保留。

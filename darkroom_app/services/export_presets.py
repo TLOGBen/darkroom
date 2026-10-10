@@ -1,36 +1,36 @@
 """Named export presets kept in the photo library's data folder (CONTRACT-s2-export-detect E12, E13).
 
+Layer: services. Depends on domain (`export_options.normalize_settings`, the one rule for export settings; errors;
+messages) and on an `ExportPresetStore` the composition hands in (adapters/persist/export_presets_store.py: the
+lock, the reads, the bad copy, the atomic write). Never imports the facade, adapters, config or the write module.
+
 `data_dir/export-presets.json` holds {"schema": "darkroom-export-presets/1", "presets": {name: settings}}, the
-presets sorted by name (casefold), each value the 8 normalised export settings of E1 (`export.normalize_settings`,
-the one rule; no second validation here). Writes only go through `safe_write` with data_dir as root and the preset
-folder in use as `preset_dir=` (CONTRACT-write-guard G10, patch WG17): create_new(tmp) + replace_into under the
-cross-process lock `export-presets.json.lock` (5 s -> conflict). A file that does not parse, or is not exactly the
-schema, reads as empty; before the next write a byte copy `export-presets.json.bad-{unix seconds}` is kept (as SIP7).
-Nothing here touches a photo, the GPU, torch or cv2. `SafeWriteRefused` is never caught.
+presets sorted by name (casefold), each value the 8 normalised export settings of E1 (no second validation here).
+A file that does not parse, or is not exactly the schema, reads as empty; before the next write a byte copy
+`export-presets.json.bad-{unix seconds}` is kept (as SIP7). Another version of the schema is never overwritten
+(conflict). Nothing here touches a photo, the GPU, torch or cv2.
+
+Data flow of a change: take the store's lock -> read and sort out the file -> apply the change in memory -> keep a
+.bad copy if the old bytes were damaged -> write the whole new file atomically (temp file + replace) -> release.
+Readers never lock: the atomic replace means they see either the old or the new file.
+
+Contract codes: E12 = file name, schema and sorting; E12a = a damaged entry only drops itself, a different schema
+version is never overwritten; E13 = the three operations, name rules (1..60 characters, case-insensitive match,
+same name replaces) and the 200-preset limit; E14 = how export() looks a preset up; SIP7 = the .bad copy convention
+borrowed from the semantic index; PL9 = "never overwrite another schema version".
 """
 import json
-import msvcrt
-import os
-import secrets
-import time
 import unicodedata
 
-from .. import messages as M
-from .. import safe_write
-from ..errors import DarkroomError
-from .export import SETTING_KEYS, normalize_settings
+from ..domain import messages as M
+from ..domain.errors import DarkroomError
+from ..domain.export_options import EXPORT_PRESETS_FILE, EXPORT_PRESETS_SCHEMA, SETTING_KEYS, normalize_settings
 
-FILE_NAME = "export-presets.json"                        # verbatim (E12)
-SCHEMA = "darkroom-export-presets/1"                     # verbatim (E12)
+FILE_NAME = EXPORT_PRESETS_FILE                          # verbatim (E12)
+SCHEMA = EXPORT_PRESETS_SCHEMA                           # verbatim (E12)
+SCHEMA_PREFIX = "darkroom-export-presets/"
 NAME_MAX = 60                                            # verbatim (E13)
 PRESETS_MAX = 200                                        # verbatim (E13)
-LOCK_WAIT_S, LOCK_POLL_S = 5.0, 0.02                     # as KP8
-REPLACE_RETRIES, REPLACE_RETRY_S = 200, 0.01             # as KP21
-N_MAX = 9999
-
-
-def _one_line(e):
-    return " ".join(str(e).split()) or type(e).__name__
 
 
 def clean_name(name):
@@ -42,10 +42,8 @@ def clean_name(name):
 
 
 def _sorted(presets):
+    """The dict re-ordered by name (casefold first, exact spelling as tie-break) so the file is stable."""
     return {k: presets[k] for k in sorted(presets, key=lambda s: (s.casefold(), s))}
-
-
-SCHEMA_PREFIX = "darkroom-export-presets/"
 
 
 def valid_entry(name, s):
@@ -79,42 +77,31 @@ def valid_file(obj):
     return read_file(obj)[1] == "ok"
 
 
+def file_bytes(presets):
+    """The file's bytes for these presets (sorted by name; UTF-8)."""
+    return json.dumps({"schema": SCHEMA, "presets": _sorted(presets)}, ensure_ascii=False).encode("utf-8")
+
+
 class ExportPresetService:
-    def __init__(self, data_dir_of, preset_dir):
-        self._data_dir_of = data_dir_of          # () -> data_dir; DarkroomError unavailable when it is not usable
-        self.preset_dir = preset_dir             # the preset folder in use, for safe_write
+    """The export-preset operations; all file access goes through the injected store."""
+
+    def __init__(self, store):
+        """store: adapters/persist/export_presets_store.ExportPresetStore."""
+        self.store = store                       # ExportPresetStore (adapters/persist)
+
+    @property
+    def _data_dir_of(self):
+        """The store's data folder resolver (tests point it at another folder)."""
+        return self.store.data_dir_of
+
+    @_data_dir_of.setter
+    def _data_dir_of(self, fn):
+        self.store.data_dir_of = fn
 
     # ------------------------------------------------------------------ the file
-    def _paths(self):
-        d = self._data_dir_of()
-        return d, os.path.join(d, FILE_NAME)
-
-    def _unavailable(self, reason):
-        return DarkroomError("unavailable", M.XP_UNAVAILABLE.format(reason=reason))
-
-    def _sw(self, fn, *args):
-        return fn(*args, preset_dir=self.preset_dir)
-
-    @staticmethod
-    def _read_raw(path):
-        for attempt in range(10):
-            try:
-                with open(path, "rb") as f:
-                    return f.read()
-            except FileNotFoundError:
-                return None
-            except PermissionError:
-                if attempt == 9:
-                    raise
-                time.sleep(0.1)
-
     def _read(self):
         """(presets dict, raw bytes or None, "missing" | "ok" | "bad"); another schema version -> conflict."""
-        _, path = self._paths()
-        try:
-            raw = self._read_raw(path)
-        except OSError as e:
-            raise self._unavailable(_one_line(e)) from None
+        raw = self.store.read_raw()
         if raw is None:
             return {}, None, "missing"
         try:
@@ -126,93 +113,16 @@ class ExportPresetService:
             raise DarkroomError("conflict", M.XP_FOREIGN.format(schema=obj["schema"]))
         return presets, raw, state
 
-    def _root(self):
-        d, _ = self._paths()
-        if not os.path.isdir(d):
-            parent = os.path.dirname(os.path.abspath(d))
-            if not os.path.isdir(parent):
-                raise self._unavailable(M.PL_PARENT_MISSING.format(parent=parent))
-            try:
-                self._sw(safe_write.make_dirs, d, parent)
-            except OSError as e:
-                raise self._unavailable(_one_line(e)) from None
-        return d
-
-    def _acquire(self, root):
-        lock = os.path.join(root, FILE_NAME + ".lock")
-        try:
-            fd = self._sw(safe_write.open_lock, lock, root)
-        except OSError as e:
-            raise self._unavailable(_one_line(e)) from None
-        deadline = time.monotonic() + LOCK_WAIT_S
-        while True:
-            try:
-                os.lseek(fd, 0, os.SEEK_SET)
-                msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
-                return fd
-            except OSError:
-                if time.monotonic() >= deadline:
-                    os.close(fd)
-                    raise DarkroomError("conflict", M.XP_BUSY) from None
-                time.sleep(LOCK_POLL_S)
-
-    @staticmethod
-    def _release(fd):
-        try:
-            os.lseek(fd, 0, os.SEEK_SET)
-            msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
-        finally:
-            os.close(fd)
-
-    def _keep_bad(self, root, raw):
-        base = os.path.join(root, f"{FILE_NAME}.bad-{int(time.time())}")
-        for n in range(1, N_MAX + 1):
-            path = base if n == 1 else f"{base}-{n}"
-            try:
-                self._sw(safe_write.create_new, path, root, raw)
-                return path
-            except FileExistsError:
-                continue
-            except OSError as e:
-                raise self._unavailable(_one_line(e)) from None
-        raise self._unavailable("no free .bad name")
-
-    def _write(self, root, presets):
-        dest = os.path.join(root, FILE_NAME)
-        tmp = os.path.join(root, f"{FILE_NAME}.tmp-{os.getpid()}-{secrets.token_hex(6)}")
-        data = json.dumps({"schema": SCHEMA, "presets": _sorted(presets)}, ensure_ascii=False).encode("utf-8")
-        try:
-            self._sw(safe_write.create_new, tmp, root, data)
-        except OSError as e:
-            raise self._unavailable(_one_line(e)) from None
-        try:
-            for attempt in range(REPLACE_RETRIES):
-                try:
-                    self._sw(safe_write.replace_into, tmp, dest, root)
-                    return
-                except PermissionError as e:
-                    if attempt == REPLACE_RETRIES - 1:
-                        raise self._unavailable(_one_line(e)) from None
-                    time.sleep(REPLACE_RETRY_S)
-                except OSError as e:
-                    raise self._unavailable(_one_line(e)) from None
-        finally:
-            if os.path.exists(tmp):
-                self._sw(safe_write.remove, tmp, root)
-
     def _mutate(self, change):
         """Lock -> read -> change(presets) -> (bad copy kept first) -> atomic write; returns change's result."""
-        root = self._root()
-        fd = self._acquire(root)
-        try:
+        root = self.store.root()
+        with self.store.locked(root):
             presets, raw, state = self._read()
             result = change(presets)
             if state == "bad":
-                self._keep_bad(root, raw)
-            self._write(root, presets)
+                self.store.keep_bad(root, raw)
+            self.store.write(root, file_bytes(presets))
             return result
-        finally:
-            self._release(fd)
 
     # ------------------------------------------------------------------ lookups (export E14)
     def find(self, name):
@@ -226,10 +136,15 @@ class ExportPresetService:
 
     # ------------------------------------------------------------------ operations (E13)
     def list_export_presets(self):
+        """{"presets": [{name, settings}]} sorted by name; conflict for a foreign schema version. Read-only."""
         presets, _, _ = self._read()
         return {"presets": [{"name": k, "settings": v} for k, v in _sorted(presets).items()]}
 
     def save_export_preset(self, name, settings):
+        """Store `settings` (normalised; no dest_dir) under `name` -> {name, settings, previous}.
+
+        A preset with the same name (case-insensitive) is replaced and returned as `previous` so the caller can
+        undo by saving it again. Raises invalid (name, settings, too many) or conflict. Writes export-presets.json."""
         n = clean_name(name)
         if n is None:
             raise DarkroomError("invalid", M.XP_NAME_LENGTH)
@@ -254,6 +169,7 @@ class ExportPresetService:
         return self._mutate(change)
 
     def delete_export_preset(self, name):
+        """Remove one preset -> {name, settings} of what was removed; not_found when missing. Writes the file."""
         n = clean_name(name)
 
         def change(presets):
@@ -262,4 +178,3 @@ class ExportPresetService:
                     return {"name": k, "settings": presets.pop(k)}
             raise DarkroomError("not_found", M.XP_NOT_FOUND.format(name=name))
         return self._mutate(change)
-

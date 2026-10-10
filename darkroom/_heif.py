@@ -2,7 +2,15 @@
 
 libheif applies the irot/imir transforms, so the pixels already have the display orientation; the EXIF
 Orientation tag (still present in the file) must not be applied a second time.
-Every failure, including a damaged embedded colour profile, is a single-line ValueError (CONTRACT-heic H6).
+Every failure, including a damaged embedded colour profile, is a single-line ValueError (CONTRACT-heic H6 =
+"every HEIC problem, including a broken profile, is reported as one readable line, never a traceback").
+
+Layer: core library, called only by `_io.read_image`. Depends on numpy, `_icc` and the optional pillow-heif
+package (imported lazily; when missing, reading a HEIC raises ValueError(MISSING) with the install command).
+
+Data flow: file bytes -> libheif decode (primary image, native 8/10/12-bit, already oriented) -> integer codes
+HxWx3 in RGB order -> colour conversion to sRGB (ICC profile, else nclx Display P3, else assumed sRGB) ->
+float32 0..1.
 """
 import io
 import os
@@ -24,6 +32,10 @@ def one_line(e):
 
 
 def _decode(data):
+    """libheif decode of the primary image -> (mode, width, height, raw buffer, row stride, info dict).
+
+    convert_hdr_to_8bit=False keeps 10/12-bit iPhone files at full precision. Raises ValueError(MISSING) when
+    pillow-heif is not installed and ValueError(DECODE_FAILED) for any libheif error."""
     try:
         import pillow_heif
     except ImportError:
@@ -40,7 +52,12 @@ def _decode(data):
 
 
 def _codes(mode, w, h, raw, stride, info):
-    """Pixel buffer -> (HxWx3 integer codes in RGB order, number of levels)."""
+    """Pixel buffer -> (HxWx3 integer codes in RGB order, number of levels).
+
+    The buffer rows may be padded (stride > width * channels), so each row is cut to its real width first.
+    pillow-heif returns 10/12-bit data left-aligned in 16-bit words; shifting right by (16 - bit_depth) gives the
+    true codes so that `levels` (1 << bits) matches what the colour conversion's lookup tables expect.
+    Grey (L / LA) is replicated to RGB, BGR is reordered, alpha is ignored by the callers."""
     base = mode.split(";")[0]
     channels = {"RGB": 3, "RGBA": 4, "BGR": 3, "BGRA": 4, "L": 1, "LA": 2}.get(base)
     if channels is None:
@@ -61,6 +78,10 @@ def _codes(mode, w, h, raw, stride, info):
 
 
 def _colour(codes, levels, info):
+    """Integer codes -> float32 sRGB 0..1, using the best colour description the file has.
+
+    Order: an embedded ICC profile (matrix/TRC handled exactly by _icc, LUT-based ones through LittleCMS at
+    8 bits), else nclx primaries (Display P3 is what iPhones write), else the codes are taken as sRGB as-is."""
     icc = info.get("icc_profile")
     if icc:
         conv = _icc.from_icc(icc)
@@ -74,6 +95,10 @@ def _colour(codes, levels, info):
 
 
 def read(path):
+    """Read a .heic/.heif file into an HxWx3 float32 C-contiguous sRGB array in 0..1 (read-only).
+
+    Raises ValueError (one line) for an empty file, a decode failure, a missing pillow-heif or a broken profile;
+    OSError when the file cannot be opened."""
     with open(path, "rb") as f:
         data = f.read()
     if not data:

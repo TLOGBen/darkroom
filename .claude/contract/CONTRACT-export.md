@@ -147,3 +147,6 @@ HTTP 帶 dest_dir（400）：{"error": "dest_dir is not accepted over HTTP (use 
 
 ## S3 補丁（2026-10-10，`CONTRACT-s3-crop.md` 主 session 裁決；與條文同等效力，劃線與「取代」處以本節為準）
 - XP35（修訂 X2、X3、XP30、E8、E15、E15a、E26；S3 C19）：item 多一個可選鍵 `geometry`（省略＝這張已存的幾何、`null`＝不套）；「三個鍵都省略＝已存編輯」改為四個鍵（`preset_id`、`strength`、`overrides`、`geometry`）。X3「輸出像素寬高＝轉正後的原圖寬高（不縮放、不裁切）」改為「＝S3 C5 輸出尺寸」；E8 縮放以輸出尺寸為 (w, h)；EXIF `PixelXDimension／PixelYDimension`＝最後寫出的寬高。CLI `--no-edit`＝`preset_id: null` 且 `geometry: null`。E15a：編輯器 `currentRequest()` 帶畫面當下的 `geometry`（null 也送）。X2 等式改為「與同幾何、同參數的預覽管線全解析度渲染相同」。
+
+## v2 修訂紀錄（2026-10-10，整合；不刪上方原文，提到 `static/`、`app.js`、`logic.js`、`tests/js/test_logic.cjs`、`tests/test_app_frontend.py` 處以本節為準）
+- 舊頁面 `darkroom_app/static/` 由 React 前端 `web/` 取代並已刪除（`docs/architecture/plan-v2.md` §2；細節見 `CONTRACT-layering.md` v2 修訂紀錄 V9）。原本釘在 `tests/js/test_logic.cjs` 的前端行為案例搬到 `web/` 的 vitest（`web/src/domain/__tests__/logic.legacy.test.ts`、`web/src/hooks/__tests__/autosave.test.ts`，期望值不變，共用案例表仍是 `tests/cases/*.json`），由 `cd web && npm test` 與 CI 的 web job 執行；原本釘在 `tests/test_app_frontend.py` 的頁面句子改由 `tests/test_web_page.py` 比對 `web/src/i18n/locales/zh-TW.json`。舊 HTML／app.js 的結構檢查（元素 id、對 app.js 的正規式）對 React 元件沒有意義，不再保留。

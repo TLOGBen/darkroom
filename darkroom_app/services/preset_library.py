@@ -1,23 +1,36 @@
 """Organising the preset library: groups, names, favorites, import, user presets, rebuild (CONTRACT-preset-library).
 
-Every rule of these operations lives here; every write goes through `safe_write` (CONTRACT-write-guard G8 / G10,
-patch KP1) with the library root as `root` and the preset folder in use as `preset_dir=` (the purchased xmp
-folder is never written; the default root is its parent, so library.json, import/ and user/ lie outside it).
+Layer: services. Every rule of these operations lives here (names, groups, dedup, the user preset's bytes, which
+ids exist); every file operation is the `PresetLibraryStore` the composition hands in
+(adapters/persist/preset_index.py: the cross-process lock, the atomic library.json write, the `.bad-{t}` copy, new
+xmp files that never overwrite). Depends on domain (presets rules, adjustment, errors, messages) and utils; never
+imports the facade, adapters' entry points, config or the write module.
 
-An organising operation: arguments checked -> the cross-process lock (`<root>/library.json.lock`, msvcrt byte lock,
-released by Windows when the holder dies; waiting longer than LOCK_WAIT_S -> conflict) -> the index on disk read
-again and merged with the three folders (K5 rule) -> the change -> `library.json.tmp-{pid}-{12 hex}` written with
-create_new and moved over library.json with replace_into (PermissionError retried, P6 / KP21: a reader holding the
-file open blocks the rename outright on Windows, and collisions come in GIL-phase-coupled streaks, so the budget is
-200 x 0.01 s, not 10 x 0.1 s) -> the in-process view
-adopted. An unreadable index is first kept as `library.json.bad-{unix seconds}` (a byte copy: safe_write has no
-rename). Purchased xmp, imported and user files already there are never rewritten, renamed or deleted.
-`SafeWriteRefused` is never caught (G8).
+An organising operation: arguments checked -> the cross-process lock (`<root>/library.json.lock`; waiting longer
+than LOCK_WAIT_S -> conflict) -> the index on disk read again and merged with the three folders (K5 rule) -> the
+change -> library.json replaced atomically (PermissionError retried with the KP21 budget) -> the in-process view
+adopted. An unreadable index is first kept as `library.json.bad-{unix seconds}`. Purchased xmp, imported and user
+files already there are never rewritten, renamed or deleted. `SafeWriteRefused` is never caught (G8).
+
+Why an index instead of renaming files: the purchased .xmp files are the user's property and their content hash is
+how the semantic index and Lightroom recognise them. Names, groups and favorites therefore live only in
+library.json, and organising never changes a byte of a preset file.
+
+Contract codes used here (CONTRACT-preset-library unless noted): K5 = rebuild merges folders and index, keeping
+names / groups / favorites; K6 = display names 1..100 characters; K7 = groups "Top - Child"; K9 = favorites must be
+real booleans; K11 = import copies .xmp files into import/, skipping identical content; K12 = user presets go to
+user/ in the group "自存 preset" and are built with the preview's own parameter function; K13 = the exact user
+preset XML; K14 = safe file names on Windows; K15 / KP21 = the cross-process lock and the retry budget for a busy
+library.json; KP1 = every write goes through the store (and the guarded write module); KP4 / KP5 = uploads and
+partial import failures; KP6 = which values are never written into a user preset (absolute white balance) and
+XML-invalid characters; KP9 = check order (the id first) and return shapes; KP22 = writes are unavailable when the
+library lies in a photo folder. CONTRACT-s2-export-detect: E16 / E17 / D6 = handing presets to Lightroom (bytes,
+or files in a folder; user presets get the attributes Lightroom needs); E20 / IP3 = detecting a library inside a
+photo folder. CONTRACT-s3-crop C15 = a saved preset never carries a crop.
 """
 import base64
 import binascii
 import hashlib
-import msvcrt
 import os
 import secrets
 import threading
@@ -27,17 +40,14 @@ from xml.sax.saxutils import escape
 
 from darkroom import UnsupportedPresetError, load_preset
 
-from .. import messages as M
-from .. import preview as semantics
-from .. import safe_write
-from ..errors import DarkroomError
-from ..formats import PHOTO_EXT
-from ..presets import (GROUP_SEP, IMPORT_PREFIX, INDEX_NAME, USER_PREFIX, clean_text, index_bytes, meta_of,
-                       normalize_group, split_group)
+from ..domain import messages as M
+from ..domain.adjustment import Adjustment
+from ..domain.errors import DarkroomError
+from ..domain.formats import PHOTO_EXT
+from ..domain.presets import (GROUP_SEP, IMPORT_PREFIX, USER_PREFIX, clean_text, meta_of, normalize_group,
+                              split_group)
+from ..utils.text import one_line as _one_line
 
-LOCK_WAIT_S = 5.0                   # verbatim (K15, KP8)
-LOCK_POLL_S = 0.02
-REPLACE_RETRIES, REPLACE_RETRY_S = 200, 0.01   # verbatim (K15 as revised by KP21: 200 times, about 2 s)
 NAME_MAX = 100                      # K6
 USER_GROUP = "自存 preset"           # verbatim (K12)
 FILE_MAX = 80                       # K14
@@ -90,20 +100,28 @@ def num_text(v):
 
 
 def _attr(name, value):
+    """` crs:<name>="<value>"` with the value escaped for an XML attribute (quotes and whitespace characters)."""
     return f' crs:{name}="{escape(value, _ATTR)}"'
 
 
 def _alt(tag, text):
+    """A crs:<tag> rdf:Alt element with one x-default entry (how Lightroom stores Name and Group)."""
     return (f"<crs:{tag}><rdf:Alt><rdf:li xml:lang=\"x-default\">{escape(text, _TEXT)}</rdf:li></rdf:Alt>"
             f"</crs:{tag}>")
 
 
 def _bool(v):
+    """Python bool -> the lower-case XML boolean the mask attributes use."""
     return "true" if v else "false"
 
 
 def xmp_bytes(params, name, group):
-    """The user preset file (K13 constant "自存 xmp"): values as crs attributes, curves, masks, Name and Group."""
+    """The user preset file (K13 constant "自存 xmp"): values as crs attributes, curves, masks, Name and Group.
+
+    params: final Params (already at strength, overrides applied); name / group: display texts. Returns UTF-8 bytes
+    that darkroom's own parser reads back to the same Params (K13 round trip) and that use Lightroom's attribute
+    names, so Lightroom can import the file too (with lightroom_bytes adding what it additionally requires).
+    Attributes are sorted, so the same Params always give the same bytes."""
     out = [XMP_HEAD]
     for k in sorted(params.values):
         if k in _NO_WRITE or k in CROP_KEYS:
@@ -193,10 +211,6 @@ def photo_folder_of(root, home=None, env=None):
         cur = parent
 
 
-def _one_line(e):
-    return " ".join(str(e).split()) or type(e).__name__
-
-
 def _name(name):
     """K6 / KP6: strip, XML-invalid characters removed, 1..100 characters."""
     n = clean_text(name).strip() if isinstance(name, str) else ""
@@ -206,6 +220,7 @@ def _name(name):
 
 
 def _group(group):
+    """The normalised group path, or invalid with the K7 sentence."""
     g = normalize_group(group)
     if g is None:
         raise DarkroomError("invalid", M.LIB_GROUP_INVALID.format(group=group))
@@ -232,94 +247,48 @@ def _renamed(path, old, new):
     return None
 
 
+def writes_status(root):
+    """(available, reason) of the library writes (S2 E20): false when the library root lies in a photo folder.
+
+    A module function (not a method) so the composition can measure it once and share the result between this
+    service, the semantic index and the capability report without the three referring to each other."""
+    folder = photo_folder_of(root)
+    if folder is None:
+        return True, None
+    return False, M.LIB_IN_PHOTO_FOLDER.format(root=root, photo_folder=folder)
+
+
 class PresetLibraryService:
-    def __init__(self, library, preset_dir):
+    """The organising operations (9..17) plus preset files (E16 / E17) and the save path used by the photo library."""
+
+    def __init__(self, library, store, writes_gate=None, clock=None):
+        """library: the preset view (Library); store: PresetLibraryStore; writes_gate: shared Probe of E20; clock:
+        () -> unix seconds (tests fix it)."""
         self.library = library
-        self.preset_dir = preset_dir           # the purchased preset folder in use, for safe_write (KP1)
+        self.store = store                     # PresetLibraryStore (adapters/persist/preset_index.py)
+        self.preset_dir = store.preset_dir     # the purchased preset folder in use (KP1)
         self._tlock = threading.Lock()         # one organising operation at a time in this process
-        self.writes_gate = None                # () -> (available, reason): the capability preset_library_writes (E20)
+        self.writes_gate = writes_gate         # () -> (available, reason): the capability preset_library_writes (E20)
+        self.clock = clock                     # names the library.json.bad-{t} copy
 
     def writes_status(self):
-        """(available, reason) of the library writes (S2 E20): false when the library root lies in a photo folder."""
-        folder = photo_folder_of(self.root)
-        if folder is None:
-            return True, None
-        return False, M.LIB_IN_PHOTO_FOLDER.format(root=self.root, photo_folder=folder)
+        """(available, reason) of the library writes (S2 E20), measured now."""
+        return writes_status(self.root)
 
     def _check_writable(self):
+        """Raise unavailable with the measured reason when library writes are switched off (E20 / KP22)."""
         ok, reason = self.writes_gate() if self.writes_gate is not None else self.writes_status()
         if not ok:
             raise DarkroomError("unavailable", reason)
 
-    # ------------------------------------------------------------------ writing (safe_write only)
     @property
     def root(self):
+        """The preset library root folder (library.json, import/, user/)."""
         return self.library.root
 
-    def _sw(self, fn, *args):
-        return fn(*args, preset_dir=self.preset_dir)
-
-    def _acquire(self):
-        lock = os.path.join(self.root, INDEX_NAME + ".lock")
-        try:
-            fd = self._sw(safe_write.open_lock, lock, self.root)
-        except OSError as e:
-            raise DarkroomError("unavailable", M.LIB_INDEX_UNAVAILABLE.format(reason=_one_line(e))) from None
-        deadline = time.monotonic() + LOCK_WAIT_S
-        while True:
-            try:
-                os.lseek(fd, 0, os.SEEK_SET)
-                msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
-                return fd
-            except OSError:
-                if time.monotonic() >= deadline:
-                    os.close(fd)
-                    raise DarkroomError("conflict", M.LIB_BUSY) from None
-                time.sleep(LOCK_POLL_S)
-
-    @staticmethod
-    def _release(fd):
-        try:
-            os.lseek(fd, 0, os.SEEK_SET)
-            msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
-        finally:
-            os.close(fd)
-
-    def _keep_bad(self, raw):
-        """K5 / KP1: a byte copy library.json.bad-{unix seconds} (-{n} when that second is taken)."""
-        base = os.path.join(self.root, f"{INDEX_NAME}.bad-{int(time.time())}")
-        for n in range(1, N_MAX + 1):
-            path = base if n == 1 else f"{base}-{n}"
-            try:
-                self._sw(safe_write.create_new, path, self.root, raw)
-                return path
-            except FileExistsError:
-                continue
-            except OSError as e:
-                raise DarkroomError("unavailable", M.LIB_INDEX_UNAVAILABLE.format(reason=_one_line(e))) from None
-        raise DarkroomError("unavailable", M.LIB_INDEX_UNAVAILABLE.format(reason="no free .bad name"))
-
-    def _write_index(self, index):
-        tmp = os.path.join(self.root, f"{INDEX_NAME}.tmp-{os.getpid()}-{secrets.token_hex(6)}")
-        try:
-            self._sw(safe_write.create_new, tmp, self.root, index_bytes(index))
-        except OSError as e:
-            raise DarkroomError("unavailable", M.LIB_INDEX_UNAVAILABLE.format(reason=_one_line(e))) from None
-        try:
-            for attempt in range(REPLACE_RETRIES):
-                try:
-                    self._sw(safe_write.replace_into, tmp, self.library.index_path, self.root)
-                    return
-                except PermissionError as e:      # a reader has library.json open (P6)
-                    if attempt == REPLACE_RETRIES - 1:
-                        raise DarkroomError("unavailable",
-                                            M.LIB_INDEX_UNAVAILABLE.format(reason=_one_line(e))) from None
-                    time.sleep(REPLACE_RETRY_S)
-                except OSError as e:
-                    raise DarkroomError("unavailable", M.LIB_INDEX_UNAVAILABLE.format(reason=_one_line(e))) from None
-        finally:
-            if os.path.exists(tmp):
-                self._sw(safe_write.remove, tmp, self.root)
+    def _create(self, folder, stem, data, unavailable):
+        """A new xmp named by the K11 / K12 rule ({stem}, {stem} (2) ... {stem} (N_MAX)) through the store."""
+        return self.store.create_numbered(folder, numbered(stem), data, unavailable, f"{stem} 的檔名已用到 ({N_MAX})")
 
     def _mutate(self, change):
         """Lock -> index on disk merged with the folders -> change(index, files) -> atomic write -> adopt.
@@ -327,49 +296,25 @@ class PresetLibraryService:
         change returns (result, changed); nothing is written when changed is False. Refused before anything when the
         library root lies in a photo folder (S2 E20, KP22)."""
         self._check_writable()
-        with self._tlock:
-            fd = self._acquire()
+        with self._tlock, self.store.locked():
             try:
-                try:
-                    disk, raw, state = self.library.read_index()
-                except PermissionError as e:
-                    raise DarkroomError("unavailable", M.LIB_INDEX_UNAVAILABLE.format(reason=_one_line(e))) from None
-                files = self.library.scan()
-                index = self.library.merged(disk, files)
-                result, changed = change(index, files, disk)
-                if changed or state == "bad":
-                    if state == "bad":
-                        self._keep_bad(raw)
-                    self._write_index(index)
-                self.library.adopt(index, files)
-                return result
-            finally:
-                self._release(fd)
-
-    def _make_dir(self, folder):
-        if not os.path.isdir(folder):
-            self._sw(safe_write.make_dirs, folder, self.root)
-
-    def _create_numbered(self, folder, stem, data, unavailable):
-        """create_new {stem}.xmp, {stem} (2).xmp ... in folder; (final stem, path). Never overwrites."""
-        try:
-            self._make_dir(folder)
-            for s in numbered(stem):
-                path = os.path.join(folder, s + ".xmp")
-                if os.path.dirname(os.path.abspath(path)) != os.path.abspath(folder):    # K14: stays in folder
-                    continue
-                try:
-                    self._sw(safe_write.create_new, path, self.root, data)
-                    return s, path
-                except FileExistsError:
-                    continue
-        except OSError as e:
-            raise unavailable(_one_line(e)) from None
-        raise unavailable(f"{stem} 的檔名已用到 ({N_MAX})")
+                disk, raw, state = self.library.read_index()
+            except PermissionError as e:
+                raise DarkroomError("unavailable", M.LIB_INDEX_UNAVAILABLE.format(reason=_one_line(e))) from None
+            files = self.library.scan()
+            index = self.library.merged(disk, files)
+            result, changed = change(index, files, disk)
+            if changed or state == "bad":
+                if state == "bad":
+                    self.store.keep_bad(raw, (self.clock or time.time)())
+                self.store.write_index(index)
+            self.library.adopt(index, files)
+            return result
 
     # ------------------------------------------------------------------ checks under the lock
     @staticmethod
     def _known(index, preset_id):
+        """The index entry of preset_id (judged again under the lock: another process may have removed it)."""
         if not isinstance(preset_id, str) or preset_id not in index["presets"]:
             raise DarkroomError("not_found", M.UNKNOWN_PRESET.format(pid=preset_id))
         return index["presets"][preset_id]
@@ -380,13 +325,19 @@ class PresetLibraryService:
             raise DarkroomError("not_found", M.UNKNOWN_PRESET.format(pid=preset_id))
 
     def _row(self, pid):
+        """The preset's row as list_presets shows it (returned by rename / move / favorite, KP9)."""
         return self.library.row(pid)
 
     # ------------------------------------------------------------------ operations
+    # Every writing operation below follows the same pattern: check the arguments, then pass a `change(index,
+    # files, disk)` function to _mutate, which runs it under the lock on the freshly merged index and writes the
+    # result. change returns (result, changed); `disk is None` (no library.json yet) forces a first write.
     def preset_groups(self):
+        """The group tree (K10). Read-only."""
         return self.library.group_tree()
 
     def rename_preset(self, preset_id, name):
+        """Set the display name -> the preset's row. not_found / invalid / unavailable / conflict (lock)."""
         self._precheck(preset_id)
         n = _name(name)
 
@@ -399,6 +350,7 @@ class PresetLibraryService:
         return self._row(preset_id)
 
     def move_preset(self, preset_id, group):
+        """Set the preset's group (any valid path; it need not exist yet) -> the preset's row."""
         self._precheck(preset_id)
         g = _group(group)
 
@@ -411,6 +363,7 @@ class PresetLibraryService:
         return self._row(preset_id)
 
     def set_favorite(self, preset_id, favorite):
+        """Mark / unmark as favorite (idempotent) -> the preset's row."""
         self._precheck(preset_id)
         if not isinstance(favorite, bool):
             raise DarkroomError("invalid", M.LIB_FAVORITE_INVALID)
@@ -424,6 +377,7 @@ class PresetLibraryService:
         return self._row(preset_id)
 
     def create_group(self, group):
+        """Add an explicit empty group -> {"group"}; conflict when any preset or group already uses that name."""
         g = _group(group)
 
         def change(index, files, disk):
@@ -434,6 +388,10 @@ class PresetLibraryService:
         return self._mutate(change)
 
     def rename_group(self, group, new_name):
+        """Rename a group and every sub-path under it -> {"group", "presets": number moved}.
+
+        not_found when the group does not exist; conflict when the new name exists (never merges two groups).
+        Renaming to a different case of the same name is allowed."""
         g, n = _group(group), _group(new_name)
 
         def change(index, files, disk):
@@ -456,6 +414,7 @@ class PresetLibraryService:
         return self._mutate(change)
 
     def rebuild_library(self):
+        """Re-scan the folders and rewrite the index -> {added, removed, kept} compared with the old index."""
         def change(index, files, disk):
             old = set(disk["presets"]) if disk else set()
             new = set(index["presets"])
@@ -463,6 +422,11 @@ class PresetLibraryService:
         return self._mutate(change)
 
     def save_user_preset(self, name, group=None, preset_id=None, strength=100, overrides=None):
+        """Save preset x strength + overrides as a new user preset -> {id, name, group, file}.
+
+        Raises invalid (name, group, strength, overrides, nothing to save), not_found (unknown or unsupported
+        preset), unavailable (writes switched off / the file cannot be created). Writes a new file in user/ and
+        library.json."""
         n = _name(name)
         g = USER_GROUP if group is None else _group(group)
         params = None
@@ -470,14 +434,10 @@ class PresetLibraryService:
             if not isinstance(preset_id, str) or preset_id not in self.library.params:
                 raise DarkroomError("not_found", M.UNKNOWN_OR_UNSUPPORTED_PRESET.format(pid=preset_id))
             params = self.library.get(preset_id)          # the snapshot at this moment (K12)
-        try:
-            s = semantics.validate_strength(strength)
-            o = semantics.validate_overrides(overrides)
-        except ValueError as e:
-            raise DarkroomError("invalid", str(e)) from None
-        if preset_id is None and not o:
+        adj = Adjustment.from_request(strength, overrides)      # VO -> BO: invalid with the validate_* sentence
+        if preset_id is None and adj.is_empty:
             raise DarkroomError("invalid", M.LIB_NOTHING_TO_SAVE)
-        return self._save(n, g, semantics.effective_params(params, s, o))    # the preview's own function (K12)
+        return self._save(n, g, adj.final(params))              # the preview's own function (K12)
 
     def save_params(self, name, group, params):
         """The K12 write for Params already final - the photo library's "save the edit's snapshot as a preset"
@@ -485,13 +445,14 @@ class PresetLibraryService:
         return self._save(_name(name), USER_GROUP if group is None else _group(group), params)
 
     def _save(self, n, g, final):
+        """Write the user preset file (first free numbered name) and add it to the index -> the new row's info."""
         data = xmp_bytes(final, n, g)
 
         def unavailable(reason):
             return DarkroomError("unavailable", M.LIB_SAVE_UNAVAILABLE.format(reason=reason))
 
         def change(index, files, disk):
-            stem, path = self._create_numbered(self.library.user_dir, safe_stem(n), data, unavailable)
+            stem, path = self._create(self.library.user_dir, safe_stem(n), data, unavailable)
             pid = USER_PREFIX + stem
             info = self.library.file_info(path)
             files[pid] = info
@@ -503,6 +464,7 @@ class PresetLibraryService:
     # ------------------------------------------------------------------ preset files (S2 E16, E17)
     @staticmethod
     def _ids(preset_ids):
+        """A list of 1..500 strings, else invalid (E16)."""
         if (not isinstance(preset_ids, list) or not 1 <= len(preset_ids) <= PRESET_IDS_MAX
                 or not all(isinstance(p, str) for p in preset_ids)):
             raise DarkroomError("invalid", M.PRESET_IDS_INVALID)
@@ -515,8 +477,7 @@ class PresetLibraryService:
         if row is None or info is None:
             return None, M.UNKNOWN_PRESET.format(pid=pid)
         try:
-            with open(info.path, "rb") as f:
-                data = f.read()
+            data = self.library.read_bytes(info.path)
         except OSError as e:
             return None, M.LIB_IMPORT_UNREADABLE.format(file_name=os.path.basename(info.path), reason=_one_line(e))
         if pid.startswith(USER_PREFIX):
@@ -567,14 +528,14 @@ class PresetLibraryService:
         return {"results": results}
 
     def _write_one(self, pid, stem, data, dest_dir, taken):
+        """Write one preset file under the first free numbered name in dest_dir -> its result entry."""
         try:
             for s in numbered(stem):
                 name = f"{s}.xmp"
                 if name.casefold() in taken:
                     continue
-                path = os.path.join(dest_dir, name)
                 try:
-                    self._sw(safe_write.create_new, path, dest_dir, data)
+                    path = self.store.create_in(dest_dir, name, data)
                 except FileExistsError:
                     taken.add(name.casefold())
                     continue
@@ -586,6 +547,8 @@ class PresetLibraryService:
 
     # ------------------------------------------------------------------ import (K11, KP4)
     def _sources(self, paths, files):
+        """[(kind, source)] to import: each path (a folder expands to its first-level .xmp files, sorted) and each
+        upload {name, data_base64}; invalid when nothing usable was given."""
         out = []
         if paths is not None:
             if not isinstance(paths, list) or not all(isinstance(p, str) for p in paths):
@@ -609,6 +572,10 @@ class PresetLibraryService:
         return out
 
     def import_presets(self, paths=None, group=None, files=None):
+        """Copy presets into import/ -> {"results": [one per source]} (KP5: partial failure is not an error).
+
+        Each source is read, de-duplicated by content hash against every preset already in the library, parsed
+        (must be a supported preset), then written under a numbered safe name. The source files are only read."""
         g = None if group is None else _group(group)
         sources = self._sources(paths, files)
 
@@ -621,6 +588,7 @@ class PresetLibraryService:
         return self._mutate(change)
 
     def _import_one(self, kind, x, group, index, lib_files, by_sha):
+        """Import one source into the index being changed -> {ok, source, id} or {ok: false, source, error}."""
         if kind == "path":
             source = os.path.basename(x)
             if not os.path.isfile(x):
@@ -636,8 +604,7 @@ class PresetLibraryService:
                     "error": M.LIB_IMPORT_UNREADABLE.format(file_name=source, reason=_one_line(reason))}
         try:
             if kind == "path":
-                with open(x, "rb") as fh:
-                    data = fh.read()
+                data = self.library.read_bytes(x)
             else:
                 data = base64.b64decode(x["data_base64"], validate=True)
         except (OSError, binascii.Error, ValueError) as e:
@@ -652,17 +619,15 @@ class PresetLibraryService:
                 load_preset(x)
             else:
                 self._check_upload(data)
-        except _ItemWriteFailed as e:
+        except ItemWriteFailed as e:
             return {"ok": False, "source": source,
                     "error": M.LIB_IMPORT_WRITE_FAILED.format(file_name=source, reason=e.reason)}
         except (UnsupportedPresetError, ValueError, OSError, LookupError) as e:   # LookupError: unknown XML encoding
             return fail(e)
 
-        def unavailable(reason):
-            return _ItemWriteFailed(reason)
         try:
-            final, path = self._create_numbered(self.library.import_dir, safe_stem(stem), data, unavailable)
-        except _ItemWriteFailed as e:
+            final, path = self._create(self.library.import_dir, safe_stem(stem), data, ItemWriteFailed)
+        except ItemWriteFailed as e:
             return {"ok": False, "source": source,
                     "error": M.LIB_IMPORT_WRITE_FAILED.format(file_name=source, reason=e.reason)}
         pid = IMPORT_PREFIX + final
@@ -675,20 +640,13 @@ class PresetLibraryService:
         return {"ok": True, "source": source, "id": pid}
 
     def _check_upload(self, data):
-        """load_preset on uploaded bytes: a temporary import/.upload-{pid}-{12 hex}.tmp, always removed (KP4)."""
-        tmp = os.path.join(self.library.import_dir, f".upload-{os.getpid()}-{secrets.token_hex(6)}.tmp")
-        try:
-            self._make_dir(self.library.import_dir)
-            self._sw(safe_write.create_new, tmp, self.root, data)
-        except OSError as e:
-            raise _ItemWriteFailed(_one_line(e)) from None
-        try:
-            load_preset(tmp)
-        finally:
-            self._sw(safe_write.remove, tmp, self.root)
+        """load_preset on uploaded bytes, through a temporary file the store removes again (KP4)."""
+        self.store.check_upload(data, secrets.token_hex(6), ItemWriteFailed)
 
 
-class _ItemWriteFailed(Exception):
+class ItemWriteFailed(Exception):
+    """One imported xmp could not be written: the reason goes into that item's sentence (KP5)."""
+
     def __init__(self, reason):
         super().__init__(reason)
         self.reason = reason

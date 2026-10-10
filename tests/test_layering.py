@@ -1,6 +1,11 @@
 """CONTRACT-layering L2, L7, L13 and CONTRACT-write-guard G10: layering guards (AST) and controller-only tests.
 
 AST 只管分層，不證明不寫檔；不寫檔由 _writeguard 執行期證明 (tests/_writeguard.py, CONTRACT-write-guard).
+
+v2 修訂（CONTRACT-layering「v2 修訂紀錄」, plan-v2 §1）: the entry adapters moved to adapters/http, adapters/cli.py
+and adapters/mcp_server; the write module to utils/safe_write.py; the stores that write to adapters/persist/. The old
+module paths are compat shims (sys.modules aliases) and are skipped by the source scans. New guards pin the
+dependency direction adapters -> facade -> services -> domain -> utils.
 """
 import ast
 import contextlib
@@ -18,12 +23,18 @@ from darkroom_app.errors import DarkroomError
 APP = os.path.join(_util.REPO, "darkroom_app")
 FORBIDDEN_CALLS = ("os.path.isfile", "os.listdir", "os.replace")          # + os.replace (PLP8)
 FORBIDDEN_NAMES = ("validate_strength", "validate_overrides", "effective_params", "folder_listing", "hashlib")
-FORBIDDEN_MODULES = ("darkroom_app.services", "darkroom_app.preview", "hashlib")
+FORBIDDEN_MODULES = ("darkroom_app.services", "darkroom_app.preview", "darkroom_app.domain.adjustment",
+                     "hashlib")   # v2: domain.adjustment is the old preview module
 FORBIDDEN_STRINGS = ("edits/", "thumbs/", "index/")                       # data_dir layout is the service's (PLP8)
-SAFE_WRITE = "safe_write.py"
-SAFE_WRITE_USERS = ("services/export.py", "services/preset_library.py", "services/photo_library.py",
-                    "services/semantic_index.py",      # G10 whitelist: XP10, K18 / KP3, PL14 / PLP1, WG15 / SI1
-                    "services/export_presets.py")      # + S2 D4 / WG17
+SAFE_WRITE = "utils/safe_write.py"                                          # v2: moved into utils/
+SAFE_WRITE_USERS = ("services/export.py",              # G10 whitelist: XP10 (the exported files)
+                    "adapters/persist/locks.py",       # v2: the lock / atomic replace / .bad copy of every store
+                    "adapters/persist/preset_index.py",          # K18 / KP3 (was services/preset_library.py)
+                    "adapters/persist/data_folder.py",           # PL14 / PLP1 (was services/photo_library.py)
+                    "adapters/persist/export_presets_store.py",  # S2 D4 / WG17 (was services/export_presets.py)
+                    "adapters/persist/settings_store.py",        # plan-v2 §3: the settings file
+                    "composition.py")                  # sets the write module's configured-preset-folder hook only
+SHIM_MARK = "相容用（compat shim）"                                        # v2: old module paths, aliases only
 SEMANTIC_TOOLS = ["darkroom_semantic_build", "darkroom_semantic_status"]   # verbatim, in order (SI11)
 S2_TOOLS = ["darkroom_export_presets_list", "darkroom_export_preset_save", "darkroom_export_preset_delete",
             "darkroom_preset_files", "darkroom_presets_export", "darkroom_capabilities"]   # verbatim (S2 E25)
@@ -50,6 +61,11 @@ PHOTO_ANNOTATIONS = {"darkroom_edit_set": EDIT_WRITES, "darkroom_edit_clear": ED
                      "darkroom_edit_save_preset": {"readOnlyHint": False, "destructiveHint": False,
                                                    "idempotentHint": False, "openWorldHint": False}}   # PLP6
 NATIVE_WRITES = ("write_image", "imwrite", ".save(", ".tofile(")   # G10: no audit event, banned everywhere
+SETTINGS_TOOLS = ["darkroom_settings_get", "darkroom_settings_set", "darkroom_settings_export",
+                  "darkroom_settings_import", "darkroom_version"]           # plan-v2 §3: operations 34..38
+SETTINGS_WRITES = {"darkroom_settings_set": EDIT_WRITES, "darkroom_settings_import": EDIT_WRITES,
+                   "darkroom_settings_export": {"readOnlyHint": False, "destructiveHint": False,
+                                                "idempotentHint": False, "openWorldHint": False}}
 
 
 def py_files(*parts):
@@ -63,7 +79,13 @@ def py_files(*parts):
 
 
 def controllers():
-    return py_files("server.py") + py_files("cli.py") + py_files("mcp_server")
+    return py_files("adapters", "http") + py_files("adapters", "cli.py") + py_files("adapters", "mcp_server")
+
+
+def is_shim(path):
+    """A v2 compat shim: an old module path that only aliases the moved module (no code of its own)."""
+    with open(path, encoding="utf-8") as f:
+        return SHIM_MARK in f.read(400)
 
 
 def parse(path):
@@ -122,12 +144,15 @@ class TestLayering(unittest.TestCase):
             for needle in FORBIDDEN_STRINGS:                    # PLP8: no controller knows the data_dir layout
                 self.assertNotIn(needle, src, (path, needle))
 
-    def test_server_uses_engine_and_presets_only_for_appkeys_and_make_app(self):  # L13
-        path = py_files("server.py")[0]
+    def test_server_uses_engine_and_presets_only_for_appkeys_and_make_app(self):  # L13 (v2: adapters/http)
+        path = py_files("adapters", "http", "server.py")[0]
         tree = parse(path)
-        rule_modules = {m for m in imported_modules(path) if m.startswith("darkroom_app.")
-                        and m.split(".")[1] in ("engine", "presets", "preview", "sliders", "skips", "services")}
-        self.assertEqual({m.split(".")[1] for m in rule_modules}, {"engine", "presets"})
+        rule_modules = {m for m in imported_modules(path) if m.startswith("darkroom_app.") and (
+            m.split(".")[1] in ("engine", "presets", "preview", "sliders", "skips", "services")
+            or m.startswith(("darkroom_app.adapters.gpu", "darkroom_app.adapters.persist", "darkroom_app.domain.")))}
+        self.assertEqual({m for m in rule_modules if m.count(".") == 3},
+                         {"darkroom_app.adapters.gpu.engine", "darkroom_app.adapters.persist.preset_index",
+                          "darkroom_app.domain.errors.DarkroomError", "darkroom_app.domain.messages.OPEN_ERROR"})
         for stmt in tree.body:
             used = {n.id for n in ast.walk(stmt) if isinstance(n, ast.Name)} & {"engine_mod", "Library"}
             if not used or isinstance(stmt, (ast.Import, ast.ImportFrom)):
@@ -142,10 +167,45 @@ class TestLayering(unittest.TestCase):
         self.assertEqual({os.path.basename(f) for f in files},
                          {"__init__.py", "presets.py", "photos.py", "preview.py", "export.py",
                           "preset_library.py", "photo_library.py", "semantic_index.py",   # XP1, K16, PL6, SI1
-                          "export_presets.py", "capabilities.py"})                           # S2 E12, E22
+                          "export_presets.py", "capabilities.py",                            # S2 E12, E22
+                          "settings.py"})                                                     # plan-v2 §3
         for path in files:
             for mod in imported_modules(path):
                 self.assertNotIn(mod.split(".")[0], ("aiohttp", "argparse"), path)
+
+    def test_dependency_direction(self):  # v2 (plan-v2 §1): adapters -> facade -> services -> domain -> utils
+        def bad(path, prefixes):
+            return sorted(m for m in imported_modules(path)
+                          if any(m == p or m.startswith(p + ".") for p in prefixes))
+        upper = ("darkroom_app.facade", "darkroom_app.config", "darkroom_app.composition", "darkroom_app.operations",
+                 "darkroom_app.adapters.http", "darkroom_app.adapters.cli", "darkroom_app.adapters.mcp_server",
+                 "darkroom_app.adapters.gpu", "darkroom_app.server", "darkroom_app.cli", "darkroom_app.mcp_server",
+                 "darkroom_app.engine")
+        for path in py_files("services"):                 # services: no facade, config, entry adapters, GPU adapter
+            self.assertEqual(bad(path, upper + ("darkroom_app.adapters.persist",)), [], path)
+        writes = ("darkroom_app.utils.safe_write", "darkroom_app.safe_write")
+        for path in py_files("services"):                 # only the export writes (its output files) itself
+            if os.path.basename(path) != "export.py":
+                self.assertEqual(bad(path, writes), [], path)
+        for path in py_files("adapters", "persist"):      # stores: no services, facade, config or entry points
+            self.assertEqual(bad(path, upper + ("darkroom_app.services",)), [], path)
+        for path in py_files("domain"):                   # domain: rules only
+            self.assertEqual(bad(path, upper + ("darkroom_app.services", "darkroom_app.adapters")), [], path)
+        for path in py_files("utils"):                    # utils: nothing of darkroom_app but the extension table
+            mods = [m for m in imported_modules(path) if m.startswith("darkroom_app.")
+                    and not m.startswith(("darkroom_app.utils", "darkroom_app.domain.formats"))]
+            self.assertEqual(mods, [], path)
+        self.assertNotIn("darkroom_app.config", imported_modules(py_files("utils", "safe_write.py")[0]))
+
+    def test_shims_only_alias(self):  # v2: every old path left behind is a compat shim with no logic
+        names = ("server.py", "cli.py", "engine.py", "presets.py", "preview.py", "errors.py", "messages.py",
+                 "sliders.py", "skips.py", "formats.py", "safe_write.py", "encoding.py", "gpucheck.py",
+                 os.path.join("mcp_server", "__init__.py"), os.path.join("mcp_server", "__main__.py"))
+        for name in names:
+            path = os.path.join(APP, name)
+            self.assertTrue(is_shim(path), name)
+            tree = parse(path)
+            self.assertFalse([n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.ClassDef))], name)
 
     def test_mcp_server_never_prints(self):  # L13
         for path in py_files("mcp_server"):
@@ -231,7 +291,7 @@ class TestLayering(unittest.TestCase):
                             or (len(node.args) == 1 and not literal_str(node.args[0]))          # Path(p).open(m)
                             or bad_mode(mode_kw)):
                         offenders.append((rel, node.lineno, ".open"))
-                elif name == "os.fdopen" and rel == "mcp_server/__init__.py" and len(node.args) >= 1 \
+                elif name == "os.fdopen" and rel == "adapters/mcp_server/__init__.py" and len(node.args) >= 1 \
                         and isinstance(node.args[0], ast.Name) and node.args[0].id == "protocol_fd":
                     continue
                 elif name in banned_calls:
@@ -246,7 +306,7 @@ class TestLayering(unittest.TestCase):
                             not literal_str(what) and dotted(target) in ("os", "io", "codecs", "shutil")):
                         offenders.append((rel, node.lineno, "getattr"))
         self.assertEqual(offenders, [])
-        with open(os.path.join(APP, "mcp_server", "__init__.py"), encoding="utf-8") as fh:
+        with open(os.path.join(APP, "adapters", "mcp_server", "__init__.py"), encoding="utf-8") as fh:
             self.assertIn("protocol_fd = os.dup(1)", fh.read())     # the exemption is only for the dup of stdout
 
     def test_only_safe_write_writes(self):  # CONTRACT-write-guard G10
@@ -255,17 +315,18 @@ class TestLayering(unittest.TestCase):
         AST 只管分層，不證明不寫檔；不寫檔由 _writeguard 執行期證明.
         """
         files = py_files()
-        self.assertIn(os.path.join(APP, SAFE_WRITE), files)
-        self.assertEqual(SAFE_WRITE_USERS, ("services/export.py", "services/preset_library.py",
-                                            "services/photo_library.py", "services/semantic_index.py",
-                                            "services/export_presets.py"))   # + SI1, + S2 D4 / WG17
+        self.assertIn(os.path.join(APP, *SAFE_WRITE.split("/")), files)
+        self.assertEqual(SAFE_WRITE_USERS, ("services/export.py", "adapters/persist/locks.py",
+                                            "adapters/persist/preset_index.py", "adapters/persist/data_folder.py",
+                                            "adapters/persist/export_presets_store.py",
+                                            "adapters/persist/settings_store.py", "composition.py"))   # v2
         for path in files:
             rel = os.path.relpath(path, APP).replace("\\", "/")
             with open(path, encoding="utf-8") as f:
                 src = f.read()
             for needle in NATIVE_WRITES:
                 self.assertNotIn(needle, src, (rel, needle))
-            if rel == SAFE_WRITE or rel in SAFE_WRITE_USERS:
+            if rel == SAFE_WRITE or rel in SAFE_WRITE_USERS or rel == "safe_write.py":   # + the old path's shim
                 continue
             mods = imported_modules(path)
             self.assertFalse({"darkroom_app.safe_write", "safe_write"} & mods, rel)
@@ -301,7 +362,9 @@ class TestLayering(unittest.TestCase):
                                             "semantic_build", "semantic_status",   # CONTRACT-semantic-index SI1: 26, 27 (merge patch)
                                             "list_export_presets", "save_export_preset", "delete_export_preset",
                                             "preset_files", "export_preset_files",
-                                            "capabilities"])                      # CONTRACT-s2-export-detect E25: 28..33
+                                            "capabilities",                       # CONTRACT-s2-export-detect E25: 28..33
+                                            "get_settings", "set_settings", "export_settings", "import_settings",
+                                            "version"])                           # plan-v2 §3: 34..38
         self.assertTrue(issubclass(DarkroomFacade, Facade))
 
     def test_docs_tool_count(self):  # CONTRACT-s1-experience S19: the four docs state the real tool count, list restore
@@ -357,7 +420,8 @@ class TestLayering(unittest.TestCase):
         self.assertEqual(list(listed)[8:17], LIBRARY_TOOLS)
         self.assertEqual(list(listed)[17:25], PHOTO_TOOLS)                 # PL6 / PLP6: operations 18..24, S4: 25
         self.assertEqual(list(listed)[25:27], SEMANTIC_TOOLS)              # SI1 / SI11: operations 26, 27 (merge patch)
-        self.assertEqual(list(listed)[27:], S2_TOOLS)                      # CONTRACT-s2-export-detect E25: 28..33
+        self.assertEqual(list(listed)[27:33], S2_TOOLS)                    # CONTRACT-s2-export-detect E25: 28..33
+        self.assertEqual(list(listed)[33:], SETTINGS_TOOLS)                # plan-v2 §3: 34..38
         for name, ann in listed.items():
             if name in LIBRARY_WRITES:
                 self.assertEqual(ann, {"readOnlyHint": False, "destructiveHint": False,
@@ -368,6 +432,8 @@ class TestLayering(unittest.TestCase):
                 self.assertEqual(ann, SEMANTIC_BUILD_ANNOTATIONS)          # SI11: the one open-world tool
             elif name in S2_WRITES:
                 self.assertEqual(ann, S2_WRITES[name], name)               # CONTRACT-s2-export-detect E27
+            elif name in SETTINGS_WRITES:
+                self.assertEqual(ann, SETTINGS_WRITES[name], name)         # plan-v2 §3
             elif name != "darkroom_export":
                 self.assertEqual(ann, {"readOnlyHint": True, "openWorldHint": False}, name)
         self.assertEqual(OPERATIONS["semantic_build"]["mcp_defaults"], {"wait_seconds": 0})     # SI9
@@ -507,9 +573,10 @@ class TestCliControllerWithFake(unittest.TestCase):  # L7 / L9 / L13
         # XP30 / S2 E26: no --preset / --strength / --override -> path-only items (the saved edit), format None
         self.assertEqual(fake.calls[-1], ("export", ([{"path": "a.jpg"}], None, None, None)))
         rc, out, err = self.run_cli(["export", "a.jpg", "--no-edit", "--json"], fake)
-        # XP35 (CONTRACT-s3-crop C19): --no-edit = no preset and no geometry (the photo as it is)
-        self.assertEqual(fake.calls[-1], ("export", ([{"path": "a.jpg", "preset_id": None, "strength": 100,
-                                                       "overrides": None, "geometry": None}], None, None, None)))
+        # XP35 (CONTRACT-s3-crop C19): --no-edit = no preset and no geometry (the photo as it is); v2: the item
+        # carries only what the flags say - the default strength is the export service's (Adjustment.from_request)
+        self.assertEqual(fake.calls[-1], ("export", ([{"path": "a.jpg", "preset_id": None, "geometry": None}],
+                                                     None, None, None)))
         rc, out, err = self.run_cli(["export", "--quality", "abc", "--json"], fake)   # the service judges it
         self.assertEqual(fake.calls[-1], ("export", ([], None, "abc", None)))
         fake.fail["export"] = DarkroomError("invalid", "沒有要匯出的照片")

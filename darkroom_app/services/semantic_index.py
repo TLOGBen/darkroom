@@ -16,26 +16,45 @@ What stays out of this module's reach, by construction:
 * nothing is sent before the estimated cost is under the configured budget (SI8), and every finished batch's
   real usage is written down;
 * torch / cv2 / anthropic are imported inside the functions that need them (status and listing stay light);
-* every write goes through `safe_write` (root = the library root, `preset_dir=` the preset folder in use).
+* every write goes through the `SemanticStore` the composition hands in (adapters/persist/semantic_store.py: the
+  lock, the `.bad` copy, the atomic write; root = the library root, `preset_dir=` the preset folder in use).
+
+Layer: services. The settings this service needs (the 1Password reference, the environment key, the calibration
+folder, the budget) arrive as values or zero-argument functions from the composition - this module never reads the
+configuration itself (v2). `op read` / `op whoami` stay in this file: the write guard allows those two subprocesses
+from this module only (CONTRACT-write-guard WG15, WG16).
 
 Tests inject a fake client (`client_factory`), a fake key reader, a fake renderer and a fake sleep.
+
+Data flow of `semantic_build`: capability check -> argument checks -> count what is pending (supported presets
+whose content hash is neither indexed nor in a batch still running) -> estimate the cost from the four source
+sizes -> (dry run stops here) -> library writable? under budget? -> read the key (1Password or environment) ->
+collect batches that ended since the last run -> render the composites of the planned presets on the GPU ->
+create batches of up to 500 requests, registering each in semantic.json under the lock before moving on -> poll
+until done or `wait_seconds` elapsed -> fold results into the index (valid answers kept, failures counted, usage
+recorded). A batch still running when the wait ends is collected by the next build.
+
+Contract codes (CONTRACT-semantic-index unless noted): SI2 = when the feature is available (package, key source,
+the four photos) and its fixed reasons; SI3 = the key is only ever in memory; SI4 = only the four public photos
+are rendered and sent; SI5 = the exact request (model, tokens, effort, JSON schema); SI6 = semantic.json's schema
+and location; SI7 = only presets not yet done are sent; SI8 = the cost estimate formula and the budget refusal;
+SI9 = the batch flow and that a build can be interrupted and resumed; SIP6 / SIP7 / SIP8 / SIP10 = seal patches
+(no batch without a registered index entry, the .bad copy, redacting key-shaped text, op whoami before op read).
+CONTRACT-s2-export-detect E20 / E24 = no build while library writes are off; 1Password sign-in detection.
+CONTRACT-write-guard WG15 / WG16 = the only two subprocess shapes allowed here.
 """
 import json
 import math
-import msvcrt
 import os
 import re
-import secrets
 import subprocess
-import threading
 import time
 
-from .. import config
-from .. import messages as M
-from .. import preview as semantics
-from .. import safe_write
-from ..errors import DarkroomError
-from ..presets import SEMANTIC_FIELDS, SEMANTIC_MODEL, SEMANTIC_NAME, valid_entry
+from ..domain import messages as M
+from ..domain.adjustment import effective_params
+from ..domain.errors import DarkroomError
+from ..domain.presets import SEMANTIC_FIELDS, SEMANTIC_MODEL, valid_entry
+from ..utils.text import one_line as _one_line
 from . import on_gpu
 
 MODEL = SEMANTIC_MODEL                              # verbatim (SI5): claude-haiku-5-5
@@ -48,7 +67,6 @@ POLL_S = 15                                         # verbatim (SI9)
 WAIT_DEFAULT_S = 3600                               # verbatim (SI9): when wait_seconds is None (the CLI)
 OP_TIMEOUT_S = 30                                   # verbatim (SI3)
 WHOAMI_TIMEOUT_S = 10                               # verbatim (S2 E24)
-LOCK_WAIT_S, LOCK_POLL_S = 5.0, 0.02                # as KP8
 LONG_EDGE = 512                                     # verbatim (SI4)
 JPEG_QUALITY = 85                                   # verbatim (SI4)
 IMAGE_TOKEN_DIVISOR = 750                           # verbatim (SI8): ceil(w*h/750)
@@ -85,7 +103,6 @@ SYSTEM_PROMPT = (
     "四張圖變化很小或互相矛盾時給低一點。繁體中文用台灣用語。"
 )
 USER_TEXT = "請依系統指示，根據這 4 張比較圖描述這個 preset 的風格，只回 JSON。"
-_CONFIG = object()          # "resolve from the configuration when needed"
 
 
 def composite_size(width, height):
@@ -96,6 +113,7 @@ def composite_size(width, height):
 
 
 def image_tokens(width, height):
+    """Estimated input tokens of one image (SI8's ceil(w * h / 750), the documented rule of thumb for Claude)."""
     return math.ceil(width * height / IMAGE_TOKEN_DIVISOR)
 
 
@@ -105,6 +123,7 @@ def prompt_text():
 
 
 def text_tokens():
+    """Estimated input tokens of one request's text (SI8: characters / 3, rounded up, deliberately generous)."""
     return math.ceil(len(prompt_text()) / TEXT_CHARS_PER_TOKEN)
 
 
@@ -116,6 +135,7 @@ def estimate_usd(sizes, count):
 
 
 def cost_usd(input_tokens, output_tokens):
+    """Actual cost in USD of a finished batch's reported usage (batch prices = half the list prices)."""
     return (input_tokens * PRICE_INPUT_USD_PER_M + output_tokens * PRICE_OUTPUT_USD_PER_M) / 1e6 * BATCH_DISCOUNT
 
 
@@ -135,10 +155,6 @@ def request_params(jpegs):
             "messages": [{"role": "user", "content": content}]}
 
 
-def _one_line(e):
-    return " ".join(str(e).split()) or type(e).__name__
-
-
 _KEY_SHAPE = re.compile(r"sk-ant-[A-Za-z0-9_-]*")       # SIP8: anything that looks like an Anthropic key
 
 
@@ -150,7 +166,7 @@ def redact(text, secret):
 
 
 class _KeyUnavailable(Exception):
-    pass
+    """The key could not be obtained; str(e) is a fixed sentence that never contains op's output or the key."""
 
 
 def op_read(ref):
@@ -191,11 +207,13 @@ def op_key(ref, signed_in=None, read=None):
 
 
 def _have_anthropic():
+    """Is the anthropic package installed? (find_spec only: nothing is imported, so this stays fast)."""
     import importlib.util
     return importlib.util.find_spec("anthropic") is not None
 
 
 def _client(api_key):
+    """The real Anthropic SDK client for `api_key` (imported only when a build actually sends something)."""
     import anthropic
     return anthropic.Anthropic(api_key=api_key)
 
@@ -210,11 +228,12 @@ def _api_errors():
 
 def source_sizes(sources_dir):
     """[(w, h)] of the 4 source JPEGs from their headers (no decode; the photo library's JPEG header reader)."""
-    from .photo_library import _jpeg_size
+    from ..utils.imaging import jpeg_size
     out = []
     for name in SOURCE_NAMES:
         with open(os.path.join(sources_dir, name), "rb") as fh:
-            out.append(_jpeg_size(fh.read()))
+            out.append(jpeg_size(fh.read()))
+
     return out
 
 
@@ -241,7 +260,7 @@ def render_composites(sources_dir, engine_ref, jobs):
             halves.append((np.ascontiguousarray(small, dtype=np.float32), orig_bgr))
         out = {}
         for sha, params in jobs:
-            final = semantics.effective_params(params, 1.0, {})
+            final = effective_params(params, 1.0, {})
             jpegs = []
             for small, orig_bgr in halves:
                 bgr = eng.render_full(small, final, 8)
@@ -255,41 +274,57 @@ def render_composites(sources_dir, engine_ref, jobs):
     return on_gpu(eng, work)
 
 
+def _value(v):
+    """A setting given as a value or as a zero-argument function (read each time, so a new setting applies)."""
+    return v() if callable(v) else v
+
+
 class SemanticIndexService:
-    def __init__(self, library, preset_dir, engine_ref, *, key_ref=_CONFIG, env_key=_CONFIG, sources_dir=_CONFIG,
-                 budget_usd=_CONFIG, have_anthropic=_have_anthropic, client_factory=_client, key_reader=op_key,
+    """semantic_build / semantic_status plus the checks the capability service asks for."""
+
+    def __init__(self, library, store, engine_ref, *, key_ref=None, env_key=None, sources_dir=None,
+                 budget_usd=5.0, have_anthropic=_have_anthropic, client_factory=_client, key_reader=op_key,
                  renderer=render_composites, sleep=time.sleep, monotonic=time.monotonic, clock=time.time,
                  signin_check=op_signed_in, writes_gate=None):
         self.library = library
-        self.preset_dir = preset_dir
+        self.store = store                      # SemanticStore (adapters/persist/semantic_store.py)
+        self.preset_dir = store.preset_dir
         self.engine_ref = engine_ref
+        # settings: values or () -> value, resolved when needed (the composition passes functions)
         self.key_ref, self.env_key, self.sources_dir, self.budget_usd = key_ref, env_key, sources_dir, budget_usd
         self.have_anthropic, self.client_factory, self.key_reader = have_anthropic, client_factory, key_reader
         self.renderer, self.sleep, self.monotonic, self.clock = renderer, sleep, monotonic, clock
         self.signin_check = signin_check        # S2 E24: the onepassword capability
         self.writes_gate = writes_gate          # S2 E20: () -> (available, reason) of the library writes
-        self._tlock = threading.Lock()
 
     # ------------------------------------------------------------------ settings (resolved when needed)
     def _key_ref(self):
-        ref = config.anthropic_api_key_ref() if self.key_ref is _CONFIG else self.key_ref
+        """The configured 1Password reference (stripped) or None."""
+        ref = _value(self.key_ref)
         return ref.strip() if isinstance(ref, str) and ref.strip() else None
 
     def _env_key(self):
-        v = os.environ.get(config.ENV_API_KEY) if self.env_key is _CONFIG else self.env_key
+        """The key from DARKROOM_ANTHROPIC_API_KEY (stripped) or None; only called when a key is really needed or
+        to know whether one exists."""
+        v = _value(self.env_key)
         return v.strip() if isinstance(v, str) and v.strip() else None
 
     def _sources_dir(self):
-        return config.calibration_sources_dir() if self.sources_dir is _CONFIG else self.sources_dir
+        return _value(self.sources_dir)
 
     def _budget(self):
-        return config.semantic_index_budget_usd() if self.budget_usd is _CONFIG else self.budget_usd
+        return _value(self.budget_usd)
 
     def key_ref_in_use(self):
         """True when the key comes from 1Password (the reference wins over the environment, as _secret)."""
         return self._key_ref() is not None
 
+    def key_source_known(self):
+        """True when a key can be had: a 1Password reference or DARKROOM_ANTHROPIC_API_KEY (never read here)."""
+        return self._key_ref() is not None or self._env_key() is not None
+
     def signed_in(self):
+        """(available, reason) of `op whoami` (the onepassword capability item)."""
         return self.signin_check()
 
     def capability(self):
@@ -303,102 +338,31 @@ class SemanticIndexService:
             return False, M.SEM_NEED_SOURCES.format(dir=d)
         return True, None
 
-    # ------------------------------------------------------------------ the index on disk (safe_write only)
+    # ------------------------------------------------------------------ the index on disk (through the store)
     @property
     def root(self):
+        """The preset library root (semantic.json lives there)."""
         return self.library.root
 
-    def _sw(self, fn, *args):
-        return fn(*args, preset_dir=self.preset_dir)
-
-    def _acquire(self):
-        lock = os.path.join(self.root, SEMANTIC_NAME + ".lock")
-        try:
-            fd = self._sw(safe_write.open_lock, lock, self.root)
-        except OSError as e:
-            raise DarkroomError("unavailable", M.SEM_INDEX_UNAVAILABLE.format(reason=_one_line(e))) from None
-        deadline = time.monotonic() + LOCK_WAIT_S
-        while True:
-            try:
-                os.lseek(fd, 0, os.SEEK_SET)
-                msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
-                return fd
-            except OSError:
-                if time.monotonic() >= deadline:
-                    os.close(fd)
-                    raise DarkroomError("conflict", M.LIB_BUSY) from None
-                time.sleep(LOCK_POLL_S)
-
-    @staticmethod
-    def _release(fd):
-        try:
-            os.lseek(fd, 0, os.SEEK_SET)
-            msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
-        finally:
-            os.close(fd)
-
     def _write(self, index):
-        tmp = os.path.join(self.root, f"{SEMANTIC_NAME}.tmp-{os.getpid()}-{secrets.token_hex(6)}")
-        data = json.dumps(index, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
-        try:
-            self._sw(safe_write.create_new, tmp, self.root, data)
-        except OSError as e:
-            raise DarkroomError("unavailable", M.SEM_INDEX_UNAVAILABLE.format(reason=_one_line(e))) from None
-        try:
-            for attempt in range(200):
-                try:
-                    self._sw(safe_write.replace_into, tmp, self.library.semantic_path, self.root)
-                    return
-                except PermissionError as e:          # a reader has the file open (KP21)
-                    if attempt == 199:
-                        raise DarkroomError("unavailable",
-                                            M.SEM_INDEX_UNAVAILABLE.format(reason=_one_line(e))) from None
-                    time.sleep(0.01)
-                except OSError as e:
-                    raise DarkroomError("unavailable", M.SEM_INDEX_UNAVAILABLE.format(reason=_one_line(e))) from None
-        finally:
-            if os.path.exists(tmp):
-                self._sw(safe_write.remove, tmp, self.root)
-
-    def _keep_bad(self):
-        """SIP7: before a bad semantic.json is replaced, keep a byte copy semantic.json.bad-{unix seconds}
-        (-{n} when that second is taken) - the user paid for those tags; nothing of theirs is overwritten silently."""
-        try:
-            with open(self.library.semantic_path, "rb") as fh:
-                raw = fh.read()
-        except FileNotFoundError:
-            return None
-        base = os.path.join(self.root, f"{SEMANTIC_NAME}.bad-{int(self.clock())}")
-        for n in range(1, 10000):
-            path = base if n == 1 else f"{base}-{n}"
-            try:
-                self._sw(safe_write.create_new, path, self.root, raw)
-                return path
-            except FileExistsError:
-                continue
-            except OSError as e:
-                raise DarkroomError("unavailable", M.SEM_INDEX_UNAVAILABLE.format(reason=_one_line(e))) from None
-        raise DarkroomError("unavailable", M.SEM_INDEX_UNAVAILABLE.format(reason="no free .bad name"))
+        """Write the whole index atomically through the store."""
+        self.store.write(index)
 
     def _mutate(self, change):
         """Lock -> the index on disk -> change(index) -> atomic write (only when change returns True).
 
         `change` runs while the lock is held, so a batch is created at the API only once the index could be read
         and the lock is ours (SI9 as tightened by SIP6): no money is spent on a batch that cannot be registered."""
-        with self._tlock:
-            fd = self._acquire()
+        with self.store.tlock, self.store.locked():
             try:
-                try:
-                    index, state = self.library.read_semantic()
-                except PermissionError as e:
-                    raise DarkroomError("unavailable", M.SEM_INDEX_UNAVAILABLE.format(reason=_one_line(e))) from None
-                if state == "bad":                    # SIP7: the copy is made before anything can overwrite it
-                    self._keep_bad()
-                if change(index):
-                    self._write(index)
-                return index
-            finally:
-                self._release(fd)
+                index, state = self.library.read_semantic()
+            except PermissionError as e:
+                raise DarkroomError("unavailable", M.SEM_INDEX_UNAVAILABLE.format(reason=_one_line(e))) from None
+            if state == "bad":                    # SIP7: the copy is made before anything can overwrite it
+                self.store.keep_bad()
+            if change(index):
+                self._write(index)
+            return index
 
     # ------------------------------------------------------------------ counting
     def _supported(self):
@@ -409,9 +373,11 @@ class SemanticIndexService:
 
     @staticmethod
     def _in_flight(index):
+        """Content hashes currently inside a registered, not yet collected batch."""
         return {sha for b in index["batches"].values() for sha in b["items"]}
 
     def _counts(self, index):
+        """(supported presets, how many are indexed, [(pid, sha)] still to do) for this index."""
         rows = self._supported()
         entries, flying = index["entries"], self._in_flight(index)
         indexed = sum(1 for _, sha in rows if sha in entries)
@@ -420,6 +386,7 @@ class SemanticIndexService:
 
     # ------------------------------------------------------------------ operations
     def semantic_status(self):
+        """Availability, progress and spending of the index. Offline: no key read, no network, no write."""
         available, reason = self.capability()
         index = self.library.semantic()
         total, indexed, pending = self._counts(index)
@@ -429,6 +396,12 @@ class SemanticIndexService:
                 "last_usage": index["usage"][-1] if index["usage"] else None}
 
     def semantic_build(self, limit=None, dry_run=False, wait_seconds=None):
+        """Index up to `limit` pending presets (see the module docstring for the flow) -> a report dict with state
+        dry_run | nothing | submitted | done, counts, estimate, batch ids, errors and usage.
+
+        Raises unavailable (feature off, writes off, key unavailable, API error - key redacted), invalid (bad
+        limit / wait_seconds, over budget). Side effects: network calls to Anthropic that cost money (not in a dry
+        run), GPU rendering, writes to <library root>/semantic.json."""
         available, reason = self.capability()
         if not available:
             raise DarkroomError("unavailable", reason)
@@ -476,6 +449,7 @@ class SemanticIndexService:
         return result
 
     def _secret(self):
+        """The API key: from 1Password when a reference is set (it wins), else the environment variable."""
         ref = self._key_ref()
         if ref:
             try:
@@ -506,6 +480,7 @@ class SemanticIndexService:
             self._mutate(change)
 
     def _wait(self, client, wait, result):
+        """Poll every POLL_S seconds, collecting ended batches, until none is left or `wait` seconds passed."""
         deadline = self.monotonic() + wait
         while self._collect(client, result):                  # ids still in flight after this pass
             remaining = deadline - self.monotonic()
@@ -525,6 +500,9 @@ class SemanticIndexService:
         return still
 
     def _fold(self, client, bid, result):
+        """Read one ended batch's results into the index under the lock: valid answers become entries (keyed by
+        content hash, stamped with `at`), invalid / failed ones are counted with a reason, the batch's usage and
+        cost are appended, and the batch is removed from the in-flight list."""
         now = int(self.clock())
         got, errors, usage = {}, [], {"input_tokens": 0, "output_tokens": 0, "cache_creation_input_tokens": 0,
                                       "cache_read_input_tokens": 0}

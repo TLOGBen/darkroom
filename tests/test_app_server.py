@@ -230,13 +230,21 @@ class TestPresetDetail(AppCase):
 
 class TestStaticFreshness(AppCase):  # CONTRACT-s1-experience S19: an updated page is never served stale
     async def test_static_files_revalidate(self):
-        for path in ("/static/app.js", "/static/app.css", "/static/logic.js", "/static/logo.svg"):
-            r = await self.client.get(path)
-            self.assertEqual(r.status, 200, path)
-            self.assertEqual(r.headers.get("Cache-Control"), "no-cache", path)
-            self.assertIn("ETag", r.headers, path)
+        # v2 (plan-v2 §2): the page is the React build. index.html is never stored, so a rebuilt page brings its new
+        # bundle names at once; the bundles carry a content hash in their names (immutable); the build's root files
+        # (logo) are revalidated with their ETag. The v1 folder /static/ is gone.
         r = await self.client.get("/")
         self.assertEqual(r.headers.get("Cache-Control"), "no-store")
+        r = await self.client.get("/settings")
+        self.assertEqual((r.status, r.headers.get("Cache-Control")), (200, "no-store"))
+        r = await self.client.get("/assets/app.js")
+        self.assertEqual(r.status, 200)
+        self.assertIn("immutable", r.headers.get("Cache-Control"))
+        r = await self.client.get("/logo.svg")
+        self.assertEqual((r.status, r.headers.get("Cache-Control")), (200, "no-cache"))
+        self.assertIn("ETag", r.headers)
+        for path in ("/static/app.js", "/static/logo.svg"):
+            self.assertEqual((await self.client.get(path)).status, 404, path)
         r = await self.client.get("/api/presets")
         self.assertNotEqual(r.headers.get("Cache-Control"), "no-cache")
 

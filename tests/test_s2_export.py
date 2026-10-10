@@ -610,6 +610,7 @@ class TestExportPresets(S2Case):
     def test_export_presets_storage(self):  # E12
         from darkroom_app import safe_write
         from darkroom_app.services import export_presets as XP
+        from darkroom_app.adapters.persist import locks
         self.assertEqual((XP.FILE_NAME, XP.SCHEMA, XP.NAME_MAX, XP.PRESETS_MAX),
                          ("export-presets.json", "darkroom-export-presets/1", 60, 200))
         roots = []
@@ -652,7 +653,7 @@ class TestExportPresets(S2Case):
         fd = os.open(os.path.join(self.data, "export-presets.json.lock"), os.O_RDWR)
         try:
             msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
-            with mock.patch.object(XP, "LOCK_WAIT_S", 0.2):
+            with mock.patch.object(locks, "LOCK_WAIT_S", 0.2):
                 self.assertEqual(self.err(self.f.save_export_preset, "y", {}),
                                  ("conflict", "匯出預設正被其他程式修改，請稍後再試"))
                 self.assertEqual(self.err(self.f.delete_export_preset, "新"),
@@ -682,6 +683,7 @@ class TestExportPresets(S2Case):
 
     def test_export_presets_ops(self):  # E13
         from darkroom_app.services import export_presets as XP
+        from darkroom_app.adapters.persist import locks
         r = self.f.save_export_preset("  網頁 長邊 2048\x07 ", {"resize": {"mode": "long_edge", "value": 2048}})
         s = dict(DEFAULTS, resize={"mode": "long_edge", "value": 2048})
         self.assertEqual(r, {"name": "網頁 長邊 2048", "settings": s, "previous": None})
@@ -1164,7 +1166,7 @@ class TestHousekeeping(unittest.TestCase):
     def test_svg_line_endings_pinned(self):  # E33, D15
         with open(os.path.join(_util.REPO, ".gitattributes"), encoding="utf-8") as f:
             self.assertIn("*.svg text eol=lf", f.read().splitlines())
-        for rel in ("darkroom_app/static/logo.svg", "docs/assets/logo.svg"):
+        for rel in ("web/static/logo.svg", "docs/assets/logo.svg"):       # v2: the page's logo lives in web/static
             self.assertNotIn(b"\r", read_bytes(os.path.join(_util.REPO, rel)), rel)
 
 

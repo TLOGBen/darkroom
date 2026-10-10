@@ -125,3 +125,6 @@ KP21 常數：REPLACE_RETRIES, REPLACE_RETRY_S = 200, 0.01（共約 2 秒）
 
 ## S2 補丁（2026-10-10，`CONTRACT-s2-export-detect.md` 主 session 裁決；與條文同等效力，劃線與「取代」處以本節為準）
 - KP22（修訂 K16 錯誤 kind；S2 E20）：preset 庫寫入操作（rename_preset、move_preset、set_favorite、create_group、rename_group、import_presets、save_user_preset、rebuild_library、save_edit_as_preset，以及 semantic_build 的寫索引）在「preset 庫在照片資料夾裡」成立時一律 unavailable、S2 常數句、什麼都不寫；三入口照 L7（503／5／isError）。讀取類照常。
+
+## v2 修訂紀錄（2026-10-10，整合；不刪上方原文，提到 `static/`、`app.js`、`logic.js`、`tests/js/test_logic.cjs`、`tests/test_app_frontend.py` 處以本節為準）
+- 舊頁面 `darkroom_app/static/` 由 React 前端 `web/` 取代並已刪除（`docs/architecture/plan-v2.md` §2；細節見 `CONTRACT-layering.md` v2 修訂紀錄 V9）。原本釘在 `tests/js/test_logic.cjs` 的前端行為案例搬到 `web/` 的 vitest（`web/src/domain/__tests__/logic.legacy.test.ts`、`web/src/hooks/__tests__/autosave.test.ts`，期望值不變，共用案例表仍是 `tests/cases/*.json`），由 `cd web && npm test` 與 CI 的 web job 執行；原本釘在 `tests/test_app_frontend.py` 的頁面句子改由 `tests/test_web_page.py` 比對 `web/src/i18n/locales/zh-TW.json`。舊 HTML／app.js 的結構檢查（元素 id、對 app.js 的正規式）對 React 元件沒有意義，不再保留。

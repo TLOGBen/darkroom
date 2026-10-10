@@ -182,3 +182,6 @@ PLP17 常數：無法寫入照片庫的 reason（上層不存在）：上層資�
 - PL9′（修訂 PL9；S3 C12）：既有編輯檔 `schema` 是 `/1` 或 `/2` 才讀；`/2` 的 `geometry` 不合 S3 C1 → 損壞 unavailable；其他版本照舊 conflict、不覆寫。
 - PLP8′（修訂 PLP8 的編輯檔讀寫）：`_edit_summary`、`saved_params`、`edit_params`、`resolve_params` 都讀兩種版本；L9 擴充照舊：`edit *`、`thumbnails` 不得載入 torch（`Geometry` 驗證與 `apply` 不 import torch）。
 - PL11′／PL13′（修訂 PL11、PL13；S3 C18、D7）：縮圖快取照舊存「未編輯的原圖縮圖」；`thumbnail` 回傳前若這張有幾何，以 `Geometry.apply` 在 256 px 縮圖上套用（不放大），回傳的 `width／height` 是套用後的；不新增快取檔。
+
+## v2 修訂紀錄（2026-10-10，整合；不刪上方原文，提到 `static/`、`app.js`、`logic.js`、`tests/js/test_logic.cjs`、`tests/test_app_frontend.py` 處以本節為準）
+- 舊頁面 `darkroom_app/static/` 由 React 前端 `web/` 取代並已刪除（`docs/architecture/plan-v2.md` §2；細節見 `CONTRACT-layering.md` v2 修訂紀錄 V9）。原本釘在 `tests/js/test_logic.cjs` 的前端行為案例搬到 `web/` 的 vitest（`web/src/domain/__tests__/logic.legacy.test.ts`、`web/src/hooks/__tests__/autosave.test.ts`，期望值不變，共用案例表仍是 `tests/cases/*.json`），由 `cd web && npm test` 與 CI 的 web job 執行；原本釘在 `tests/test_app_frontend.py` 的頁面句子改由 `tests/test_web_page.py` 比對 `web/src/i18n/locales/zh-TW.json`。舊 HTML／app.js 的結構檢查（元素 id、對 app.js 的正規式）對 React 元件沒有意義，不再保留。

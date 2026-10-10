@@ -37,7 +37,7 @@ WRITE_FLAGS = (os.O_WRONLY | os.O_RDWR | os.O_CREAT | os.O_TRUNC | os.O_APPEND  
 WRITE_MODE_CHARS = frozenset("wax+")                                       # verbatim (G2)
 TEST_EXECUTABLES = ("python.exe", "node.exe", "pwsh.exe", "taskkill.exe")  # verbatim (G3); python only via _guardrun;
 #   cmd.exe (WG3 constant row) is NOT in this tuple: only the exact mklink /J shape in _popen_allowed lets it run
-PRODUCT_SUBPROCESSES = {"darkroom_app/gpucheck.py": ("nvidia-smi.exe",),
+PRODUCT_SUBPROCESSES = {"darkroom_app/utils/gpucheck.py": ("nvidia-smi.exe",),   # v2: utils/ (plan-v2 §1)
                         "darkroom_app/services/semantic_index.py": ("op.exe",)}   # verbatim (G3, patch WG15)
 OP_REF = re.compile(r'^op://[^\s/"&|<>^%!]+(/[^\s/"&|<>^%!]+){2,3}$')     # verbatim (WG15): the 1Password reference
 OP_MODULE = "darkroom_app/services/semantic_index.py"

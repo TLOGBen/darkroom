@@ -229,8 +229,12 @@ class TestGeometryRender(unittest.TestCase):
             after = render(src, p, geometry=Geometry.from_dict(c["after"]))
             want = np.ascontiguousarray(turn[c["action"]](before))
             self.assertEqual(after.shape, want.shape, c["name"])
-            if c["before"]["angle"] == 0:
+            if c["before"]["angle"] == 0 and torch.cuda.is_available():
                 self.assertTrue(np.array_equal(after, want), c["name"])
+            elif c["before"]["angle"] == 0:
+                # CPU torch (CI runners have no GPU): the colour pipeline's float reductions are not
+                # bit-identical once the picture is turned / mirrored, so a turn is exact only up to float noise.
+                self.assertLessEqual(mad(after, want), 1e-6, c["name"])
             else:
                 self.assertLessEqual(mad(after, want), 1 / 255, c["name"])
             checked += 1
@@ -767,8 +771,8 @@ class TestInterfaces(unittest.TestCase):
         self.run_cli(["preview", "a.jpg", "--json"], fake)
         self.assertEqual(fake.calls[-1], ("preview", ("fake-image", None, 100, None, None)))   # no flag: KEEP
         self.run_cli(["preview", "a.jpg", "--angle", "2", "--json"], fake)                      # unset fields: identity
-        self.assertEqual(fake.calls[-1][1][5], {"geometry": {"rotate": 0, "flip": False, "angle": 2, "aspect": "original",
-                                                             "crop": None}})
+        # v2: only the flags given; Geometry.from_dict gives the others their identity values (the CLI adds none)
+        self.assertEqual(fake.calls[-1][1][5], {"geometry": {"angle": 2}})
         self.run_cli(["preview", "a.jpg", "--rotate", "abc", "--angle", "x", "--json"], fake)    # raw: the service judges
         self.assertEqual((fake.calls[-1][1][5]["geometry"]["rotate"], fake.calls[-1][1][5]["geometry"]["angle"]), ("abc", "x"))
         self.run_cli(["edit", "set", "a.jpg", "--preset", "p", *flags, "--json"], fake)
@@ -782,10 +786,9 @@ class TestInterfaces(unittest.TestCase):
         self.run_cli(["edit", "paste", "--from", "s.jpg", "t.jpg", "--json"], fake)
         self.assertEqual(fake.calls[-1], ("paste_edit", (["t.jpg"], "s.jpg", None)))
         self.run_cli(["export", "a.jpg", *flags, "--json"], fake)
-        self.assertEqual(fake.calls[-1][1][0], [{"path": "a.jpg", "preset_id": None, "strength": 100, "overrides": None,
-                                                 "geometry": full}])
+        self.assertEqual(fake.calls[-1][1][0], [{"path": "a.jpg", "geometry": full}])   # v2: only what was typed
         self.run_cli(["export", "a.jpg", "--preset", "p", "--json"], fake)                        # colours, saved geometry
-        self.assertEqual(fake.calls[-1][1][0], [{"path": "a.jpg", "preset_id": "p", "strength": 100, "overrides": None}])
+        self.assertEqual(fake.calls[-1][1][0], [{"path": "a.jpg", "preset_id": "p"}])
         self.run_cli(["export", "a.jpg", "--no-geometry", "--json"], fake)
         self.assertEqual(fake.calls[-1][1][0][0]["geometry"], None)
         n = len(fake.calls)
@@ -813,7 +816,7 @@ class TestInterfaces(unittest.TestCase):
                      "additionalProperties": False}}, "additionalProperties": False}
         self.assertEqual(GEOMETRY_SCHEMA, verbatim)
         tools = {t["name"]: t for t in Tools(lambda: None).list()}
-        self.assertEqual(len(tools), 33)
+        self.assertEqual(len(tools), 38)                    # v2: + 5 settings / version tools (plan-v2 §3)
         self.assertEqual(tools["darkroom_preview"]["inputSchema"]["properties"]["geometry"], verbatim)
         self.assertEqual(tools["darkroom_preview"]["inputSchema"]["properties"]["frame"]["type"], "boolean")
         self.assertEqual(tools["darkroom_edit_set"]["inputSchema"]["properties"]["geometry"], verbatim)
@@ -833,9 +836,9 @@ class TestInterfaces(unittest.TestCase):
 
     def test_counts_unchanged(self):  # C20: no new operation, tool or route; G10 stays 5
         from darkroom_app.operations import OPERATIONS
-        self.assertEqual(len(OPERATIONS), 33)
+        self.assertEqual(len(OPERATIONS), 38)               # v2: + 5 (plan-v2 §3); S3 itself added none
         from test_layering import SAFE_WRITE_USERS
-        self.assertEqual(len(SAFE_WRITE_USERS), 5)
+        self.assertEqual(len(SAFE_WRITE_USERS), 7)          # v2: the writes moved into adapters/persist (+ settings)
         import inspect
         from darkroom_app.facade import KEEP, Facade
         sig = lambda op: str(inspect.signature(getattr(Facade, op)))

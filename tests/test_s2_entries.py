@@ -22,7 +22,8 @@ import _util
 from _fakes import FakeDarkroom
 from test_app_server import make_presets, snapshot, write_photo
 
-FEATURES = ["gpu", "heic", "webp", "photo_library", "preset_library_writes", "semantic_index", "onepassword"]  # E22
+FEATURES = ["gpu", "heic", "webp", "photo_library", "preset_library_writes", "semantic_index", "onepassword",  # E22
+            "comfyui", "agent_sdk"]                                                         # + plan-v2 §3
 NO_GPU = "沒有偵測到可用的 NVIDIA 顯示卡（CUDA），預覽與匯出改用 CPU，會慢很多"                     # verbatim (E23)
 NO_WEBP = "這台電腦的 OpenCV 不能寫 WebP，WebP 匯出先關閉"                                        # verbatim (E23)
 OP_NOT_SIGNED_IN = "1Password 尚未登入（請解鎖 1Password App 或執行 op signin）"                    # verbatim (E24)
@@ -451,18 +452,16 @@ class TestCliS2(unittest.TestCase):
         self.run_cli(["export", "a.jpg", "b.jpg", "--json"], fake)
         self.assertEqual(fake.calls[-1], ("export", ([{"path": "a.jpg"}, {"path": "b.jpg"}], None, None, None)))
         self.run_cli(["export", "a.jpg", "--no-edit", "--json"], fake)
-        # XP35 (CONTRACT-s3-crop C19): --no-edit = preset_id null and geometry null
-        self.assertEqual(fake.calls[-1], ("export", ([{"path": "a.jpg", "preset_id": None, "strength": 100,
-                                                       "overrides": None, "geometry": None}], None, None, None)))
+        # XP35 (CONTRACT-s3-crop C19): --no-edit = preset_id null and geometry null (v2: only those two keys; the
+        # default strength is the export service's)
+        self.assertEqual(fake.calls[-1], ("export", ([{"path": "a.jpg", "preset_id": None, "geometry": None}],
+                                                     None, None, None)))
         self.run_cli(["export", "a.jpg", "--strength", "50", "--json"], fake)
-        self.assertEqual(fake.calls[-1][1][0], [{"path": "a.jpg", "preset_id": None, "strength": 50.0,
-                                                 "overrides": None}])
+        self.assertEqual(fake.calls[-1][1][0], [{"path": "a.jpg", "strength": 50.0}])   # v2: what was typed
         self.run_cli(["export", "a.jpg", "--override", "Exposure2012=0.5", "--json"], fake)
-        self.assertEqual(fake.calls[-1][1][0], [{"path": "a.jpg", "preset_id": None, "strength": 100,
-                                                 "overrides": {"Exposure2012": 0.5}}])
+        self.assertEqual(fake.calls[-1][1][0], [{"path": "a.jpg", "overrides": {"Exposure2012": 0.5}}])
         self.run_cli(["export", "a.jpg", "--preset", "p", "--json"], fake)
-        self.assertEqual(fake.calls[-1][1][0], [{"path": "a.jpg", "preset_id": "p", "strength": 100,
-                                                 "overrides": None}])
+        self.assertEqual(fake.calls[-1][1][0], [{"path": "a.jpg", "preset_id": "p"}])
         n = len(fake.calls)
         rc, out, err = self.run_cli(["export", "a.jpg", "--preset", "p", "--no-edit", "--json"], fake)
         self.assertEqual((rc, out), (2, ""))
@@ -491,7 +490,8 @@ class TestCliS2(unittest.TestCase):
             out, err = io.StringIO(), io.StringIO()
             with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
                 cli.main(["--preset-dir", "rel-presets", "--data-dir", "rel-data", "sliders", "--json"])
-        self.assertEqual(seen, [((os.path.abspath("rel-presets"),), {"data_dir": os.path.abspath("rel-data")})])
+        self.assertEqual(seen, [((os.path.abspath("rel-presets"),), {"data_dir": os.path.abspath("rel-data"),
+                                                                       "allow_unconfigured": False})])
 
 
 # ---------------------------------------------------------------------- E27 (MCP)
@@ -508,8 +508,8 @@ class TestMcpS2(unittest.TestCase):
     def test_mcp_s2_schemas(self):  # E27 / XP32
         from darkroom_app.mcp_server.tools import Tools
         tools = {t["name"]: t for t in Tools(lambda: None).list()}
-        self.assertEqual(len(tools), 33)
-        self.assertEqual(list(tools)[27:], list(S2_ANNOTATIONS))
+        self.assertEqual(len(tools), 38)                                   # + 5 settings / version (plan-v2 §3)
+        self.assertEqual(list(tools)[27:33], list(S2_ANNOTATIONS))
         for name, ann in S2_ANNOTATIONS.items():
             self.assertEqual(tools[name]["annotations"], ann, name)
             self.assertIs(tools[name]["inputSchema"]["additionalProperties"], False, name)

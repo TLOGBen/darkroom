@@ -1,6 +1,10 @@
-"""The one photo extension table (CONTRACT-heic H7), in a module that imports nothing.
+"""相容用（compat shim）：舊路徑 `darkroom_app.formats` 指向 `darkroom_app.domain.formats`。新程式不要 import 這裡。
 
-`engine.PHOTO_EXT` is this same tuple (re-exported); the write module checks against it without importing torch / cv2
-(CONTRACT-preset-library KP11: the `presets *` CLI commands that write the library stay torch-free, L9).
+The old module name is made an alias of the real module (sys.modules), so `from darkroom_app import formats` and
+`mock.patch.object(formats, ...)` reach the very same module object as `darkroom_app.domain.formats`.
 """
-PHOTO_EXT = (".jpg", ".jpeg", ".png", ".tif", ".tiff", ".heic", ".heif")   # CONTRACT-heic H7
+import sys
+
+from .domain import formats as _real
+
+sys.modules[__name__] = _real

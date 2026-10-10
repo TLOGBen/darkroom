@@ -93,3 +93,6 @@ tooltip 後綴（R3，依序接在上兩行之後）：有微調時「；微調 
 
 ## S3 補丁（2026-10-10，`CONTRACT-s3-crop.md` 主 session 裁決；與條文同等效力，劃線與「取代」處以本節為準）
 - R13（修訂 B4、R6；S3 C17、C27）：`POST /api/preview` body 可帶 `geometry`、`frame`；回傳的預覽寬高依 S3 C17；路由數不變。窄視窗清單同 S1 合約 S18′。
+
+## v2 修訂紀錄（2026-10-10，整合；不刪上方原文，提到 `static/`、`app.js`、`logic.js`、`tests/js/test_logic.cjs`、`tests/test_app_frontend.py` 處以本節為準）
+- 舊頁面 `darkroom_app/static/` 由 React 前端 `web/` 取代並已刪除（`docs/architecture/plan-v2.md` §2；細節見 `CONTRACT-layering.md` v2 修訂紀錄 V9）。原本釘在 `tests/js/test_logic.cjs` 的前端行為案例搬到 `web/` 的 vitest（`web/src/domain/__tests__/logic.legacy.test.ts`、`web/src/hooks/__tests__/autosave.test.ts`，期望值不變，共用案例表仍是 `tests/cases/*.json`），由 `cd web && npm test` 與 CI 的 web job 執行；原本釘在 `tests/test_app_frontend.py` 的頁面句子改由 `tests/test_web_page.py` 比對 `web/src/i18n/locales/zh-TW.json`。舊 HTML／app.js 的結構檢查（元素 id、對 app.js 的正規式）對 React 元件沒有意義，不再保留。

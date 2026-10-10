@@ -19,7 +19,7 @@ CONTENT_TYPE_REFUSED = "request refused: POST body must be application/json"    
 DEST_DIR_REFUSED = "dest_dir is not accepted over HTTP (use the CLI or MCP)"           # verbatim (XP16)
 ROUTES = [("GET", "/"), ("GET", "/api/health"), ("GET", "/api/presets"), ("GET", "/api/preset_flags"),
           ("GET", "/api/presets/x"), ("GET", "/api/sliders"), ("GET", "/api/folder?image_id=i"),
-          ("GET", "/static/app.js"), ("POST", "/api/open"), ("POST", "/api/preview"), ("POST", "/api/export"),
+          ("GET", "/assets/app.js"), ("POST", "/api/open"), ("POST", "/api/preview"), ("POST", "/api/export"),
           # CONTRACT-photo-library PLP2: the seven photo library routes, PUT and DELETE included
           ("GET", "/api/edit?path=a.jpg"), ("PUT", "/api/edit"), ("DELETE", "/api/edit?path=a.jpg"),
           ("POST", "/api/edit/paste"), ("POST", "/api/edit/save-preset"),
@@ -127,7 +127,7 @@ class TestRefused(SecurityCase):
                                  (value, path))
         self.assertEqual(self.fake.calls, [])
         for value in ("same-origin", "none"):
-            for method, path in (("GET", "/"), ("GET", "/api/presets"), ("GET", "/static/app.js")):
+            for method, path in (("GET", "/"), ("GET", "/api/presets"), ("GET", "/assets/app.js")):
                 status, _ = await self.send(method, path, {"Sec-Fetch-Site": value})
                 self.assertEqual(status, 200, (value, path))
 
@@ -223,7 +223,7 @@ class TestAllowed(SecurityCase):
         for host in (f"127.0.0.1:{self.port}", f"localhost:{self.port}", f"LOCALHOST:{self.port}"):
             for origin in (None, f"http://127.0.0.1:{self.port}", f"http://localhost:{self.port}"):
                 h = {"Host": host, **({"Origin": origin} if origin else {})}
-                for method, path in (("GET", "/"), ("GET", "/api/presets"), ("GET", "/static/app.js")):
+                for method, path in (("GET", "/"), ("GET", "/api/presets"), ("GET", "/assets/app.js")):
                     status, _ = await self.send(method, path, h)
                     self.assertEqual(status, 200, (host, origin, path))
                 status, _ = await self.send("POST", "/api/export",
@@ -231,15 +231,30 @@ class TestAllowed(SecurityCase):
                 self.assertEqual(status, 200, (host, origin))
         self.assertEqual(sum(1 for c in self.fake.calls if c[0] == "export"), 9)
 
-    def test_front_end_posts_json(self):  # XP16 (5): api() declares the body as JSON
-        with open(os.path.join(_util.REPO, "darkroom_app", "static", "app.js"), encoding="utf-8") as f:
-            js = f.read()
-        self.assertIn("headers: Object.assign({'X-Darkroom': '1'}, body ? {'Content-Type': 'application/json'} : {})", js)
-        self.assertEqual(js.count("fetch("), 1)                         # every request goes through api()
-        with open(os.path.join(_util.REPO, "darkroom_app", "static", "index.html"), encoding="utf-8") as f:
-            html = f.read()
-        self.assertNotRegex(html + js, r"""src=["'`]?/api/""")           # PLP11: thumbnails come through api()
-        self.assertNotIn("new Image(", js.replace("tmp = new Image();", ""))   # the preview swap only
+    def test_front_end_posts_json(self):  # XP16 (5): every request declares its body as JSON and carries X-Darkroom
+        # v2 (plan-v2 §2): the page is web/ (React). Every request leaves through requests/client.ts api(), whose
+        # middleware localHeaders() adds X-Darkroom: 1 and, with a body, Content-Type: application/json.
+        src = os.path.join(_util.REPO, "web", "src")
+        with open(os.path.join(src, "middlewares", "index.ts"), encoding="utf-8") as f:
+            mw = f.read()
+        self.assertIn("headers.set('X-Darkroom', '1');", mw)
+        self.assertIn("headers.set('Content-Type', 'application/json');", mw)
+        code = {}
+        for root, _dirs, files in os.walk(src):
+            if "__tests__" in root:
+                continue
+            for name in files:
+                if name.endswith((".ts", ".tsx")) and ".test." not in name:
+                    with open(os.path.join(root, name), encoding="utf-8") as f:
+                        code[os.path.relpath(os.path.join(root, name), src)] = f.read()
+        fetchers = [rel for rel, text in code.items() if "fetch(" in text]
+        self.assertEqual(fetchers, [os.path.join("requests", "client.ts")])     # every request goes through api()
+        self.assertEqual(code[os.path.join("requests", "client.ts")].count("fetch("), 1)
+        self.assertIn("fetch(url, localHeaders(", code[os.path.join("requests", "client.ts")])
+        everything = "".join(code.values())
+        self.assertNotRegex(everything, r"""src=\{?["'`]/api/""")       # PLP11: thumbnails come through api()
+        self.assertNotIn("XMLHttpRequest", everything)
+        self.assertNotIn("sendBeacon", everything)                        # no header can be set on a beacon
 
 
 class TestRealFacadeUntouched(AioHTTPTestCase):  # a refused export reads and writes nothing

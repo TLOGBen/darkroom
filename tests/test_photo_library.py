@@ -29,6 +29,7 @@ from darkroom import Params, load_preset, read_image
 from darkroom_app import config, preview as semantics, safe_write
 from darkroom_app.errors import DarkroomError
 from darkroom_app.services import photo_library as pl
+from darkroom_app.adapters.persist import locks
 from test_app_server import make_presets, snapshot, write_photo
 from test_export import exif_app1, pattern, write_jpeg, write_png
 
@@ -386,21 +387,21 @@ class TestEdits(PhotoLibCase):
         a = self.photo()
         fp = sha(a)
         self.f.set_edit(a, "p-expo", 130)
-        lib = self.f._photo_library
-        real = lib._write_json
+        lib = self.f._photo_library.folder        # v2: the JSON writes are the DataFolder's (adapters/persist)
+        real = lib.write_json
 
         def failing(target, *args, **kwargs):
             if target.endswith(".prev.json"):
                 raise DarkroomError("unavailable", "injected: cannot write the previous edit")
             return real(target, *args, **kwargs)
-        lib._write_json = failing
+        lib.write_json = failing
         try:
             for clear in (lambda: self.f.clear_edit(a), lambda: self.f.set_edit(a)):
                 self.assertEqual(self.err(clear), ("unavailable", "injected: cannot write the previous edit"))
                 self.assertTrue(os.path.exists(self.edit_file(fp)))          # the edit is still there
                 self.assertEqual(self.f.get_edit(a)["edit"]["preset"]["id"], "p-expo")
         finally:
-            lib._write_json = real
+            lib.write_json = real
 
     def test_snapshot_survives_preset_change(self):  # PL4
         a = self.photo()
@@ -493,15 +494,15 @@ class TestEdits(PhotoLibCase):
         a = self.photo()
         fp = self.f.set_edit(a, "p-expo", 100)["fingerprint"]
         p = self.edit_file(fp)
-        self.assertEqual((pl.REPLACE_RETRIES, pl.REPLACE_RETRY_S), (200, 0.01))
-        self.assertEqual((pl.READ_RETRIES, pl.READ_RETRY_S), (10, 0.1))
+        self.assertEqual((locks.REPLACE_RETRIES, locks.REPLACE_RETRY_S), (200, 0.01))
+        self.assertEqual((locks.READ_RETRIES, locks.READ_RETRY_S), (10, 0.1))
         real = safe_write.replace_into
         calls = []
 
         def busy(tmp, dest, root, **kw):
             calls.append(tmp)
             raise PermissionError(13, "存取被拒")
-        with mock.patch.object(pl, "REPLACE_RETRY_S", 0.001), mock.patch.object(safe_write, "replace_into", busy):
+        with mock.patch.object(locks, "REPLACE_RETRY_S", 0.001), mock.patch.object(safe_write, "replace_into", busy):
             kind, msg = self.err(self.f.set_edit, a, "p-expo", 150)
         self.assertEqual(kind, "unavailable")
         self.assertTrue(msg.startswith(CANNOT_WRITE.format(data_dir=self.data, reason="")), msg)
@@ -514,7 +515,7 @@ class TestEdits(PhotoLibCase):
             if n[0] < 4:
                 raise PermissionError(13, "存取被拒")
             return real(tmp, dest, root, **kw)
-        with mock.patch.object(pl, "REPLACE_RETRY_S", 0.001), mock.patch.object(safe_write, "replace_into", flaky):
+        with mock.patch.object(locks, "REPLACE_RETRY_S", 0.001), mock.patch.object(safe_write, "replace_into", flaky):
             self.assertEqual(self.f.set_edit(a, "p-expo", 150)["edit"]["strength"], 150)
         self.assertEqual(n[0], 4)
 
@@ -531,7 +532,7 @@ class TestEdits(PhotoLibCase):
                 if n[0] <= 2:
                     raise PermissionError(13, "存取被拒")
             return real_open(file, mode, *args, **kw)
-        with mock.patch.object(pl, "READ_RETRY_S", 0.001), mock.patch("builtins.open", flaky):
+        with mock.patch.object(locks, "READ_RETRY_S", 0.001), mock.patch("builtins.open", flaky):
             self.assertEqual(self.f.get_edit(a)["edit"]["strength"], 100)
         self.assertEqual(n[0], 3)
 
@@ -539,7 +540,7 @@ class TestEdits(PhotoLibCase):
             if isinstance(file, str) and os.path.normcase(file) == p and "r" in mode:
                 raise PermissionError(13, "存取被拒")
             return real_open(file, mode, *args, **kw)
-        with mock.patch.object(pl, "READ_RETRY_S", 0.001), mock.patch("builtins.open", always):
+        with mock.patch.object(locks, "READ_RETRY_S", 0.001), mock.patch("builtins.open", always):
             kind, msg = self.err(self.f.get_edit, a)
         self.assertEqual(kind, "unavailable")
         self.assertTrue(msg.startswith(f"無法讀取照片庫：{self.edit_file(fp)}："), msg)

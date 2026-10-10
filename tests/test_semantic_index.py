@@ -20,6 +20,7 @@ import _xmpgen
 from darkroom_app import messages as M
 from darkroom_app.errors import DarkroomError
 from darkroom_app.services import semantic_index as S
+from darkroom_app.adapters.persist import locks
 from test_app_server import make_presets
 
 SECRET = "sk-ant-TESTSECRET-do-not-leak-0123456789"
@@ -459,7 +460,7 @@ class TestBuild(unittest.TestCase):  # SI3, SI6, SI7, SI9, SI10
         fd = os.open(os.path.join(h.tmp, "semantic.json.lock"), os.O_RDWR | os.O_CREAT | os.O_BINARY)
         try:
             msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
-            with mock.patch.object(S, "LOCK_WAIT_S", 0.2):
+            with mock.patch.object(locks, "LOCK_WAIT_S", 0.2):
                 with self.assertRaises(DarkroomError) as cm:
                     h.f.semantic_build(wait_seconds=0)
         finally:

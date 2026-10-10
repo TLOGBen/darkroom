@@ -1,4 +1,26 @@
-"""Lightroom .xmp preset -> Params. Files are only ever opened read-only ("rb")."""
+"""Lightroom .xmp preset -> Params. Files are only ever opened read-only ("rb").
+
+Layer: core library. Depends on `_params` (the Params object, range table), `_coverage` (what the renderer
+implements) and `_errors`; standard-library XML only. Used by `darkroom.load_preset`, the core CLI `scan`, and by
+the App's preset catalogue through the public `load_preset`.
+
+What a Lightroom preset file looks like: an XMP packet (RDF/XML) whose `rdf:Description` element carries every
+develop setting as an attribute in the Camera Raw Settings namespace, e.g. `crs:Exposure2012="+0.35"`. Settings
+that are lists live in child elements instead: tone curves (`crs:ToneCurvePV2012` as an rdf:Seq of "x, y"
+points), the preset name (`crs:Name` as an rdf:Alt language list), local adjustments
+(`crs:MaskGroupBasedCorrections`, a list of corrections each with Local* values and mask shapes) and the
+creative profile (`crs:Look`).
+
+Parsing policy (core contract):
+- A4 = only PV2012-family process versions (6, 10, 11, 15) are rendered; others raise UnsupportedPresetError.
+- A5 = numbers may carry a sign and decimals ("+15", "-0.24"); a known numeric key that does not parse fails the
+  whole preset instead of silently becoming 0.
+- A13 = every setting the renderer does not apply and that would change the picture ends up in Params.skipped,
+  in a human-readable form, so the App can tell the user.
+- A20 = the XML parser never resolves external entities / DTDs (an .xmp from the internet is untrusted input);
+  any DOCTYPE or ENTITY declaration fails the parse before ElementTree runs.
+Out-of-range values are clamped to Lightroom's slider limits and noted in skipped as "clamped".
+"""
 import os
 import re
 import xml.etree.ElementTree as ET
@@ -47,10 +69,14 @@ TEXT_TAGS = ("Name", "ShortName", "SortName", "Group", "Description")
 
 
 class PresetParseError(ValueError):
-    pass
+    """The file is not a usable preset (bad XML, missing ProcessVersion, unparsable number, ...)."""
 
 
 def number(text, what):
+    """Parse an xmp numeric attribute ("+0.80", "-15", ".5") to float; `what` names the key in the error.
+
+    Deliberately stricter than float(): "nan", "1e3" or "" are rejected (PresetParseError), because Lightroom
+    never writes them and accepting them would hide a corrupted file (contract A5)."""
     t = (text or "").strip()
     if not _NUM.match(t):
         raise PresetParseError(f"{what}: not a number: {text!r}")
@@ -58,6 +84,7 @@ def number(text, what):
 
 
 def boolean(text, what):
+    """Parse "True"/"False" (any case) to bool; anything else raises PresetParseError naming `what`."""
     t = (text or "").strip().lower()
     if t not in ("true", "false"):
         raise PresetParseError(f"{what}: not a boolean: {text!r}")
@@ -65,26 +92,36 @@ def boolean(text, what):
 
 
 def _attrs(el):
+    """The element's crs:* attributes as {key without namespace: raw string value}."""
     return {k[len(CRS):]: v for k, v in el.attrib.items() if k.startswith(CRS)}
 
 
 def _lang_alt(el):
+    """Text of the first rdf:li of an rdf:Alt (Lightroom writes the preset name as x-default first)."""
     li = el.find(f"{RDF}Alt/{RDF}li")
     return (li.text or "").strip() if li is not None else ""
 
 
 def _seq_items(el):
+    """The rdf:li children of the element's rdf:Seq (curve points, mask list entries); [] when there is none."""
     seq = el.find(f"{RDF}Seq")
     return [] if seq is None else seq.findall(f"{RDF}li")
 
 
 class _Skipped(list):
+    """An ordered list without duplicates: the order settings were met in is the order the user reads them."""
+
     def add(self, item):
         if item not in self:
             self.append(item)
 
 
 def _parse_curve(el, tag, clamped):
+    """A tone curve element -> [[x, y], ...] sorted by x, each coordinate clamped to 0..255.
+
+    Lightroom stores curve points as strings "x, y" in 0..255 (input level, output level). Adds `tag` to the
+    `clamped` set when a point had to be clamped. Raises PresetParseError for a malformed point or fewer than two
+    points (a curve needs at least its two end points to be interpolated)."""
     pts = []
     for li in _seq_items(el):
         parts = (li.text or "").split(",")
@@ -103,6 +140,14 @@ def _parse_curve(el, tag, clamped):
 
 
 def _shape(li, skipped):
+    """One mask shape entry -> a shape dict for _render, or None when it is inactive or unsupported.
+
+    Supported: "Mask/Gradient" (linear: the ramp runs from the Zero point, 0% effect, to the Full point, 100%)
+    and "Mask/CircularGradient" (radial: an ellipse given by its Top/Left/Bottom/Right box, Angle, Feather,
+    Roundness and Midpoint; Flipped means the effect is outside). All coordinates are 0..1 fractions of the image,
+    exactly as Lightroom stores them (contract A14). Other mask kinds, or a non-default MaskBlendMode (subtract /
+    intersect), are added to `skipped` and dropped. The attributes may sit on the rdf:li itself or on a nested
+    rdf:Description, depending on the Lightroom version that wrote the file."""
     el = li.find(f"{RDF}Description")
     a = _attrs(el if el is not None and not _attrs(li) else li)
     what = a.get("What", "")
@@ -130,6 +175,12 @@ def _shape(li, skipped):
 
 
 def _parse_masks(el, skipped):
+    """crs:MaskGroupBasedCorrections -> list of local adjustments for Params.masks.
+
+    Each active "Correction" becomes {"name", "amount", "values": {Local*: clamped float}, "shapes": [...]}.
+    Anything that cannot be reproduced is recorded in `skipped`: non-correction entries, Local* keys outside
+    LOCAL_RENDERED with an effect, a luminance / colour range mask (Type != 0), unsupported shapes. A correction
+    whose shapes were all dropped keeps an empty shape list (the renderer then applies nothing for it)."""
     masks = []
     for li in _seq_items(el):
         d = li.find(f"{RDF}Description")
@@ -166,15 +217,20 @@ def _parse_masks(el, skipped):
 
 
 def _note_clamp(skipped, key):
+    """Record that `key` held a value outside Lightroom's range and was clamped."""
     skipped.add(f"{key}（超出範圍，已夾值）")
 
 
 class _DtdFound(Exception):
-    pass
+    """Internal signal raised from the expat handlers to abort the pre-scan at the first declaration."""
 
 
 def _reject_dtd(data):
-    """Refuse any DOCTYPE / ENTITY declaration (in whatever encoding) before ElementTree sees the bytes."""
+    """Refuse any DOCTYPE / ENTITY declaration (in whatever encoding) before ElementTree sees the bytes.
+
+    Why a separate expat pass: ElementTree expands internal entities (the "billion laughs" memory bomb) and
+    offers no switch to forbid a DTD. Running raw expat with handlers that abort on the first declaration closes
+    that door for every encoding the XML declaration may announce (contract A20)."""
     def stop(*_):
         raise _DtdFound()
     p = expat.ParserCreate()
@@ -191,7 +247,14 @@ def _reject_dtd(data):
 
 
 def read_preset(path):
-    """Parse a preset -> (Params, display name). Raises UnsupportedPresetError or ValueError."""
+    """Parse a preset -> (Params, display name). Raises UnsupportedPresetError or ValueError.
+
+    Steps: read bytes ("rb" only) -> reject DTDs -> parse XML -> merge the crs attributes of every
+    rdf:Description (some writers split them) -> check ProcessVersion -> convert attributes to numbers
+    (clamped), sorting out metadata, crop keys and unknown text settings -> list everything not rendered in
+    skipped -> parse child elements (name, curves, Look, local masks, point colours). The display name is the
+    crs:Name, else the file name without extension. Side effects: none.
+    """
     with open(path, "rb") as f:
         data = f.read()
     _reject_dtd(data)
@@ -294,5 +357,9 @@ def read_preset(path):
 
 
 def load_preset(path):
-    """Parse a Lightroom .xmp preset into Params (read-only)."""
+    """Parse a Lightroom .xmp preset into Params (read-only).
+
+    Public entry point (`darkroom.load_preset`): same as read_preset without the display name. Raises
+    UnsupportedPresetError for other process versions, ValueError (PresetParseError) for broken files, OSError
+    when the file cannot be read."""
     return read_preset(path)[0]

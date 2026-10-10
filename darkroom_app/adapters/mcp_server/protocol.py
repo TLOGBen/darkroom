@@ -1,16 +1,27 @@
 """MCP over stdio, written by hand (CONTRACT-layering L10; no `mcp` package, ADR-0003 / L14).
 
+Layer: adapters/mcp_server. JSON-RPC framing and the protocol handshake only; the tools are tools.py.
+
 One UTF-8 JSON-RPC 2.0 message per line. Dual-era: legacy clients open with `initialize` (answered with
 2025-11-25), modern clients may probe with `server/discover` and send the protocol version in every request's
 params._meta (2026-07-28: results then carry resultType "complete", and tools/list the caching hints;
 any other version -> -32022).
 Notifications are never answered. Logging and listChanged are not declared.
+
+Depends on nothing of darkroom_app but the version string. Data flow: one line of bytes -> JSON -> validated
+JSON-RPC envelope -> method dispatch (initialize / server/discover / ping / tools/list / tools/call) -> result or
+error dict -> `encode` -> one line. Unexpected exceptions become -32603 and the server keeps running.
+
+Contract codes: L10 = framing (no CR, ensure_ascii=False) and the tool interface; L14 = no third-party MCP package;
+ADR-0003 = the earlier "Python only, no new dependencies" decision this followed.
 """
 import json
 
+from ... import __version__
+
 LEGACY_VERSION = "2025-11-25"
 MODERN_VERSION = "2026-07-28"
-SERVER_INFO = {"name": "darkroom", "version": "0.1.0"}
+SERVER_INFO = {"name": "darkroom", "version": __version__}   # the one version source (plan-v2 §0)
 META_VERSION = "io.modelcontextprotocol/protocolVersion"
 META_SERVER_INFO = "io.modelcontextprotocol/serverInfo"
 CAPABILITIES = {"tools": {}}
@@ -27,6 +38,8 @@ UNSUPPORTED_VERSION = -32022
 
 
 class RpcError(Exception):
+    """A JSON-RPC error to send back: numeric code, message, optional data."""
+
     def __init__(self, code, message, data=None):
         super().__init__(message)
         self.code, self.message, self.data = code, message, data
@@ -38,6 +51,7 @@ def encode(msg):
 
 
 def _error(id_, code, message, data=None):
+    """A JSON-RPC error response dict."""
     err = {"code": code, "message": message}
     if data is not None:
         err["data"] = data
@@ -45,6 +59,7 @@ def _error(id_, code, message, data=None):
 
 
 def _valid_id(v):
+    """JSON-RPC ids are strings or integers (a bool is not an id even though Python treats it as an int)."""
     return (isinstance(v, str) or (isinstance(v, int) and not isinstance(v, bool)))
 
 
@@ -52,9 +67,12 @@ class Dispatcher:
     """handle(line) -> the response dict, or None when nothing must be sent."""
 
     def __init__(self, tools):
+        """tools: the Tools object (list / call)."""
         self.tools = tools      # .list() -> [tool], .call(name, arguments) -> CallToolResult dict
 
     def handle(self, line):
+        """One incoming line (bytes or str) -> the response dict, or None for blank lines, notifications and
+        client responses. Never raises."""
         if not line.strip():
             return None
         try:
@@ -80,6 +98,8 @@ class Dispatcher:
             return _error(id_, INTERNAL_ERROR, f"Internal error: {type(e).__name__}: {e}")
 
     def _request(self, method, params):
+        """The result of one request; raises RpcError for bad params, an unsupported protocol version or an
+        unknown method. A modern (2026-07-28) request gets resultType "complete" and, for tools/list, cache hints."""
         if params is None:
             params = {}
         if not isinstance(params, dict):

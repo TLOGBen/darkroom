@@ -6,6 +6,15 @@ Orientation (core patch K2): JPEG and TIFF pixels come out upright by their EXIF
 same transposition as PIL ImageOps.exif_transpose). OpenCV's TIFF decoder already turns TIFF pixels whatever the
 flags (measured 2026-10-09, all 8 values, 8 and 16-bit), so only JPEG is turned here; PNG is never turned; HEIC is
 turned by libheif only (_heif).
+
+Layer: core library. Depends on numpy, OpenCV (imported lazily) and `_heif`; nothing in darkroom_app. The App
+reads photos through `read_image` but encodes its exports itself (darkroom_app's encoding utilities, which add
+ICC / EXIF handling); `write_image` is used by the core CLI (`python -m darkroom apply`) and tests.
+
+Data in: a path (photo files are only ever opened with "rb"). Data out: a C-contiguous HxWx3 float32 array in
+0..1, RGB order, still sRGB-encoded (no linearisation here; _render does that). Alpha is dropped, grey is
+replicated to three channels. Files are read as bytes and decoded from memory, which is why non-ASCII Windows
+paths work (cv2.imread cannot open them).
 """
 import os
 import struct
@@ -83,6 +92,13 @@ def _jpeg_orientation(data):
 
 
 def read_image(path):
+    """Decode a JPEG/PNG/TIFF/HEIC file into an upright HxWx3 float32 sRGB array in 0..1.
+
+    The extension decides the decoder (READ_EXT); HEIC goes to _heif.read (colour profile converted to sRGB).
+    8-bit codes are divided by 255, 16-bit by 65535, float TIFFs are clipped. Raises ValueError for an
+    unsupported extension, an undecodable file or an odd sample type; OSError when the file cannot be read.
+    Read-only: the photo is opened with "rb" and never touched again.
+    """
     ext = os.path.splitext(path)[1].lower()
     if ext not in READ_EXT:
         raise ValueError(f"unsupported input format {ext!r} (JPEG/PNG/TIFF/HEIC)")
@@ -117,6 +133,13 @@ def read_image(path):
 
 
 def write_image(path, img, jpeg_quality=95):
+    """Encode `img` (HxWx3 float in 0..1, RGB) to `path`: 8-bit JPEG at `jpeg_quality`, else 16-bit PNG/TIFF.
+
+    Values are clipped to 0..1 and rounded (+0.5) to the nearest code. Raises ValueError for an extension outside
+    WRITE_EXT or an encoder failure. Side effect: creates / overwrites `path` (callers are responsible for never
+    passing a photo or preset path; the core CLI checks this, the App does not use this function for exports).
+    No ICC profile or EXIF is embedded.
+    """
     import cv2
     ext = os.path.splitext(path)[1].lower()
     if ext not in WRITE_EXT:

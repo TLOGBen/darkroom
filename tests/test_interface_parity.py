@@ -741,13 +741,14 @@ class TestPresetLibraryParity(unittest.IsolatedAsyncioTestCase):  # CONTRACT-pre
     async def test_lock_held_parity(self):  # K15 / K17: the lock is held by someone else -> conflict everywhere
         import msvcrt
         from darkroom_app.services import preset_library as pl
+        from darkroom_app.adapters.persist import locks
         got = {}
         for name in ("http", "cli", "mcp"):
             root, _ = self.fresh()
             fd = os.open(os.path.join(root, "library.json.lock"), os.O_RDWR | os.O_CREAT | os.O_BINARY)
             try:
                 msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
-                with mock.patch.object(pl, "LOCK_WAIT_S", 0.2):
+                with mock.patch.object(locks, "LOCK_WAIT_S", 0.2):
                     if name == "http":
                         got[name] = await self.http("POST", "/api/preset-library/favorite",
                                                     {"preset_id": "p-expo", "favorite": True})
@@ -1212,7 +1213,8 @@ class TestSubprocessSmoke(unittest.TestCase):  # L11: one real-process run per i
         self.assertEqual(res[3]["result"]["structuredContent"]["message"], "unknown preset nope")
 
 
-S2_FEATURES = ("gpu", "heic", "webp", "photo_library", "preset_library_writes", "semantic_index", "onepassword")
+S2_FEATURES = ("gpu", "heic", "webp", "photo_library", "preset_library_writes", "semantic_index", "onepassword",
+               "comfyui", "agent_sdk")                                            # + plan-v2 §3
 NO_WEBP = "這台電腦的 OpenCV 不能寫 WebP，WebP 匯出先關閉"                                 # verbatim (S2 E23)
 LIB_IN_PHOTOS = ("preset 庫的位置 {root} 在照片資料夾裡（{photo_folder} 有照片），為了不在照片資料夾裡寫檔，整理 preset、"
                  "匯入、存成 preset 先關閉；請在 config.local.json 把 preset_library_dir 設到別的資料夾")   # verbatim (S2 E23)
@@ -1811,6 +1813,124 @@ class TestS3GeometryParity(unittest.IsolatedAsyncioTestCase):
         conflict = Outcome(False, "conflict", "編輯檔版本不支援：darkroom-edit/3（a.png）")
         self.same(await self.each(self.get_edit, "a.png"), "v3 get", conflict)
         self.same(await self.each(self.set_edit, "a.png", "p-expo", g1), "v3 set", conflict)
+
+
+class TestSettingsParity(unittest.IsolatedAsyncioTestCase):  # plan-v2 §3: settings and version, three interfaces
+    """Each interface gets its own world (presets, data folder, settings file via settings_path - never the repo's
+    config.local.json); the same steps give the same outcome and the same result (paths normalised)."""
+    http = TestS2Parity.http
+    cli = TestS2Parity.cli
+    mcp = TestS2Parity.mcp
+    assert_same = TestS2Parity.assert_same
+
+    async def asyncSetUp(self):
+        from darkroom_app import engine as engine_mod
+        from darkroom_app.server import FACADE, make_app
+        self.eng = engine_mod.Engine()
+        self.tmp = _util.tmpdir(self)
+        seed = os.path.join(self.tmp, "seed")
+        os.makedirs(seed)
+        make_presets(seed)
+        self.switch = _Switch()
+        app = make_app(seed, engine=self.eng, settings_path=lambda: os.path.join(self.tmp, "seed-config.json"))
+        app[FACADE] = self.switch
+        self.client = TestClient(TestServer(app), headers=_util.HTTP_HEADERS)
+        await self.client.start_server()
+        self.n = 0
+
+    async def asyncTearDown(self):
+        await self.client.close()
+
+    def fresh(self):
+        from darkroom_app.composition import build_facade
+        self.n += 1
+        root = os.path.join(self.tmp, f"s{self.n}")
+        pd = os.path.join(root, "lib", "xmp")
+        os.makedirs(pd)
+        os.makedirs(os.path.join(root, "data"))
+        make_presets(pd)
+        cfg = os.path.join(root, "config.json")
+        detect = _no_op_detect(comfyui=lambda: (False, "假的 ComfyUI"), agent_sdk=lambda: (False, "假的 SDK"))
+        self.switch.target = build_facade(pd, engine=self.eng, data_dir=os.path.join(root, "data"), detect=detect,
+                                          settings_path=lambda: cfg)
+        return root, cfg
+
+    async def test_settings_parity(self):
+        bad_doc = {"format": "something-else", "settings": {}}
+        got = {}
+        for name in ("http", "cli", "mcp"):
+            root, cfg = self.fresh()
+            good_doc_path = os.path.join(root, "doc.json")
+            with open(good_doc_path, "w", encoding="utf-8") as fh:
+                json.dump({"format": "darkroom-settings/1", "version": "0.1.0",
+                           "settings": {"language": "zh-TW", "agent.model": "claude-haiku-5-5"}}, fh)
+            if name == "http":
+                steps = [await self.http("PUT", "/api/settings", {"values": {"language": "fr-FR"}}),
+                         await self.http("PUT", "/api/settings", {"values": {"colour": 1}}),
+                         await self.http("PUT", "/api/settings", {"values": {"comfyui_url": "http://10.0.0.5:8188"}}),
+                         await self.http("PUT", "/api/settings", {"values": {"agent.api_key_ref": "sk-ant-abc"}}),
+                         await self.http("PUT", "/api/settings", {"values": {"language": "en-US",
+                                                                            "agent.budget_usd": 3}}),
+                         await self.http("GET", "/api/settings"),
+                         await self.http("GET", "/api/settings/export"),
+                         await self.http("POST", "/api/settings/import", {"document": bad_doc}),
+                         await self.http("POST", "/api/settings/import",
+                                         {"document": json.load(open(good_doc_path, encoding="utf-8"))})]
+            elif name == "cli":
+                steps = [self.cli(["settings", "set", "language=fr-FR"]),
+                         self.cli(["settings", "set", "colour=1"]),
+                         self.cli(["settings", "set", "comfyui_url=http://10.0.0.5:8188"]),
+                         self.cli(["settings", "set", "agent.api_key_ref=sk-ant-abc"]),
+                         self.cli(["settings", "set", "language=en-US", "agent.budget_usd=3"]),
+                         self.cli(["settings", "get"]),
+                         self.cli(["settings", "export"]),
+                         None, self.cli(["settings", "import", good_doc_path])]
+                bad = os.path.join(root, "bad.json")
+                with open(bad, "w", encoding="utf-8") as fh:
+                    json.dump(bad_doc, fh)
+                steps[7] = self.cli(["settings", "import", bad])
+            else:
+                steps = [self.mcp("darkroom_settings_set", {"values": {"language": "fr-FR"}}),
+                         self.mcp("darkroom_settings_set", {"values": {"colour": 1}}),
+                         self.mcp("darkroom_settings_set", {"values": {"comfyui_url": "http://10.0.0.5:8188"}}),
+                         self.mcp("darkroom_settings_set", {"values": {"agent.api_key_ref": "sk-ant-abc"}}),
+                         self.mcp("darkroom_settings_set", {"values": {"language": "en-US", "agent.budget_usd": 3}}),
+                         self.mcp("darkroom_settings_get", {}),
+                         self.mcp("darkroom_settings_export", {}),
+                         self.mcp("darkroom_settings_import", {"document": bad_doc}),
+                         self.mcp("darkroom_settings_import", {"path": good_doc_path})]
+            text = json.dumps(steps, ensure_ascii=False, sort_keys=True)
+            got[name] = json.loads(text.replace(json.dumps(root)[1:-1], "<root>"))
+            with open(cfg, encoding="utf-8") as fh:            # the file itself: new key shape, all-or-nothing
+                self.assertEqual(json.load(fh), {"language": "zh-TW", "agent": {"budget_usd": 3,
+                                                                              "model": "claude-haiku-5-5"}}, name)
+        steps = self.assert_same(got, "settings")
+        from darkroom_app.domain import messages as M
+        self.assertEqual(steps[0][0], [False, "invalid", M.SET_LANGUAGE.format(value="fr-FR")])
+        self.assertEqual(steps[1][0][:2], [False, "invalid"])
+        self.assertTrue(steps[1][0][2].startswith("不認得的設定鍵：colour"))
+        self.assertEqual(steps[2][0], [False, "invalid", M.SET_URL.format(value="http://10.0.0.5:8188")])
+        self.assertEqual(steps[3][0], [False, "invalid", M.SET_SECRET])     # the key is never echoed back
+        self.assertNotIn("sk-ant", json.dumps(steps[3]))
+        self.assertEqual(steps[4][0], [True, None, None])
+        self.assertEqual(steps[4][1]["applied"], ["language", "agent.budget_usd"])
+        self.assertEqual(steps[4][1]["checks"]["comfyui"], {"available": False, "reason": "假的 ComfyUI"})
+        self.assertEqual(steps[5][1]["sources"]["language"], "file")
+        self.assertEqual(steps[5][1]["settings"]["language"], "en-US")
+        self.assertEqual(steps[6][1], {"format": "darkroom-settings/1", "version": "0.1.0",
+                                       "settings": {"language": "en-US", "agent.budget_usd": 3}})
+        self.assertEqual(steps[7][0], [False, "invalid", M.SET_DOC_FORMAT.format(format="darkroom-settings/1")])
+        self.assertEqual(steps[8][1]["applied"], ["language", "agent.model"])
+
+    async def test_version_parity(self):
+        self.fresh()
+        got = {"http": [await self.http("GET", "/api/version")], "cli": [self.cli(["version"])],
+               "mcp": [self.mcp("darkroom_version", {})]}
+        steps = json.loads(json.dumps(self.assert_same(json.loads(json.dumps(got)), "version")))
+        from darkroom_app import __version__
+        self.assertEqual(steps[0][0], [True, None, None])
+        self.assertEqual(list(steps[0][1]), ["version", "python", "torch", "cuda", "platform"])
+        self.assertEqual(steps[0][1]["version"], __version__)
 
 
 if __name__ == "__main__":

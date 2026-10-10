@@ -17,6 +17,13 @@ if REPO not in sys.path:
 PHOTOS = os.path.join(REPO, ".claude", "wayfinder", "darkroom", "prototypes", "llm-pick-experiment", "photos")
 HTTP_HEADERS = {"X-Darkroom": "1"}   # what the page's api() sends on every request (CONTRACT-photo-library PLP11)
 
+# The page the server tests see (plan-v2 §2: the server serves only the React build). web/dist exists only after
+# `npm run build` and changes with every build, so every test - and every child process a test starts, which copies
+# os.environ - is pinned to a small fixed build checked in under tests/. A test that wants the "no build" 503 page
+# points DARKROOM_WEB_DIST at an empty folder itself (mock.patch.dict).
+WEB_DIST_FIXTURE = os.path.join(REPO, "tests", "web_dist_fixture")
+os.environ["DARKROOM_WEB_DIST"] = WEB_DIST_FIXTURE
+
 
 def preset_dir():
     """User's preset folder: DARKROOM_PRESET_DIR, else LOCALLLMS_ROOT / config.local.json (darkroom_app.config)."""

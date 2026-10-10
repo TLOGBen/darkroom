@@ -196,7 +196,7 @@ class TestWriteGuardProbes(unittest.TestCase):  # G2, G3, G11
         allowed = _writeguard._popen_allowed
         sem, gpu = ("product", _writeguard.OP_MODULE), ("product", "darkroom_app/gpucheck.py")
         self.assertEqual(_writeguard.PRODUCT_SUBPROCESSES,
-                         {"darkroom_app/gpucheck.py": ("nvidia-smi.exe",), _writeguard.OP_MODULE: ("op.exe",)})
+                         {"darkroom_app/utils/gpucheck.py": ("nvidia-smi.exe",), _writeguard.OP_MODULE: ("op.exe",)})   # v2: utils/
         self.assertTrue(allowed(None, ["op", "read", "op://Personal/ClaudeAPIKey/credential"], sem))
         self.assertTrue(allowed(None, ["op.exe", "read", "op://v/i/s/f"], sem))
         for bad in (["op", "read", "op://v/i/s/f", "--no-newline"], ["op", "item", "get", "x"], ["op", "read"],
@@ -565,7 +565,8 @@ class TestSafeWrite(unittest.TestCase):  # G8
 
     def test_public_surface(self):
         import inspect
-        funcs = sorted(n for n, v in vars(safe_write).items() if inspect.isfunction(v) and not n.startswith("_"))
+        funcs = sorted(n for n, v in vars(safe_write).items() if inspect.isfunction(v) and not n.startswith("_")
+                       and n != "configured_preset_dir")   # v2: the composition's hook (a value, not an API)
         self.assertEqual(funcs, ["create_new", "make_dirs", "open_lock", "remove", "replace_into"])
         self.assertEqual(safe_write.REFUSED_NO_PRESET, "refused: no preset folder is known, cannot protect it")  # XP12
         for n in funcs:      # CONTRACT-export XP12: every function takes the preset folder in use, keyword only
@@ -595,7 +596,7 @@ class TestSafeWrite(unittest.TestCase):  # G8
         self.assertEqual(os.listdir(self.other), [])
         presets = os.path.join(root, "presets")
         os.makedirs(presets)
-        with mock.patch.object(safe_write.config, "preset_dir", return_value=presets):
+        with mock.patch.object(safe_write, "configured_preset_dir", lambda: presets):
             p = os.path.join(presets, "new.xmp")
             self.refused(f"refused: {p} is inside the preset folder", safe_write.create_new, p, root, b"x")
             p = os.path.join(presets, "sub")
@@ -603,7 +604,7 @@ class TestSafeWrite(unittest.TestCase):  # G8
         # CONTRACT-export XP12 (WG10 (b)): the preset folder in use is passed in while config points elsewhere
         in_use = os.path.join(root, "in-use-presets")
         os.makedirs(in_use)
-        with mock.patch.object(safe_write.config, "preset_dir", return_value=presets):
+        with mock.patch.object(safe_write, "configured_preset_dir", lambda: presets):
             for fn, args in ((safe_write.create_new, (b"x",)), (safe_write.make_dirs, ())):
                 p = os.path.join(in_use, "new.bin")
                 self.refused(f"refused: {p} is inside the preset folder", fn, p, root, *args, preset_dir=in_use)
@@ -613,7 +614,7 @@ class TestSafeWrite(unittest.TestCase):  # G8
             self.refused(f"refused: {p} is inside the preset folder", safe_write.open_lock, p, root, preset_dir=in_use)
         self.assertEqual(os.listdir(in_use), [])
         # nothing passed and no configuration -> SafeWriteRefused, not ConfigError
-        with mock.patch.object(safe_write.config, "preset_dir", side_effect=safe_write.config.ConfigError("unset")):
+        with mock.patch.object(safe_write, "configured_preset_dir", None):
             self.refused("refused: no preset folder is known, cannot protect it", safe_write.create_new,
                          os.path.join(root, "z.bin"), root, b"x")
             self.refused("refused: no preset folder is known, cannot protect it", safe_write.make_dirs,
