@@ -10,11 +10,15 @@
 
 | 入口 | 給誰 | 怎麼叫 |
 |---|---|---|
-| Web App | 使用者 | `python -s -m darkroom_app`，瀏覽器開 `http://127.0.0.1:8765/` |
+| Web App | 使用者 | `python -s -m darkroom_app`，瀏覽器開 `http://127.0.0.1:8765/`（頁面是 `web/` 的建置結果，第一次要先 `cd web && npm ci && npm run build`） |
 | CLI | 你（代理） | `python -s -m darkroom_app.cli <指令> --json` |
-| MCP | 你（代理，已註冊時） | stdio server `python -s -m darkroom_app.mcp_server`，33 個 `darkroom_*` 工具 |
+| MCP | 你（代理，已註冊時） | stdio server `python -s -m darkroom_app.mcp_server`，38 個 `darkroom_*` 工具 |
+| 桌面版（安裝檔） | 使用者 | 開 darkroom App；第一次開啟時使用者同意後才下載 Python＋PyTorch（見 `docs/install.md`） |
+| `darkroom` 執行檔 | 你（代理，安裝檔版） | `darkroom <指令> --json`＝`python -s -m darkroom_app.cli <指令> --json`；`darkroom mcp`＝MCP server；`darkroom app`＝Web App；`darkroom --version` |
 
-本文裡的 `python` 一律指 **這個 repo 用的 Python**：一般使用者是 `.\.venv\Scripts\python.exe`（見 `docs/agent-install.md`）；作者環境是 `config.local.json` 的 `localllms_root` 底下的專用 Python。一律加 `-s`，在 repo 根目錄執行。用詞定義見 `CONTEXT.md`。
+本文裡的 `python` 一律指 **這個 repo 用的 Python**：一般使用者是 `.\.venv\Scripts\python.exe`（見 `docs/agent-install.md`）；作者環境是 `config.local.json` 的 `localllms_root` 底下的專用 Python。一律加 `-s`，在 repo 根目錄執行。
+使用者裝的是**安裝檔版**（沒有 repo）時，把本文的 `python -s -m darkroom_app.cli` 換成 `darkroom`：它找 App 裝好的受管理 Python 環境（或環境變數 `DARKROOM_PYTHON` 指的直譯器），參數、stdout、結束碼原樣轉傳；找不到環境時印一行中英說明、結束碼 5。
+用詞定義見 `CONTEXT.md`；架構見 `docs/architecture.md`；設定的每個鍵見 `docs/configuration.md`。
 
 ## 安全規則（違反＝做錯，沒有例外）
 
@@ -35,8 +39,10 @@
 4. 要不要跑一次完整測試（幾分鐘，只寫暫存資料夾）？（建議）
 5. （可選）照片庫的編輯與縮圖快取想放預設位置 `%LOCALAPPDATA%\darkroom`，還是另外指定 `data_dir`？
 
-設定結果落在 repo 根目錄的 `config.local.json`（不進 git）：`preset_dir`（必要）、`preset_library_dir`（可選，預設 `preset_dir` 的上一層）、`data_dir`（可選）。這兩個可選資料夾都不可以在照片資料夾或 `preset_dir` 裡面。
-語意索引（可選，沒設就整個功能安靜關閉、搜尋照常）：`anthropic_api_key_ref`（**只放 1Password 參照** `op://<vault>/<item>/credential`，執行 `presets semantic build` 時才 `op read`；**絕不把金鑰本身寫進這個檔**；替代方案是環境變數 `DARKROOM_ANTHROPIC_API_KEY`）、`semantic_index_budget_usd`（一次 build 的費用上限，預設 5）、`calibration_sources_dir`（4 張公開標準圖所在資料夾，預設 `<localllms_root>/scratch/lr-calibration/sources`；只會讀固定的 4 個檔名，放別的照片進去也不會被送出）。
+設定檔依序找第一個存在的：環境變數 `DARKROOM_CONFIG` → repo 根目錄的 `config.local.json`（不進 git）→ 平台設定資料夾（Windows `%APPDATA%\darkroom\config.json`、Linux `~/.config/darkroom/config.json`；安裝檔版用這個）。**用 `settings set` 寫，不要手改**：它全部驗證通過才寫、寫完立即生效，而且在還沒有 preset 資料夾時也能用（第一次設定就是 `settings set preset_dir=<使用者說的資料夾>`）。
+常用鍵：`preset_dir`（必要）、`preset_library_dir`（可選，預設 `preset_dir` 的上一層）、`data_dir`（可選）、`language`（`zh-TW`／`en-US`）。`preset_library_dir`、`data_dir` 不可以在照片資料夾或 `preset_dir` 裡面。
+語意索引（可選，沒設就整個功能安靜關閉、搜尋照常）：`agent.api_key_ref`（舊名 `anthropic_api_key_ref` 照樣讀；**只放 1Password 參照** `op://<vault>/<item>/credential`，執行 `presets semantic build` 時才 `op read`；**絕不把金鑰本身寫進設定**，`settings set` 也會拒絕看起來像金鑰的值；替代方案是環境變數 `DARKROOM_ANTHROPIC_API_KEY`）、`agent.budget_usd`（舊名 `semantic_index_budget_usd`；一次 build 的費用上限，預設 5）、`calibration_sources_dir`（4 張公開標準圖所在資料夾，預設 `<localllms_root>/scratch/lr-calibration/sources`；只會讀固定的 4 個檔名，放別的照片進去也不會被送出）。全部的鍵與驗證規則見 `docs/configuration.md`。
+**桌面版注意**：沒設 preset 資料夾時，桌面 App 的第一次設定頁會在啟動前請使用者選資料夾（存進平台設定檔）。只用 CLI／MCP 時會看到 `darkroom：還沒設定 preset 資料夾…`：問使用者 preset 資料夾在哪，用 `darkroom settings set preset_dir=…` 設好。
 
 ## 啟動、停止、健康檢查
 
@@ -49,7 +55,7 @@ python -s -m darkroom_app --preset-dir D:/Presets/xmp --data-dir D:/darkroom-dat
 # 健康檢查：回 {"ok": true} 就是活著
 Invoke-WebRequest http://127.0.0.1:8765/api/health -UseBasicParsing
 
-# 作者環境另有 tools/start.ps1（從 config.local.json 找專用 Python、等就緒再開瀏覽器）
+# 作者環境另有 tools/start.ps1（從 config.local.json 找專用 Python、沒有 web/dist 就先建置、等就緒再開瀏覽器；-RebuildWeb 強制重建）
 pwsh -File tools/start.ps1 -Port 8765 -NoBrowser
 ```
 
@@ -57,7 +63,7 @@ pwsh -File tools/start.ps1 -Port 8765 -NoBrowser
 - 停止：結束那個 Python 行程（Ctrl+C、關視窗，或 `Stop-Process`）。沒有「停止指令」。
 - 使用者沒說要一直開著，用完就關掉。
 - 第一次啟動會暖機 GPU，幾秒到幾十秒；健康檢查等它回 200 再開瀏覽器。
-- App 跑著的時候 CLI／MCP 照樣可以同時用：preset 庫索引有跨程序鎖，不會互相蓋掉。
+- App 跑著的時候 CLI／MCP 照樣可以同時用：preset 庫索引有跨程序鎖，不會互相蓋掉；用 CLI／MCP 改的設定，App 在下一個請求前會重讀並套用。
 
 ## CLI 用法總表
 
@@ -92,7 +98,13 @@ pwsh -File tools/start.ps1 -Port 8765 -NoBrowser
 | `export-presets delete <name>` | 刪一個匯出預設，回被刪的內容（再 `save` 一次就復原）；沒有 → not_found | `data_dir/export-presets.json` |
 | `presets files <id>...` | 1～500 個 preset 的 `.xmp`（Lightroom 讀得到的版本：買來的與匯入的原檔一個位元組都不改；自存的補上 Lightroom 需要的屬性）；不加 `--json` 每筆一行「檔名<Tab>位元組數」，加 `--json` 回 `data_base64`；有一筆失敗結束碼 6 | 否 |
 | `presets export <id>... --dest-dir D` | 把 preset 的 `.xmp` 寫到 `D`（要先存在、絕對路徑、**不可以在 preset 資料夾或 preset 庫裡**）；**永不覆蓋**，同名加 ` (2)`；成功行「已匯出 preset：…」；部分失敗結束碼 6 | `D` 裡的新檔 |
-| `capabilities [--refresh]` | 這台電腦與設定能做什麼：`gpu`、`heic`、`webp`、`photo_library`、`preset_library_writes`、`semantic_index`、`onepassword`，每項 `{available, reason}`；不加 `--json` 每項一行「項目<Tab>可用」或「項目<Tab>關閉：原因」。結果在程序內快取，`--refresh` 重測。設定了 `anthropic_api_key_ref` 時會跑一次 `op whoami`（只查有沒有登入，不讀秘密） | 否 |
+| `capabilities [--refresh]` | 這台電腦與設定能做什麼：`gpu`、`heic`、`webp`、`photo_library`、`preset_library_writes`、`semantic_index`、`onepassword`、`comfyui`（連 `comfyui_url` 的 `/system_stats`，1 秒逾時）、`agent_sdk`（有沒有 anthropic 套件與金鑰來源，不讀秘密），每項 `{available, reason}`；不加 `--json` 每項一行「項目<Tab>可用」或「項目<Tab>關閉：原因」。結果在程序內快取，`--refresh` 重測。設定了 `anthropic_api_key_ref` 時會跑一次 `op whoami`（只查有沒有登入，不讀秘密） | 否 |
+| `settings get` | 設定：`{settings: {鍵: 使用中的值}, defaults, sources: {鍵: file\|env\|default}, config_file}`；不需要 preset 資料夾 | 否 |
+| `settings set KEY=VALUE...` | 部分更新設定；`VALUE` 能當 JSON 就用 JSON（`5`、`null`），否則當字串；`null`＝回到預設。**全部驗證通過才寫**（資料夾要存在、`comfyui_url` 只能本機、`agent.api_key_ref` 只能 `op://…`），寫完立即生效（開著的 App 下一個請求就換用新設定）；回 `{settings, applied, pending_restart, checks}`（被命令列 `--preset-dir`／`--data-dir` 固定的鍵列在 `pending_restart`，下次啟動才生效）。值看起來像金鑰（`sk-ant-`）一律拒絕、不回顯。不需要 preset 資料夾。**改資料夾前先問使用者** | 設定檔 |
+| `settings export [--out FILE]` | `{format: "darkroom-settings/1", version, settings}`（只含寫在設定檔裡的鍵）；`--out` 只建新檔，已存在 → conflict | 給 `--out` 時寫那個新檔 |
+| `settings import FILE` | 套用 `settings export` 產生的檔；驗證同 `settings set`，未知鍵或格式不對整份不寫 | 設定檔 |
+| `version` | `{version, python, torch, cuda, platform}`（不 import torch） | 否 |
+| `--version` | 只印 `darkroom <版本>`（放在子指令前：`python -s -m darkroom_app.cli --version`） | 否 |
 | `edit get <photo>` | 照片庫裡這張的編輯（以內容指紋對應）：`edit` 為 `null` 或 `{preset(含快照), strength, overrides}`，`preset_status`：`current`／`changed`／`missing`；`previous`：有沒有一份被清掉、可用 `edit restore` 取回的編輯 | 否 |
 | `edit set <photo> [--preset ID] [--strength S] [--override K=V]... [幾何旗標]` | **取代**這張的編輯（當下把 preset 參數拍快照）；**沒給幾何旗標＝保留這張原本的裁切／旋轉**，`--no-geometry`＝拿掉；preset、微調、幾何都沒有＝移除 | `data_dir/edits/` |
 | `edit clear <photo>` | 移除這張的編輯 | `data_dir/edits/` |
@@ -107,7 +119,7 @@ pwsh -File tools/start.ps1 -Port 8765 -NoBrowser
 
 ## MCP 工具總表
 
-註冊方式見 `docs/agent-install.md` 第 7 步。工具順序、名稱、參數都來自 `darkroom_app/operations.py`（共 33 個）；參數名跟 CLI 對應（`preset_id`、`strength`、`overrides`、`max_pixels`、`dest_dir`…）。回傳 `structuredContent` 是結構化結果，錯誤時 `isError: true` 且文字就是那句錯誤訊息。
+註冊方式見 `docs/agent-install.md` 第 7 步。工具順序、名稱、參數都來自 `darkroom_app/operations.py`（共 38 個）；參數名跟 CLI 對應（`preset_id`、`strength`、`overrides`、`max_pixels`、`dest_dir`…）。回傳 `structuredContent` 是結構化結果，錯誤時 `isError: true` 且文字就是那句錯誤訊息。
 
 | 工具 | 用途 | 寫檔？ |
 |---|---|---|
@@ -143,7 +155,12 @@ pwsh -File tools/start.ps1 -Port 8765 -NoBrowser
 | `darkroom_export_preset_delete` | 刪匯出預設（`name`），回被刪的 `{name, settings}` | `data_dir/export-presets.json` |
 | `darkroom_preset_files` | 1～500 個 preset 的 `.xmp`（`preset_ids`）：`{files: [{ok, preset_id, file_name, data_base64} 或 {ok:false, preset_id, error}]}` | 否 |
 | `darkroom_presets_export` | 把 preset 的 `.xmp` 寫到 `dest_dir`（`preset_ids`、`dest_dir`；在 preset 庫以外、永不覆蓋）；`failed` 是失敗數 | `dest_dir` 裡的新檔 |
-| `darkroom_capabilities` | 能力偵測（`refresh`）：7 項 `{available, reason}` | 否 |
+| `darkroom_capabilities` | 能力偵測（`refresh`）：9 項 `{available, reason}`（含 `comfyui`、`agent_sdk`） | 否 |
+| `darkroom_settings_get` | 讀設定：`{settings, defaults, sources, config_file}`（`sources` 每個鍵是 `file`／`env`／`default`） | 否 |
+| `darkroom_settings_set` | 部分更新設定（`values: {鍵: 值}`，扁平鍵如 `agent.model`）；全部驗證通過才寫，寫完立即生效；回 `{settings, applied, pending_restart, checks}`。**改設定前先跟使用者確認** | 設定檔 |
+| `darkroom_settings_export` | 設定匯出成 `{format: "darkroom-settings/1", version, settings}`（`dest` 給了才寫檔） | 給 `dest` 時寫那個檔 |
+| `darkroom_settings_import` | 匯入設定（`document` 或 `path` 恰好一個）；驗證同 `settings_set`，未知鍵或格式不對整份不寫 | 設定檔 |
+| `darkroom_version` | 版本：`{version, python, torch, cuda, platform}` | 否 |
 
 每個工具都帶 MCP annotations：唯讀的 `readOnlyHint: true`；`darkroom_edit_set`／`clear`／`paste`／`restore` 標 `destructiveHint: true`（會取代舊編輯），`darkroom_export_preset_save`／`delete` 也是（會取代／刪掉匯出預設）。傳了 schema 以外的參數會直接被拒（`Unknown argument for …`）。
 
@@ -273,6 +290,19 @@ python -s -m darkroom_app.cli presets export <id> <id2> --dest-dir <dest> --json
 ### 9. 「看一下這張套起來長怎樣」（MCP）
 
 `darkroom_open_photo` → `darkroom_preview`（回 JPEG，你直接看）→ 覺得不對就改 `strength`／`overrides` 再預覽 → 使用者滿意再 `darkroom_edit_set` 或 `darkroom_export`。預覽不寫任何檔。
+
+### 10. 「換 preset 資料夾」／「介面改英文」／「備份設定」
+
+```powershell
+python -s -m darkroom_app.cli settings get --json                                   # 先看現在的值、來源與設定檔位置
+python -s -m darkroom_app.cli settings set preset_dir=D:/Presets/xmp --json          # 改資料夾（先跟使用者確認路徑）
+python -s -m darkroom_app.cli settings set language=en-US --json                     # 介面語言；language=null 回到預設 zh-TW
+python -s -m darkroom_app.cli settings export --out D:/backup/darkroom-settings.json --json   # 備份（只建新檔）
+python -s -m darkroom_app.cli settings import D:/backup/darkroom-settings.json --json         # 還原
+python -s -m darkroom_app.cli version --json                                         # 回報版本時用
+```
+
+`settings set` 一次可以給多個 `KEY=VALUE`，任何一個不對（`invalid`，結束碼 2）就整批不寫；成功後 App 與 MCP server 下一個請求就用新設定（不用重開），`checks` 是改完之後立刻重測的 `comfyui`、`agent_sdk`、`photo_library`、`preset_library_writes`。`sources` 為 `env` 的鍵（例如 `LOCALLLMS_ROOT` 決定的 `localllms_root`）改設定檔沒有用，要改環境變數。
 
 ## 結束碼與錯誤怎麼讀
 

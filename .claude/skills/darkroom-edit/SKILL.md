@@ -20,8 +20,10 @@ preset 庫的整理（群組、最愛、匯入、存成 preset）→ `darkroom-p
 
 ## 指令（`python` ＝ repo 的 Python，一律加 `-s` 與 `--json`，路徑用絕對路徑）
 
+安裝檔版（沒有 repo）把 `python -s -m darkroom_app.cli` 換成 `darkroom`，參數與輸出完全一樣。
+
 ```powershell
-# 找 preset：--query 比對名稱或群組子字串，不分大小寫；查不到就換關鍵字（底片／膠捲／film／kodak…）
+# 找 preset：--query 比對名稱、群組與語意標籤的子字串，不分大小寫；查不到就換關鍵字（底片／膠捲／film／kodak…）
 python -s -m darkroom_app.cli presets list --query film --limit 20 --json
 python -s -m darkroom_app.cli presets groups --json
 python -s -m darkroom_app.cli presets show <id> --json        # 滑桿值、略過的設定（level major 要提醒）

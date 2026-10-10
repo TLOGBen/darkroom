@@ -29,6 +29,8 @@ description: 管理 darkroom 的 preset 庫：搜尋 preset、看群組樹、最
 
 ## 指令（`python` ＝ repo 的 Python，一律加 `-s` 與 `--json`）
 
+安裝檔版（沒有 repo）把 `python -s -m darkroom_app.cli` 換成 `darkroom`，參數與輸出完全一樣。preset 資料夾換位置用 `settings set preset_dir=…`（見 `darkroom-setup`），不要手改設定檔。
+
 ```powershell
 # 搜尋：--query 比對名稱、群組與語意標籤／描述（中英文，不分大小寫的子字串），不做同義詞；沒 --limit 會全列（可能上千行）
 python -s -m darkroom_app.cli presets list --query film --limit 50 --json
