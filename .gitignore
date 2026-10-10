@@ -10,3 +10,24 @@ config.local.json
 # purchased-preset derived files and captured third-party articles: local only, never published
 .claude/wayfinder/darkroom/prototypes/calibration/presets/
 .claude/read/material/
+
+# local-only backups and scratch that belong to this project (pre-rewrite history bundle, private material copies)
+.local/
+
+# v2 build outputs and installed tooling (plan-v2 §2, §4); never committed
+web/node_modules/
+web/dist/
+web/*.tsbuildinfo
+desktop/node_modules/
+desktop/target/
+# filled by CI before `tauri build` (the uv sidecar, the darkroom wheel); the folders themselves stay (.gitkeep)
+desktop/src-tauri/binaries/*
+!desktop/src-tauri/binaries/.gitkeep
+desktop/src-tauri/resources/wheels/*
+!desktop/src-tauri/resources/wheels/.gitkeep
+desktop/src-tauri/gen/schemas/
+# a wheel build copies web/dist here (desktop/scripts/hatch_build.py); Python packaging outputs
+darkroom_app/web_dist/
+/dist/
+/build/
+*.egg-info/
