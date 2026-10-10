@@ -48,6 +48,14 @@ jobs:
       # (tests/_writeguard.py) makes a small synthetic one under the temp folder and _util points DARKROOM_CONFIG at
       # it; assertions about the author's own 1466 presets use its size instead or are left out.
       - name: Unit tests
+        env:
+          # The Windows runner's TEMP is the 8.3 short form C:\Users\RUNNER~1\..., which the product resolves to the
+          # long C:\Users\runneradmin\...; the write guard and the path-carrying messages then see two spellings of
+          # one folder. A long-form temp folder keeps both sides the same (Linux is unaffected).
+          TEMP: ${{ runner.temp }}
+          TMP: ${{ runner.temp }}
+          # The runner's console is cp1252; the tests print Traditional Chinese skip reasons.
+          PYTHONUTF8: "1"
         run: python -s -m unittest discover -s tests
 
       - name: Wheel builds (smoke)
