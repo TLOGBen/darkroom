@@ -55,8 +55,14 @@ jobs:
         run: |
           gh release create "$GITHUB_REF_NAME" --draft --verify-tag --title "darkroom $VERSION" \
             --notes "darkroom $VERSION. Installers: Windows .msi / setup .exe, Linux .deb / .AppImage. The first launch downloads Python and PyTorch (about 3 GB with an NVIDIA GPU) after you agree. The darkroom-$VERSION-* files are the command-line launcher alone."
-          id="$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate \
-            --jq ".[] | select(.tag_name == \"$GITHUB_REF_NAME\") | .id" | head -n1)"
+          # The numeric id tauri-action uploads to. Listing /releases and filtering on tag_name returned nothing for
+          # the fresh draft (v0.1.0 shipped without installers because of it), so ask for this tag's release directly
+          # and fail loudly if the id is still empty instead of letting tauri-action skip every upload.
+          id="$(gh release view "$GITHUB_REF_NAME" --json databaseId --jq .databaseId)"
+          if [ -z "$id" ]; then
+            echo "::error::could not read the id of the draft release $GITHUB_REF_NAME"
+            exit 1
+          fi
           echo "id=$id" >> "$GITHUB_OUTPUT"
 
   desktop:
