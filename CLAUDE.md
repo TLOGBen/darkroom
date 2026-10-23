@@ -39,7 +39,7 @@
 
 模型、執行程式與使用者的 preset 都在 LocalLLMs，**不要複製進本 repo**：
 - preset：`artifact/11_preset/xmp`（1466 個；preset 庫索引 `artifact/11_preset/library.json`、自存 preset `artifact/11_preset/user/`）
-- llama-server：`runtimes/llama.cpp/b11223-cuda/llama-server.exe`；PE-I2I：`models/qwen-image-2.1/text-encoders/pe-i2i-heretic/`（Q8 gguf＋mmproj）
+- llama-server：`runtimes/llama.cpp/b11829-cuda/llama-server.exe`（2026-10-23 從 b11223 升級，舊版已刪，原型腳本路徑已一併改成新版）；PE-I2I：`models/qwen-image-2.1/text-encoders/pe-i2i-heretic/`（Q8 gguf＋mmproj）
 - ComfyUI：`launcher/launcher.ps1 -Start comfyui -Headless`，API 在 `http://127.0.0.1:8188`
 - 動到 LocalLLMs 的東西時遵守它的 CLAUDE.md：模型下載要驗 SHA256、ComfyUI 自己跑一律 headless、測完關模型、同一時間只讓一個程式佔 GPU（16GB）。
 - 程式裡的 LocalLLMs 路徑不要寫死：用設定檔或環境變數（例如 `LOCALLLMS_ROOT`）。

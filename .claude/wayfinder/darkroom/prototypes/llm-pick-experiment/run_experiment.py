@@ -26,7 +26,7 @@ from PIL import Image
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, *[".."] * 5))
-EXE = os.path.join(ROOT, "runtimes", "llama.cpp", "b11223-cuda", "llama-server.exe")
+EXE = os.path.join(ROOT, "runtimes", "llama.cpp", "b11829-cuda", "llama-server.exe")
 MODELS = {
     "A": dict(name="Qwen3.6-35B-A3B HauhauCS Q4_K_P",
               m="models/qwen3.6-35b-a3b/hauhaucs-aggressive/Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive-Q4_K_P.gguf",
