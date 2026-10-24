@@ -9,7 +9,7 @@ const URGENT_PERCENT = 85
 
 const KEEP = [
   'This is a long darkroom campaign run with /common:strategic-advance. The summary MUST keep, verbatim where possible:',
-  '1. Where truth lives: D:/Code/darkroom/.strategic-advance/darkroom-alpha/state.json (rebuild the HQ packet from it after compaction, never from chat memory), the ledger run-ledger.jsonl next to it, the map .claude/wayfinder/darkroom/map.md, the contracts in .claude/contract/, CONTEXT.md, AGENTS.md, and the memory folder C:/Users/powde/.claude/projects/D--Code-darkroom/memory/.',
+  '1. Where truth lives: D:/Workspace/02_Project/code/darkroom/.strategic-advance/darkroom-alpha/state.json (rebuild the HQ packet from it after compaction, never from chat memory), the ledger run-ledger.jsonl next to it, the map .claude/wayfinder/darkroom/map.md, the contracts in .claude/contract/, CONTEXT.md, AGENTS.md, and the memory folder C:/Users/powde/.claude/projects/D--Workspace-02-Project-code-darkroom/memory/.',
   '2. Every background agent still running: its id, what it was asked to do, its model, and whether it works on main or in a worktree (with the worktree path and branch).',
   '3. Every scheduled job (cron id, what it fires, when it ends) and every one-shot schedule still pending.',
   '4. The active fronts and their state (sealed / in progress / deferred / needs the user), and the next move.',

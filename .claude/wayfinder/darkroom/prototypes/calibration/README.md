@@ -5,7 +5,7 @@
 下面的指令都在 **pwsh** 裡跑。開一個 pwsh 視窗，先貼這三行（整天都用同一個視窗的話只要貼一次）：
 
 ```powershell
-cd D:\Code\darkroom
+cd D:\Workspace\02_Project\code\darkroom
 $PY  = "E:/llm/runtimes/darkroom-python/py3.13.14-torch2.14.0-cu130/python.exe"
 $GEN = ".claude/wayfinder/darkroom/prototypes/calibration/make_calibration_set.py"
 ```
@@ -24,7 +24,7 @@ $GEN = ".claude/wayfinder/darkroom/prototypes/calibration/make_calibration_set.p
    & $PY -s .claude/wayfinder/darkroom/prototypes/calibration/fit_calibration.py fit
    ```
 
-   它讀上面那個匯出資料夾，標準圖用 `E:\llm\scratch\lr-calibration\planB_base\`，報告寫到 `D:\Code\darkroom\outputs\calibration\<今天日期>-fit-report.md`。只給建議常數，不會改程式。GPU 記憶體不夠就加 `--stride 3`。
+   它讀上面那個匯出資料夾，標準圖用 `E:\llm\scratch\lr-calibration\planB_base\`，報告寫到 `D:\Workspace\02_Project\code\darkroom\outputs\calibration\<今天日期>-fit-report.md`。只給建議常數，不會改程式。GPU 記憶體不夠就加 `--stride 3`。
 10. **趁試用還在，看一下報告**：把報告交給 Claude。報告說某個滑桿「撞到搜尋邊界」或「擬合後平均 ΔE 仍 > 3」，代表光調常數不夠，可能要補渲染別的取值——這時 Lightroom 還能用。
 11. **取消試用**：`check` 缺 0、擬合也跑完以後，到 account.adobe.com → 方案 → 取消方案，確認收到取消信。
 
@@ -69,10 +69,10 @@ darkroom 自己寫的 Lightroom XMP 調色，有幾項 Adobe 沒公開演算法�
 
 **原理**：Lightroom 匯入 JPEG／TIFF 時，會讀取檔案裡面內嵌的 Camera Raw 設定（XMP 的 `crs:` 欄位）當作這張的編輯設定；用 Bridge／Camera Raw 修過的 JPEG 匯入 Lightroom 後還看得到修圖，就是這個原理。所以產生器替「每張標準圖 × 每個設定」各做一份檔案，設定先寫在檔案裡面。匯入以後**全選、匯出一次就完成**，不必一個一個套 preset。
 
-### 0. 產生檔案（pwsh，在 darkroom 根目錄 `D:\Code\darkroom` 跑）
+### 0. 產生檔案（pwsh，在 darkroom 根目錄 `D:\Workspace\02_Project\code\darkroom` 跑）
 
 ```powershell
-cd D:\Code\darkroom
+cd D:\Workspace\02_Project\code\darkroom
 $PY  = "E:/llm/runtimes/darkroom-python/py3.13.14-torch2.14.0-cu130/python.exe"
 $GEN = ".claude/wayfinder/darkroom/prototypes/calibration/make_calibration_set.py"
 & $PY -s $GEN plan    # 只看數量（不下載、不寫檔），可省略
@@ -80,7 +80,7 @@ $GEN = ".claude/wayfinder/darkroom/prototypes/calibration/make_calibration_set.p
 ```
 
 - 用 darkroom 專用 Python，不用 ComfyUI 的 `python_embeded`。LocalLLMs 的位置從環境變數 `LOCALLLMS_ROOT` 或 darkroom 根目錄 `config.local.json` 的 `localllms_root` 讀。
-- 指令裡的 `$GEN` 是相對路徑，所以一定要先 `cd D:\Code\darkroom`（不是 LocalLLMs 根目錄）。
+- 指令裡的 `$GEN` 是相對路徑，所以一定要先 `cd D:\Workspace\02_Project\code\darkroom`（不是 LocalLLMs 根目錄）。
 - 會產生到 `<LocalLLMs>/scratch/lr-calibration/`（隨時能重產，所以放 scratch）：
   - `planA/must/`（429 個）、`planA/optional/`（344 個）：設定已經寫在檔案裡面的圖檔
   - `planB_base/`：沒有設定的乾淨原圖（方案 B 用）
@@ -166,7 +166,7 @@ $GEN = ".claude/wayfinder/darkroom/prototypes/calibration/make_calibration_set.p
 
 - 對亮部、陰影、白、黑（A02～A05）各算擬合前的平均 ΔE2000 與亮度曲線差，再對 `_render.py` 的常數（0.30、0.35、0.18、0.12／0.10）做一維最小平方搜尋，輸出擬合前後的表與建議常數。
 - darkroom 那一側用公開 API `darkroom.load_preset`（讀 `presets/must/` 同一個 xmp）＋`render`；搜尋時用工具裡的色調鏡像，開跑前會逐張確認鏡像在目前常數下跟 `render` 一樣，不一樣就停下來。
-- 報告在 `D:\Code\darkroom\outputs\calibration\<日期>-fit-report.md`。**不會改 `darkroom/_render.py`**，改常數另開切片。
+- 報告在 `D:\Workspace\02_Project\code\darkroom\outputs\calibration\<日期>-fit-report.md`。**不會改 `darkroom/_render.py`**，改常數另開切片。
 - 報告裡的「基準」表是 A00 全歸零時 Lightroom 跟原圖的差，等於誤差下限；這個值明顯大於 0（Lightroom 對 JPEG／TIFF 有預設處理）時，改用 `--input lr-baseline` 再跑一次比較。
 
 ## 方案 B（備案：方案 A 讀不到內嵌設定時）

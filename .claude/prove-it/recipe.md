@@ -19,11 +19,12 @@ server an AI agent uses. Every command below was run on Windows 11 with pwsh 7 a
 `localllms_root`; E: is a removable disk, nothing runs without it). Always `-s`.
 
 That Python is an embeddable build: `python313._pth` fixes `sys.path`, so the working directory and `PYTHONPATH` are
-ignored. Its `._pth` still names the repo's old place `D:/Code/darkroom` (which no longer exists), so
-`PY -s -m darkroom_app…` from the repo root fails with `No module named darkroom_app` (this is also why
-`tests/test_app_launch.py` `test_start_ps1_runs_server_on_given_port` fails). Until that file is fixed (an
-environment change for the user to make), run every module through the shipped helper, which puts a chosen checkout
-first on `sys.path` and runs the module as `-m` would:
+ignored, and it lists the main checkout `D:/Workspace/02_Project/code/darkroom` (fixed on 2026-10-24; it named the
+repo's old place `D:/Code/darkroom` before, and `-m darkroom_app` then failed with `No module named darkroom_app`;
+a backup of the old file is `python313._pth.bak-20261024`). So `PY -s -m darkroom_app…` works from any folder, and
+it always imports **the main checkout**, never the folder you are in. To run another checkout (a worktree of an
+older commit), use the shipped helper, which puts that checkout first on `sys.path` and runs the module as `-m`
+would:
 
 ```
 PY -s .claude/prove-it/tools/run_module.py --repo <checkout> darkroom_app.cli --version

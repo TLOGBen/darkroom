@@ -5,9 +5,11 @@ Verification scaffolding for /prove-it. Usage:
     <darkroom python> -s .claude/prove-it/tools/run_module.py --repo <checkout> <module> [args...]
 
 Why: the dedicated darkroom Python is an embeddable build; its python313._pth lists the folders on sys.path and
-makes Python ignore the working directory and PYTHONPATH. Its ._pth still names the repo's old place
-(D:/Code/darkroom), so `python -s -m darkroom_app...` run from the repo root cannot import darkroom_app. This puts
-<checkout> first on sys.path and runs <module> as __main__, exactly as `-m` would with the checkout importable.
+makes Python ignore the working directory and PYTHONPATH. It lists the main checkout
+(D:/Workspace/02_Project/code/darkroom; until 2026-10-24 the repo's old place D:/Code/darkroom), so
+`python -s -m darkroom_app...` always imports the main checkout, whatever folder it runs in. This puts <checkout>
+(a worktree of another commit, say) first on sys.path and runs <module> as __main__, exactly as `-m` would with that
+checkout importable.
 """
 import os
 import runpy

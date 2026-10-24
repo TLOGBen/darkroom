@@ -11,7 +11,7 @@
 ## 這是什麼
 
 使用者退了 Lightroom 訂閱，要在本機用自己買的 Lightroom XMP preset 修照片：點 preset → 調強度 → 微調滑桿，拖動即時預覽；AI 只做程式做不到的部分。
-2026-10-04 從 LocalLLMs repo 的規劃獨立出來（使用者指定放 `D:/Code/darkroom`）。
+2026-10-04 從 LocalLLMs repo 的規劃獨立出來（使用者指定放 `D:/Code/darkroom`；之後搬到 `D:/Workspace/02_Project/code/darkroom`，darkroom 專用 Python 的 `python313._pth` 2026-10-24 已跟著改）。
 
 ## 目前狀態：核心函式庫已封緘；App 外殼（`darkroom_app/`）已做
 

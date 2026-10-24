@@ -82,7 +82,7 @@ SYNTHETIC_HASH = None if REAL_PRESETS else presets_hash()        # the synthetic
 
 def run_cli(*args, cwd=None):
     """`python -m darkroom ...` run from a directory outside the repo with no PYTHONPATH (A21: the darkroom
-    runtime's python313._pth lists D:/Code/darkroom)."""
+    runtime's python313._pth lists the repo root, D:/Workspace/02_Project/code/darkroom since 2026-10-24)."""
     env = {k: v for k, v in os.environ.items() if k not in ("PYTHONPATH", "PYTHONHOME")}
     env["PYTHONIOENCODING"] = "utf-8"
     r = subprocess.run([*guarded_python(), "-m", "darkroom", *args], cwd=cwd or tempfile.gettempdir(),

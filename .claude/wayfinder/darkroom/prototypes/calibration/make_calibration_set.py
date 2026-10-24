@@ -9,7 +9,7 @@
      匯入 Lightroom 後全選一次匯出即可。
   5. manifest.csv、expected 檔名清單；--check 可比對 Lightroom 匯出的資料夾少了哪些。
 
-用法（pwsh；在 darkroom repo 根目錄 D:/Code/darkroom 執行，本檔路徑以此為準）：
+用法（pwsh；在 darkroom repo 根目錄 D:/Workspace/02_Project/code/darkroom 執行，本檔路徑以此為準）：
   $PY = "E:/llm/runtimes/darkroom-python/py3.13.14-torch2.14.0-cu130/python.exe"
   $GEN = ".claude/wayfinder/darkroom/prototypes/calibration/make_calibration_set.py"
   & $PY -s $GEN plan                  # 只列數量：不下載、不寫任何檔案
@@ -42,7 +42,7 @@ import numpy as np
 from PIL import Image, ImageCms, ImageOps
 
 HERE = Path(__file__).resolve().parent
-DARKROOM = HERE.parents[4]      # D:/Code/darkroom（本檔在 .claude/wayfinder/darkroom/prototypes/calibration/）
+DARKROOM = HERE.parents[4]      # D:/Workspace/02_Project/code/darkroom（本檔在 .claude/wayfinder/darkroom/prototypes/calibration/）
 
 
 def _localllms_root() -> Path:
