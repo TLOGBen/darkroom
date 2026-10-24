@@ -4,7 +4,7 @@
 param(
     [string]$Jar = $(if ($env:TLA2TOOLS_JAR) { $env:TLA2TOOLS_JAR } else { 'D:\Workspace\00_Env\tla\tla2tools.jar' }),
     [string[]]$Configs = @('model/R1.cfg', 'model/R2.cfg', 'model/R3.cfg', 'model/Goal.cfg', 'variants/G1-NoMake.cfg',
-                           'variants/R1-NoInflightCheck.cfg', 'variants/Fix-RecheckInSubmit.cfg')
+                           'variants/R1-NoInflightCheck.cfg', 'variants/R2-NoRecheck.cfg', 'variants/R3-NoRecheck.cfg')
 )
 $ErrorActionPreference = 'Stop'
 $model = $PSScriptRoot

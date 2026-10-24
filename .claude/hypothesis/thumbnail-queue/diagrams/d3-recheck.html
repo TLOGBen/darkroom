@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>兩條重做路徑 · 縮圖佇列狀態機</title>
+  <title>排入時再查一次 · 縮圖佇列狀態機</title>
   <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Noto+Sans+TC:wght@400;500;600&family=Noto+Serif+TC:wght@400&display=swap" rel="stylesheet">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -36,14 +36,14 @@
     /* SVG roles */
     .bg { fill: var(--paper); }
     .state { fill: var(--node); stroke: var(--ink); stroke-width: 1; }
-    .state-bad { fill: var(--accent-tint); stroke: var(--accent); stroke-width: 2; }
+    .state-held { fill: var(--accent-tint); stroke: var(--accent); stroke-width: 2; }
     .edge { fill: none; stroke: var(--muted); stroke-width: 1.2; }
     .edge-other { fill: none; stroke: var(--link); stroke-width: 1.2; stroke-dasharray: 5 4; }
     .mk { fill: var(--muted); }
     .mk-other { fill: var(--link); }
     .mask { fill: var(--paper); }
     .name { fill: var(--ink); font-family: var(--font-sans); font-size: 14px; font-weight: 600; }
-    .name-bad { fill: var(--accent); font-family: var(--font-sans); font-size: 14px; font-weight: 600; }
+    .name-held { fill: var(--accent); font-family: var(--font-sans); font-size: 14px; font-weight: 600; }
     .head { fill: var(--muted); font-family: var(--font-mono); font-size: 11px; font-weight: 600; letter-spacing: 0.08em; }
     .lbl { fill: var(--soft); font-family: var(--font-sans); font-size: 12px; font-weight: 500; }
     .lbl-other { fill: var(--link); font-family: var(--font-sans); font-size: 12px; font-weight: 500; }
@@ -52,17 +52,17 @@
 <body>
   <div class="frame">
     <p class="eyebrow">darkroom 縮圖格的背景縮圖 · 狀態機</p>
-    <h1>兩條重做路徑：查的當下沒縮圖，排進去時已經做好</h1>
+    <h1>加上一部分：排進佇列時，握著佇列鎖再查一次有沒有縮圖</h1>
     <div class="diagram-container">
-      <svg viewBox="0 0 640 528" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="t d">
-        <title id="t">兩條重做路徑：查的當下沒縮圖，排進去時已經做好</title>
-        <desc id="d">P1：重新列資料夾時第 1 到 3 張查不到縮圖，查完前被工作執行緒做完並離開處理中，排進去時各被當成新工作，重做 3 張，超過 2 個工作執行緒。P2：直接要一張縮圖時查不到，排進去之前背景剛好做完，又被做一次。</desc>
+      <svg viewBox="0 0 640 548" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="t d">
+        <title id="t">排進佇列時再查一次</title>
+        <desc id="d">重新列資料夾或直接要一張縮圖時，查的當下沒縮圖；之後背景把它做完並離開處理中；排進佇列那一步握著佇列鎖，發現它不在處理中，就再查一次索引，已經做好就不排，所以不會重做。</desc>
         <defs>
           <marker id="dq-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon class="mk" points="0 0, 8 3, 0 6"/></marker>
           <marker id="dq-arrow-other" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon class="mk-other" points="0 0, 8 3, 0 6"/></marker>
         </defs>
-        <rect class="bg" width="640" height="528"/>
-        <text class="head" x="40" y="56">P1　重新列資料夾</text>
+        <rect class="bg" width="640" height="548"/>
+        <text class="head" x="40" y="56">重新列資料夾</text>
         <line class="edge-other" x1="160" y1="128" x2="160" y2="184" marker-end="url(#dq-arrow-other)"/>
         <line class="edge" x1="160" y1="240" x2="160" y2="296" marker-end="url(#dq-arrow)"/>
         <line class="edge" x1="160" y1="352" x2="160" y2="408" marker-end="url(#dq-arrow)"/>
@@ -70,17 +70,18 @@
         <text class="lbl-other" x="220" y="160" text-anchor="middle">背景工作照常進行</text>
         <rect class="mask" x="168" y="260" width="128" height="16" rx="2"/>
         <text class="lbl" x="232" y="272" text-anchor="middle">主執行緒查完，開始排</text>
-        <rect class="mask" x="168" y="372" width="104" height="16" rx="2"/>
-        <text class="lbl" x="220" y="384" text-anchor="middle">各建立一個新工作</text>
+        <rect class="mask" x="168" y="372" width="80" height="16" rx="2"/>
+        <text class="lbl" x="208" y="384" text-anchor="middle">索引裡已經有</text>
         <rect class="state" x="40" y="72" width="240" height="56" rx="8"/>
         <text class="name" x="160" y="105" text-anchor="middle">查到第 1～3 張沒有縮圖</text>
         <rect class="state" x="40" y="184" width="240" height="56" rx="8"/>
         <text class="name" x="160" y="217" text-anchor="middle">它們陸續做完、離開處理中</text>
-        <rect class="state" x="40" y="296" width="240" height="56" rx="8"/>
-        <text class="name" x="160" y="329" text-anchor="middle">排進去：都不在處理中</text>
-        <rect class="state-bad" x="40" y="408" width="240" height="56" rx="8"/>
-        <text class="name-bad" x="160" y="441" text-anchor="middle">P1 重做 3 張，超過 2 個執行緒</text>
-        <text class="head" x="360" y="56">P2　直接要一張縮圖</text>
+        <rect class="state-held" x="40" y="296" width="240" height="56" rx="8"/>
+        <text class="name-held" x="160" y="329" text-anchor="middle">排進去前：不在處理中，再查一次</text>
+        <rect class="state" x="40" y="408" width="240" height="56" rx="8"/>
+        <text class="name" x="160" y="441" text-anchor="middle">已經做好：不排，不重做</text>
+
+        <text class="head" x="360" y="56">直接要一張縮圖</text>
         <line class="edge-other" x1="480" y1="128" x2="480" y2="184" marker-end="url(#dq-arrow-other)"/>
         <line class="edge" x1="480" y1="240" x2="480" y2="296" marker-end="url(#dq-arrow)"/>
         <line class="edge" x1="480" y1="352" x2="480" y2="408" marker-end="url(#dq-arrow)"/>
@@ -88,20 +89,21 @@
         <text class="lbl-other" x="546" y="160" text-anchor="middle">背景工作剛好做完它</text>
         <rect class="mask" x="488" y="260" width="80" height="16" rx="2"/>
         <text class="lbl" x="528" y="272" text-anchor="middle">請求排進佇列</text>
-        <rect class="mask" x="488" y="372" width="92" height="16" rx="2"/>
-        <text class="lbl" x="534" y="384" text-anchor="middle">建立一個新工作</text>
+        <rect class="mask" x="488" y="372" width="80" height="16" rx="2"/>
+        <text class="lbl" x="528" y="384" text-anchor="middle">索引裡已經有</text>
         <rect class="state" x="360" y="72" width="240" height="56" rx="8"/>
         <text class="name" x="480" y="105" text-anchor="middle">查到這張沒有縮圖</text>
         <rect class="state" x="360" y="184" width="240" height="56" rx="8"/>
         <text class="name" x="480" y="217" text-anchor="middle">它剛好做完、離開處理中</text>
-        <rect class="state" x="360" y="296" width="240" height="56" rx="8"/>
-        <text class="name" x="480" y="329" text-anchor="middle">排進去：不在處理中</text>
-        <rect class="state-bad" x="360" y="408" width="240" height="56" rx="8"/>
-        <text class="name-bad" x="480" y="441" text-anchor="middle">P2 同一張又做一次</text>
-        <rect class="state-bad" x="40" y="492" width="24" height="16" rx="4"/>
-        <text class="lbl" x="72" y="504">壞掉的狀態（重做）</text>
-        <line class="edge-other" x1="204" y1="500" x2="244" y2="500" marker-end="url(#dq-arrow-other)"/>
-        <text class="lbl" x="256" y="504">另一方（工作執行緒）的動作</text>
+        <rect class="state-held" x="360" y="296" width="240" height="56" rx="8"/>
+        <text class="name-held" x="480" y="329" text-anchor="middle">排進去前：不在處理中，再查一次</text>
+        <rect class="state" x="360" y="408" width="240" height="56" rx="8"/>
+        <text class="name" x="480" y="441" text-anchor="middle">讀快取回給你，不重做</text>
+
+        <rect class="state-held" x="40" y="512" width="24" height="16" rx="4"/>
+        <text class="lbl" x="72" y="524">握著佇列鎖：再查一次索引</text>
+        <line class="edge-other" x1="300" y1="520" x2="340" y2="520" marker-end="url(#dq-arrow-other)"/>
+        <text class="lbl" x="352" y="524">另一方（工作執行緒）的動作</text>
       </svg>
     </div>
   </div>

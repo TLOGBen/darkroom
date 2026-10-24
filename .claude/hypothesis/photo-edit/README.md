@@ -10,9 +10,9 @@
 
 | # | 種類 | 規則 | 出處 | 發布時 |
 |---|---|---|---|---|
-| R1 | 安全 | 取回上一份編輯時，絕不蓋掉一份不同的編輯。 | `darkroom_app/services/photo_library.py:391-395`（S4a） | 守住 |
+| R1 | 安全 | 取回上一份編輯時，絕不蓋掉一份不同的編輯。 | `darkroom_app/services/photo_library.py:399-403`（S4a） | 守住 |
 | R2 | 安全 | 被清掉的編輯，一定先留成「上一份」。 | `darkroom_app/adapters/persist/edit_store.py:139`（S4） | 守住 |
-| G1 | 目標 | 一張照片可以設定編輯、清除、再取回。 | `photo_library.py:335-365`、`:367-376`、`:378-397` | 走得到 |
+| G1 | 目標 | 一張照片可以設定編輯、清除、再取回。 | `photo_library.py:343-373`、`:375-384`、`:386-405` | 走得到 |
 
 規則依據程式自己寫下的兩條承諾（S4、S4a）挑選，使用者已於 2026-10-24 逐條確認 R1、R2、G1。
 
@@ -60,17 +60,17 @@
 
 | 模型 | 程式 |
 |---|---|
-| `Set` | `photo_library.py:335-365`（鎖在 `:349`，寫入 `:364`）→ `edit_store.py:136`；貼上每張目標 `photo_library.py:432-437` |
-| `ClearCheck` | `photo_library.py:371-372` |
-| `ClearLock`、`RestoreLock` | `photo_library.py:373`、`:385` → `edit_store.py:112-130` → `locks.py:76-102` |
-| `ClearRead` | `photo_library.py:374` |
+| `Set` | `photo_library.py:343-373`（鎖在 `:357`，寫入 `:372`）→ `edit_store.py:136`；貼上每張目標 `photo_library.py:440-445` |
+| `ClearCheck` | `photo_library.py:379-380` |
+| `ClearLock`、`RestoreLock` | `photo_library.py:381`、`:393` → `edit_store.py:112-130` → `locks.py:76-102` |
+| `ClearRead` | `photo_library.py:382` |
 | `ClearExists` | `edit_store.py:141` |
 | `ClearKeep` | `edit_store.py:143-145` |
 | `ClearRemove` | `edit_store.py:147` |
-| `RestoreCheck` | `photo_library.py:382-384` |
-| `RestoreRead` | `photo_library.py:386` |
-| `RestorePrev` | `photo_library.py:387-389` |
-| `RestoreWrite` | `photo_library.py:393-396` |
+| `RestoreCheck` | `photo_library.py:390-392` |
+| `RestoreRead` | `photo_library.py:394` |
+| `RestorePrev` | `photo_library.py:395-397` |
+| `RestoreWrite` | `photo_library.py:401-404` |
 | `Release` | `edit_store.py:128-130` |
 | 兩方同時操作 | `adapters/http/server.py:130`（worker thread）、`adapters/mcp_server/__init__.py:1`（另一個行程） |
 
@@ -78,10 +78,10 @@
 
 | 哪一段 | 原因類別 | 具體情況 | 要什麼才能形式化／現在走哪條路 |
 |---|---|---|---|
-| `photo_library.py:400-441` 貼上編輯 | 交給別份假說 | 貼上會對多張照片逐張讀寫，屬於另一個流程 | 另寫一份假說 `photo-edit-paste`；現在不處理 |
+| `photo_library.py:408-449` 貼上編輯 | 交給別份假說 | 貼上會對多張照片逐張讀寫，屬於另一個流程 | 另寫一份假說 `photo-edit-paste`；現在不處理 |
 | `adapters/persist/locks.py:120-142` Windows 上 rename 遇到 PermissionError 的重試 | 無法建模 | 取決於作業系統什麼時候放開檔案 | 無；現在照 darkroom 現有的測試 |
 | 編輯內容本身是否正確（preset、強度、幾何） | 符合不觸發條件 | 「跑一次就能確認的主張」（formal.md 不觸發第 1 條） | 無；紅綠測試 |
 
 ## 同步點
 
-由發布腳本寫入 `hypothesis.json`（第 5 版，程式 a35545f，2026-10-24 發布）。涵蓋的檔案改過，本頁結論就失效，以指令輸出為準。
+由發布腳本寫入 `hypothesis.json`（第 6 版，2026-10-24 發布；第 6 版只更新行號：縮圖佇列的修正（HUNT-2026-001）讓 `photo_library.py` 的編輯程式整段往後移 8 行，內容沒變）。涵蓋的檔案改過，本頁結論就失效，以指令輸出為準。

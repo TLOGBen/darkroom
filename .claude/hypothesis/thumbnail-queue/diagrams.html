@@ -24,15 +24,15 @@
 <body>
 <main>
   <h1>假說：縮圖格的背景縮圖佇列</h1>
-  <p class="as-of">這是第 1 版、依 darkroom 17f91bc 的程式畫出的假說（由 HUNT-2026-001 起案）。目前可不可信，以
+  <p class="as-of">這是第 2 版、依 darkroom 修正後（fix/thumbnail-queue-redo）的程式畫出的假說（由 HUNT-2026-001 起案）。目前可不可信，以
     <code>hypothesis-status.py --area thumbnail-queue</code> 的輸出為準。</p>
 
   <h2>規則</h2>
   <ol>
-    <li>R1　同一張照片同時只會有一個縮圖工作。</li>
-    <li>R2　一張照片的縮圖做好之後，只有照片本身更新過，才會重新縮一次。</li>
-    <li>R3　重新列一次資料夾，被重做的照片不會超過工作執行緒數。（測試 <code>tests/test_photo_library.py:1141</code> 的假設，不是合約）</li>
-    <li>G1　列一次資料夾之後，每張照片終究都有縮圖。</li>
+    <li>R1　同一張照片同時只會有一個縮圖工作。（守住）</li>
+    <li>R2　一張照片的縮圖做好之後，只有照片本身更新過，才會重新縮一次。（守住）</li>
+    <li>R3　重新列一次資料夾，被重做的照片不會超過工作執行緒數。（守住；原本是測試的假設，現在測試斷言剛好不重做）</li>
+    <li>G1　列一次資料夾之後，每張照片終究都有縮圖。（走得到）</li>
   </ol>
 
   <h2>圖組</h2>
@@ -45,15 +45,12 @@
     <iframe src="diagrams/d2-two-steps.html" title="圖 2"></iframe>
   </figure>
   <figure>
-    <figcaption>圖 3　問題路徑：P1、P2 都是「查的當下沒縮圖，排進去時已經做好」，同一張被做了兩次。</figcaption>
-    <iframe src="diagrams/d3-paths.html" title="圖 3"></iframe>
+    <figcaption>圖 3　加上一部分：排進佇列時握著佇列鎖，不在處理中就再查一次索引；查的當下沒縮圖、之後做好的照片不再排，不會重做。</figcaption>
+    <iframe src="diagrams/d3-recheck.html" title="圖 3"></iframe>
   </figure>
 
   <h2>問題路徑</h2>
-  <ol>
-    <li><span class="bad">P1</span>　重新整理資料夾時，排在後面、還沒開始的縮圖也會被重做，重做的張數可以超過工作執行緒數（被打破的規則：R3，也打破 R2；CI 上 <code>27 not less than or equal to 26</code> 的機制）　<a href="paths/P1.md">劇本</a></li>
-    <li><span class="bad">P2</span>　直接要一張縮圖時，背景剛好把它做完，結果又被做一次（被打破的規則：R2）　<a href="paths/P2.md">劇本</a></li>
-  </ol>
+  <p>目前沒有：三條規則都守住。上一版找到的兩條（重新整理資料夾時把查詢期間做好的縮圖重做、直接要縮圖時把背景剛做好的再做一次）已經修好；拿掉「再查一次」的舊程式仍會被檢查抓到，見 <a href="README.md">README</a>。</p>
 
   <h2>範圍</h2>
   <p>一個資料夾；3 張照片（R3 用 4 張，才容得下「直接要最後一張」之外再重做 3 張）；2 個工作執行緒；列一次資料夾、直接要最後一張、再列一次；R1、R2 另外允許每張照片被改一次。假設佇列的每個操作握著同一把鎖、一步做完；工作執行緒做縮圖時讀到的版本就是記進索引的版本。窮舉的結論只在這個範圍內成立。</p>
