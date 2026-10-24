@@ -78,7 +78,7 @@ darkroom：還沒設定 preset 資料夾：執行 settings set preset_dir=<資�
 `darkroom` 是一支很小的 Rust 程式：找到 App 裝好的 Python 環境，把參數原封不動交給 darkroom 的 Python 程式，stdin／stdout／stderr 與結束碼都原樣轉回來。
 
 ```powershell
-darkroom --version                           # 這支執行檔自己的版本，例如「darkroom 0.1.0」
+darkroom --version                           # 這支執行檔自己的版本，例如「darkroom 0.1.1」
 darkroom version --json                      # 後端的版本與執行環境（Python、torch、CUDA）
 darkroom presets list --limit 3 --json       # = python -s -m darkroom_app.cli presets list ...
 darkroom mcp                                 # = python -s -m darkroom_app.mcp_server（MCP stdio server）
@@ -149,7 +149,7 @@ cd web; npm ci; npm run build; cd ..
 ```powershell
 .\.venv\Scripts\python.exe -s -m darkroom_app            # 印出「darkroom 已啟動：http://127.0.0.1:8765/」
 Invoke-WebRequest http://127.0.0.1:8765/api/health -UseBasicParsing   # 回 {"ok": true}
-.\.venv\Scripts\python.exe -s -m darkroom_app.cli --version          # darkroom 0.1.0
+.\.venv\Scripts\python.exe -s -m darkroom_app.cli --version          # darkroom 0.1.1
 ```
 
 瀏覽器開 <http://127.0.0.1:8765/>。`--port` 換埠（不要用 80），`--preset-dir`／`--data-dir` 只覆蓋這一次執行。Ctrl+C 停止。

@@ -14,7 +14,7 @@ import numpy as np
 import _util
 from test_app_server import make_presets, write_photo
 
-SERVER_INFO = {"name": "darkroom", "version": "0.1.0"}                      # verbatim
+SERVER_INFO = {"name": "darkroom", "version": "0.1.1"}                      # verbatim
 TOOLS = ["darkroom_presets_list", "darkroom_preset_show", "darkroom_preset_flags", "darkroom_sliders",
          "darkroom_open_photo", "darkroom_photo_folder", "darkroom_preview",
          "darkroom_export",    # verbatim, in order (CONTRACT-export XP4; K16: the library tools after it)

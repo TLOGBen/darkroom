@@ -1910,7 +1910,7 @@ class TestSettingsParity(unittest.IsolatedAsyncioTestCase):  # plan-v2 §3: sett
         self.assertEqual(steps[4][1]["checks"]["comfyui"], {"available": False, "reason": "假的 ComfyUI"})
         self.assertEqual(steps[5][1]["sources"]["language"], "file")
         self.assertEqual(steps[5][1]["settings"]["language"], "en-US")
-        self.assertEqual(steps[6][1], {"format": "darkroom-settings/1", "version": "0.1.0",
+        self.assertEqual(steps[6][1], {"format": "darkroom-settings/1", "version": "0.1.1",
                                        "settings": {"language": "en-US", "agent.budget_usd": 3}})
         self.assertEqual(steps[7][0], [False, "invalid", M.SET_DOC_FORMAT.format(format="darkroom-settings/1")])
         self.assertEqual(steps[8][1]["applied"], ["language", "agent.model"])

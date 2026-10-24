@@ -1,7 +1,7 @@
 [package]
 name = "darkroom-desktop"
 # Written by ../scripts/sync-version.mjs from darkroom_app/__init__.py `__version__`; do not edit by hand.
-version = "0.1.0"
+version = "0.1.1"
 description = "darkroom desktop shell: first-run setup of the managed Python environment, then the editor window"
 edition = "2024"
 rust-version = "1.90"

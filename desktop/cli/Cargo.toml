@@ -1,7 +1,7 @@
 [package]
 name = "darkroom-cli"
 # Written by ../scripts/sync-version.mjs from darkroom_app/__init__.py `__version__`; do not edit by hand.
-version = "0.1.0"
+version = "0.1.1"
 description = "The `darkroom` command: runs the darkroom CLI / MCP server / App from the managed Python environment"
 edition = "2024"
 rust-version = "1.90"

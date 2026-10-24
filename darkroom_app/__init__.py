@@ -21,4 +21,4 @@ shims for pre-v2 import paths; new code must not import them.
 """
 
 # Single source of the product version: pyproject.toml, the Tauri shell, /api/version and `cli --version` read this.
-__version__ = "0.1.0"
+__version__ = "0.1.1"
