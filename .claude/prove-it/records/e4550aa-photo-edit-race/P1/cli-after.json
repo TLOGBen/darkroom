@@ -1,0 +1,21 @@
+{
+  "cmd": [
+    "E:\\llm\\runtimes\\darkroom-python\\py3.13.14-torch2.14.0-cu130\\python.exe",
+    "-s",
+    "D:\\Workspace\\02_Project\\code\\darkroom\\.claude\\prove-it\\tools\\run_module.py",
+    "--repo",
+    "D:\\Workspace\\02_Project\\code\\darkroom",
+    "darkroom_app.cli",
+    "--preset-dir",
+    "C:\\Users\\powde\\AppData\\Local\\Temp\\claude\\D--Workspace-02-Project-code-darkroom\\ef1ca35e-9439-46f3-8ac1-95b43b4dcc5c\\scratchpad\\pi\\e4550aa\\P1\\run\\lib\\xmp",
+    "--data-dir",
+    "C:\\Users\\powde\\AppData\\Local\\Temp\\claude\\D--Workspace-02-Project-code-darkroom\\ef1ca35e-9439-46f3-8ac1-95b43b4dcc5c\\scratchpad\\pi\\e4550aa\\P1\\run\\data",
+    "edit",
+    "get",
+    "C:\\Users\\powde\\AppData\\Local\\Temp\\claude\\D--Workspace-02-Project-code-darkroom\\ef1ca35e-9439-46f3-8ac1-95b43b4dcc5c\\scratchpad\\pi\\e4550aa\\P1\\run\\photos\\a.jpg",
+    "--json"
+  ],
+  "exit": 0,
+  "stdout": "{\"ok\":true,\"result\":{\"fingerprint\":\"41cab698e84e2c9e10a717feb2033905e935b1f0be8e7a9ea30cac348c0411be\",\"edit\":{\"schema\":\"darkroom-edit/1\",\"fingerprint\":\"41cab698e84e2c9e10a717feb2033905e935b1f0be8e7a9ea30cac348c0411be\",\"preset\":{\"id\":\"p-strong\",\"name\":\"很亮\",\"group\":\"測試\",\"params\":{\"schema\":\"darkroom-params/1\",\"values\":{\"Exposure2012\":4.5},\"curves\":{},\"masks\":[],\"skipped\":[]}},\"strength\":70,\"overrides\":{}},\"preset_status\":\"current\",\"previous\":true}}\n",
+  "stderr": ""
+}

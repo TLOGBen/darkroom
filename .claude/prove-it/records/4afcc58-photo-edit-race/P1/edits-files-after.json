@@ -1,0 +1,4 @@
+{
+  "edits/41/41cab698e84e2c9e10a717feb2033905e935b1f0be8e7a9ea30cac348c0411be.json": "{\"schema\": \"darkroom-edit/1\", \"fingerprint\": \"41cab698e84e2c9e10a717feb2033905e935b1f0be8e7a9ea30cac348c0411be\", \"preset\": {\"id\": \"p-expo\", \"name\": \"曝光一\", \"group\": \"測試\", \"params\": {\"schema\": \"darkroom-params/1\", \"values\": {\"Exposure2012\": 1.0}, \"curves\": {}, \"masks\": [], \"skipped\": []}}, \"strength\": 130, \"overrides\": {}}",
+  "edits/41/41cab698e84e2c9e10a717feb2033905e935b1f0be8e7a9ea30cac348c0411be.prev.json": "{\"schema\": \"darkroom-edit/1\", \"fingerprint\": \"41cab698e84e2c9e10a717feb2033905e935b1f0be8e7a9ea30cac348c0411be\", \"preset\": {\"id\": \"p-expo\", \"name\": \"曝光一\", \"group\": \"測試\", \"params\": {\"schema\": \"darkroom-params/1\", \"values\": {\"Exposure2012\": 1.0}, \"curves\": {}, \"masks\": [], \"skipped\": []}}, \"strength\": 130, \"overrides\": {}}"
+}
