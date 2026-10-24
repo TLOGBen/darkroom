@@ -11,17 +11,37 @@ and is never overwritten or deleted (PL_SCHEMA_CONFLICT).
 
 Why files are sharded by the first two hex characters of the fingerprint: a library of tens of thousands of photos
 would otherwise put every edit into one folder, which slows down listing and backup tools on Windows.
+
+The edit lock (`locked`, hypothesis photo-edit R1 / R2): the App (HTTP worker threads) and an AI agent (the MCP
+server, another process) can work on one photo at the same time. Every read-compare-write of an edit (set, clear,
+restore, paste) runs while holding `edits/edits.lock` (cross-process, `locks.held`) plus a lock per process (the
+file lock does not exclude threads of one process on POSIX). Nothing here takes it: the service does, and the
+helpers below never nest it.
 """
+import contextlib
 import json
 import os
+import threading
 
 from ...domain import messages as M
 from ...domain.edits import EDIT_SCHEMA, EDIT_SCHEMA_V2, edit_problem
 from ...domain.errors import DarkroomError
 from ...utils.text import one_line
+from . import locks
 
 EDITS_DIR = "edits"                                      # verbatim (PL1)
 PREV_SUFFIX = ".prev.json"                               # verbatim (S4): edits/{fp[0:2]}/{fp}.prev.json
+LOCK_NAME = "edits.lock"                                 # edits/edits.lock: the edit lock (R1 / R2)
+
+_thread_locks = {}                                       # lock file (normcased) -> threading.Lock, one per process
+_thread_locks_guard = threading.Lock()
+
+
+def _thread_lock(lock_path):
+    """The process-wide threading.Lock of one lock file (shared by every EditStore on that data_dir)."""
+    key = os.path.normcase(os.path.abspath(lock_path))
+    with _thread_locks_guard:
+        return _thread_locks.setdefault(key, threading.Lock())
 
 
 class EditStore:
@@ -86,6 +106,28 @@ class EditStore:
     def has_previous(self, fp):
         """Is there a kept previous edit (the `previous` flag of every edit answer)?"""
         return os.path.exists(self.prev_path(fp))
+
+    # ------------------------------------------------------------------ the edit lock
+    @contextlib.contextmanager
+    def locked(self, photo_path):
+        """Hold the edit lock for the `with` block (R1 / R2): read, compare and write as one step.
+
+        The PLP1 guard runs first (the lock file is a write); data_dir and edits/ are created like a first write.
+        Busy longer than locks.LOCK_WAIT_S -> conflict PL_EDITS_BUSY. Not re-entrant: never nest it."""
+        self.folder.guard_photo(photo_path)
+        root = self.folder.root()
+        folder = self.folder.path(EDITS_DIR)
+        self.folder.make_dirs(folder)
+        lock_path = os.path.join(folder, LOCK_NAME)
+        tlock = _thread_lock(lock_path)
+        if not tlock.acquire(timeout=locks.LOCK_WAIT_S):
+            raise DarkroomError("conflict", M.PL_EDITS_BUSY)
+        try:
+            with locks.held(lock_path, root, preset_dir=self.folder.preset_dir, busy=M.PL_EDITS_BUSY,
+                            unavailable=M.PL_CANNOT_WRITE, fields={"data_dir": root}):
+                yield
+        finally:
+            tlock.release()
 
     # ------------------------------------------------------------------ writing
     def write(self, photo_path, edit):
