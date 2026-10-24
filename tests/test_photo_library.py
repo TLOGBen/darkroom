@@ -116,6 +116,16 @@ def sha(path):
         return hashlib.sha256(f.read()).hexdigest()
 
 
+def distinct(h, w, seed):
+    """pattern() with a corner coloured by `seed`, so photos made with different seeds have different contents.
+
+    pattern() itself ignores its seed: photos written from it are one picture, every thumbnail job after the first
+    is a cache hit of a few milliseconds, and a test that counts on slow jobs no longer has them (HUNT-2026-001)."""
+    img = pattern(h, w).copy()
+    img[-8:, -8:] = (seed * 37 % 256, seed * 91 % 256, seed * 53 % 256)
+    return img
+
+
 def decode_bgr(jpeg):
     return cv2.imdecode(np.frombuffer(jpeg, np.uint8), cv2.IMREAD_COLOR)
 
@@ -1113,11 +1123,11 @@ class TestThumbnails(PhotoLibCase):
     def test_direct_request_jumps_the_queue_and_stale_folders_are_dropped(self):  # PL12
         p = lambda n: os.path.join(self.photos, n)
         for i in range(12):
-            write_jpeg(p(f"f{i:02d}.jpg"), pattern(300, 400, seed=i), exif=False)
+            write_jpeg(p(f"f{i:02d}.jpg"), distinct(300, 400, i), exif=False)
         other = os.path.join(self.tmp, "other")
         os.makedirs(other)
         for i in range(12):
-            write_jpeg(os.path.join(other, f"g{i:02d}.jpg"), pattern(300, 400, seed=20 + i), exif=False)
+            write_jpeg(os.path.join(other, f"g{i:02d}.jpg"), distinct(300, 400, 20 + i), exif=False)
         order = []
         real = pl.make_thumbnail
 
@@ -1138,10 +1148,76 @@ class TestThumbnails(PhotoLibCase):
                 self.assertTrue(self.lib.wait_thumbnails(120))
         names = [os.path.basename(x) for x in order]
         self.assertEqual(sorted(set(names)), sorted(os.listdir(self.photos) + os.listdir(other)))
-        self.assertLessEqual(len(names), 24 + pl.THUMB_WORKERS)                 # stale jobs were dropped, not redone
+        self.assertEqual(len(names), 24)               # every photo made once: stale jobs dropped, none made again
         # a direct request that jumped a background job still counts that job as done: both indexes are written
         self.assertEqual(len(os.listdir(os.path.join(self.data, "index"))), 2)
         self.assertTrue(all(i["cached"] for i in self.f.folder_thumbnails(self.photos)["items"]))
+
+    # ---- hypothesis thumbnail-queue (R2): a thumbnail is made again only when its photo changed
+    def held_queue(self):
+        """Thumbnail jobs of this test wait at a gate until it is set -> (names of the photos made, the gate)."""
+        made, gate = [], threading.Event()
+
+        def work(path):
+            gate.wait(30)
+            made.append(os.path.basename(path))
+            return self.lib._generate(path)
+        patcher = mock.patch.object(self.lib._queue, "work", side_effect=work)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.addCleanup(gate.set)
+        return made, gate
+
+    def test_relisting_never_remakes_a_thumbnail_made_while_the_folder_was_checked(self):  # thumbnail-queue P1
+        names = [f"r{i}.jpg" for i in range(4)]
+        for i, n in enumerate(names):
+            write_jpeg(os.path.join(self.photos, n), distinct(120, 160, i), exif=False)
+        made, gate = self.held_queue()
+        self.f.folder_thumbnails(self.photos)                 # all four queued; the workers wait at the gate
+        real = self.lib._queue.new_generation
+
+        def checked(folder):                                  # the second listing has checked every photo: none
+            gate.set()                                        # ...and now every queued job runs and leaves inflight
+            self.assertTrue(self.lib.wait_thumbnails(30))
+            return real(folder)
+        with mock.patch.object(self.lib._queue, "new_generation", side_effect=checked):
+            items = self.f.folder_thumbnails(self.photos)["items"]
+        self.assertEqual([i["cached"] for i in items], [False] * 4)          # it really saw no thumbnail
+        self.assertTrue(self.lib.wait_thumbnails(30))
+        self.assertEqual(sorted(made), names, "a thumbnail made during the listing was made again")
+        # the exception: a photo changed after its thumbnail was made gets a new one
+        changed = os.path.join(self.photos, "r0.jpg")
+        write_jpeg(changed, distinct(120, 160, 9), exif=False)
+        st = os.stat(changed)
+        os.utime(changed, ns=(st.st_atime_ns, st.st_mtime_ns + 2_000_000_000))
+        self.f.folder_thumbnails(self.photos)
+        self.assertTrue(self.lib.wait_thumbnails(30))
+        self.assertEqual(sorted(made), sorted(names + ["r0.jpg"]))
+
+    def test_direct_request_never_remakes_a_thumbnail_made_meanwhile(self):  # thumbnail-queue P2
+        names = [f"d{i}.jpg" for i in range(3)]
+        for i, n in enumerate(names):
+            write_jpeg(os.path.join(self.photos, n), distinct(120, 160, i), exif=False)
+        made, gate = self.held_queue()
+        self.f.folder_thumbnails(self.photos)                 # all three queued; the workers wait at the gate
+        target = os.path.join(self.photos, "d2.jpg")
+        real = self.lib.thumbs.lookup
+        fired = []
+
+        def looked(folder, name, st):                         # thumbnail() has checked the cache: nothing yet
+            fp = real(folder, name, st)
+            if not fired:
+                fired.append(name)
+                gate.set()                                    # ...and now the background makes d2, leaves inflight
+                self.assertTrue(self.lib.wait_thumbnails(30))
+            return fp
+        with mock.patch.object(self.lib.thumbs, "lookup", side_effect=looked):
+            t = self.f.thumbnail(target)
+        self.assertEqual(fired, ["d2.jpg"])
+        self.assertEqual(t.fingerprint, sha(target))
+        self.assertEqual(t.jpeg[:2], b"\xff\xd8")
+        self.assertTrue(self.lib.wait_thumbnails(30))
+        self.assertEqual(sorted(made), names, "the direct request made d2 again")
 
 
 # ---------------------------------------------------------------- HTTP (PL6, PL13, PLP2)
