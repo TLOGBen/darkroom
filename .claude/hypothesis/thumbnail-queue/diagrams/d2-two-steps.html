@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>重新列資料夾分兩段 · 縮圖佇列狀態機</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Noto+Sans+TC:wght@400;500;600&family=Noto+Serif+TC:wght@400&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      color-scheme: light dark;
+      --paper: #f5f5f5; --node: #ffffff; --ink: #2d3142; --muted: #4f5d75; --soft: #5a6580;
+      --rule: rgba(45,49,66,0.12); --zone: rgba(45,49,66,0.04);
+      --accent: #bf4520; --accent-tint: rgba(191,69,32,0.08); --link: #2e5aa8;
+      --font-sans: 'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', system-ui, sans-serif;
+      --font-serif: 'Instrument Serif', 'Noto Serif TC', serif;
+      --font-mono: 'Geist Mono', ui-monospace, monospace;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --paper: #2d3142; --node: #393e53; --ink: #f5f5f5; --muted: #bfc0c0; --soft: #949eb2;
+        --rule: rgba(245,245,245,0.12); --zone: rgba(245,245,245,0.04);
+        --accent: #f08a59; --accent-tint: rgba(240,138,89,0.10); --link: #739fdf;
+      }
+    }
+    body { font-family: var(--font-sans); background: var(--paper); color: var(--ink); min-height: 100vh;
+           display: flex; align-items: center; justify-content: center; padding: 3rem 2rem; }
+    @media (max-width: 600px) { body { padding: 1.5rem 16px; } }
+    .frame { max-width: 1200px; width: 100%; min-width: 0; }
+    .diagram-container { width: 100%; overflow-x: auto; }
+    .eyebrow { font-size: 0.75rem; font-weight: 500; letter-spacing: 0.06em; color: var(--muted); margin-bottom: 0.5rem; }
+    h1 { font-family: var(--font-serif); font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2rem); font-weight: 400;
+         letter-spacing: -0.01em; line-height: 1.15; color: var(--ink); margin-bottom: 1.5rem; }
+    svg { width: 100%; max-width: 640px; min-width: 640px; display: block; margin: 0 auto; }
+    @media print { .diagram-container { overflow-x: visible; } svg { min-width: 0; } }
+    /* SVG roles */
+    .bg { fill: var(--paper); }
+    .state { fill: var(--node); stroke: var(--ink); stroke-width: 1; }
+    .state-bad { fill: var(--accent-tint); stroke: var(--accent); stroke-width: 2; }
+    .edge { fill: none; stroke: var(--muted); stroke-width: 1.2; }
+    .edge-other { fill: none; stroke: var(--link); stroke-width: 1.2; stroke-dasharray: 5 4; }
+    .mk { fill: var(--muted); }
+    .mk-other { fill: var(--link); }
+    .mask { fill: var(--paper); }
+    .name { fill: var(--ink); font-family: var(--font-sans); font-size: 14px; font-weight: 600; }
+    .name-bad { fill: var(--accent); font-family: var(--font-sans); font-size: 14px; font-weight: 600; }
+    .head { fill: var(--muted); font-family: var(--font-mono); font-size: 11px; font-weight: 600; letter-spacing: 0.08em; }
+    .lbl { fill: var(--soft); font-family: var(--font-sans); font-size: 12px; font-weight: 500; }
+    .lbl-other { fill: var(--link); font-family: var(--font-sans); font-size: 12px; font-weight: 500; }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">darkroom 縮圖格的背景縮圖 · 狀態機</p>
+    <h1>加上一部分：重新列資料夾是「先全部查完，再全部排進去」</h1>
+    <div class="diagram-container">
+      <svg viewBox="0 0 640 528" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="t d">
+        <title id="t">加上一部分：重新列資料夾是「先全部查完，再全部排進去」</title>
+        <desc id="d">重新列資料夾時，程式先把整個資料夾一張一張查有沒有縮圖，查完才把沒有縮圖的一張一張排進佇列；排進去時只看這張是不是還在處理中，不會再查一次有沒有縮圖。</desc>
+        <defs>
+          <marker id="dq-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon class="mk" points="0 0, 8 3, 0 6"/></marker>
+          <marker id="dq-arrow-other" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon class="mk-other" points="0 0, 8 3, 0 6"/></marker>
+        </defs>
+        <rect class="bg" width="640" height="528"/>
+        <text class="head" x="40" y="56">重新列資料夾（主執行緒）</text>
+        <line class="edge" x1="160" y1="128" x2="160" y2="184" marker-end="url(#dq-arrow)"/>
+        <line class="edge" x1="160" y1="240" x2="160" y2="296" marker-end="url(#dq-arrow)"/>
+        <line class="edge" x1="160" y1="352" x2="160" y2="408" marker-end="url(#dq-arrow)"/>
+        <rect class="mask" x="168" y="148" width="92" height="16" rx="2"/>
+        <text class="lbl" x="214" y="160" text-anchor="middle">查完整個資料夾</text>
+        <rect class="mask" x="168" y="260" width="56" height="16" rx="2"/>
+        <text class="lbl" x="196" y="272" text-anchor="middle">準備排入</text>
+        <rect class="mask" x="168" y="372" width="140" height="16" rx="2"/>
+        <text class="lbl" x="238" y="384" text-anchor="middle">只看處理中，不再查縮圖</text>
+        <rect class="state" x="40" y="72" width="240" height="56" rx="8"/>
+        <text class="name" x="160" y="105" text-anchor="middle">一張一張查有沒有縮圖</text>
+        <rect class="state" x="40" y="184" width="240" height="56" rx="8"/>
+        <text class="name" x="160" y="217" text-anchor="middle">記下沒有縮圖的照片</text>
+        <rect class="state" x="40" y="296" width="240" height="56" rx="8"/>
+        <text class="name" x="160" y="329" text-anchor="middle">世代號加一</text>
+        <rect class="state" x="40" y="408" width="240" height="56" rx="8"/>
+        <text class="name" x="160" y="441" text-anchor="middle">一張一張排進佇列</text>
+        <text class="head" x="360" y="56">同時：工作執行緒</text>
+        <line class="edge" x1="480" y1="128" x2="480" y2="184" marker-end="url(#dq-arrow)"/>
+        <line class="edge" x1="480" y1="240" x2="480" y2="296" marker-end="url(#dq-arrow)"/>
+        <line class="edge" x1="480" y1="352" x2="480" y2="408" marker-end="url(#dq-arrow)"/>
+        <rect class="mask" x="488" y="148" width="32" height="16" rx="2"/>
+        <text class="lbl" x="504" y="160" text-anchor="middle">做完</text>
+        <rect class="mask" x="488" y="260" width="56" height="16" rx="2"/>
+        <text class="lbl" x="516" y="272" text-anchor="middle">交出結果</text>
+        <rect class="mask" x="488" y="372" width="80" height="16" rx="2"/>
+        <text class="lbl" x="528" y="384" text-anchor="middle">佇列還有工作</text>
+        <rect class="state" x="360" y="72" width="240" height="56" rx="8"/>
+        <text class="name" x="480" y="105" text-anchor="middle">正在做縮圖</text>
+        <rect class="state" x="360" y="184" width="240" height="56" rx="8"/>
+        <text class="name" x="480" y="217" text-anchor="middle">記進索引</text>
+        <rect class="state" x="360" y="296" width="240" height="56" rx="8"/>
+        <text class="name" x="480" y="329" text-anchor="middle">離開處理中</text>
+        <rect class="state" x="360" y="408" width="240" height="56" rx="8"/>
+        <text class="name" x="480" y="441" text-anchor="middle">取下一件</text>
+      </svg>
+    </div>
+  </div>
+</body>
+</html>

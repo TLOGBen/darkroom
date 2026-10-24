@@ -1,0 +1,18 @@
+# before: the model as published at generation 1 (17f91bc, no recheck in submit), run unchanged on 2026-10-24
+model/R1.cfg: states=35822 steps=0 Model checking completed. No error has been found.
+model/R2.cfg: states=3727 steps=18 Error: Invariant NoRedoUnlessUpdated is violated.
+model/R3.cfg: states=3288 steps=38 Error: Invariant RedoAtMostWorkers is violated.
+model/Goal.cfg: states=457 steps=20 Error: Invariant NeverAllDone is violated.
+variants/G1-NoMake.cfg: states=32 steps=0 Model checking completed. No error has been found.
+variants/R1-NoInflightCheck.cfg: states=108 steps=10 Error: Invariant OneJobPerPhoto is violated.
+variants/Fix-RecheckInSubmit.cfg: states=222006 steps=0 Model checking completed. No error has been found.
+
+# after: the model updated to the fix (submit asks done() under the queue lock); pwsh -File model/check.ps1
+model/R1.cfg: states=21956 steps=0 Model checking completed. No error has been found.
+model/R2.cfg: states=21956 steps=0 Model checking completed. No error has been found.
+model/R3.cfg: states=2129 steps=0 Model checking completed. No error has been found.
+model/Goal.cfg: states=426 steps=20 Error: Invariant NeverAllDone is violated.
+variants/G1-NoMake.cfg: states=32 steps=0 Model checking completed. No error has been found.
+variants/R1-NoInflightCheck.cfg: states=108 steps=10 Error: Invariant OneJobPerPhoto is violated.
+variants/R2-NoRecheck.cfg: states=3727 steps=18 Error: Invariant NoRedoUnlessUpdated is violated.
+variants/R3-NoRecheck.cfg: states=3288 steps=38 Error: Invariant RedoAtMostWorkers is violated.

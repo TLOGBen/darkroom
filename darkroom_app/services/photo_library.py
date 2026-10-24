@@ -133,10 +133,14 @@ class _ThumbQueue:
             for i in range(THUMB_WORKERS):
                 threading.Thread(target=self._run, name=f"{THUMB_THREAD_PREFIX}-{i}", daemon=True).start()
 
-    def submit(self, path, folder, priority):
+    def submit(self, path, folder, priority, done=None):
         """Queue a thumbnail for `path` (or join the job already queued / running for it) -> its _Future.
 
-        priority 0 = someone is waiting for this thumbnail now, 1 = background pre-generation for a folder."""
+        priority 0 = someone is waiting for this thumbnail now, 1 = background pre-generation for a folder.
+        done: () -> bool, asked while holding the queue lock when no job for `path` is in flight: True means the
+        thumbnail was made after the caller last looked, so no job is queued and the future is already set to None
+        (the caller reads the cache). A worker records a thumbnail in the index before it leaves `inflight`, so
+        "not in flight" here means "never queued" or "made and recorded" (hypothesis thumbnail-queue, R2)."""
         key = os.path.normcase(os.path.abspath(path))
         with self.cv:
             self._ensure_workers()
@@ -148,6 +152,10 @@ class _ThumbQueue:
                         job.priority = priority
                         heapq.heapify(self.heap)
                 return job.future
+            if done is not None and done():                           # made since the caller looked: not again
+                made = _Future()
+                made.set(None)
+                return made
             self.seq += 1
             job = _Job(priority, self.seq, key, path, folder, self.generation.get(folder, 0))
             if priority:
@@ -495,6 +503,15 @@ class PhotoLibraryService:
             self.thumbs.flush(folder)
         return fp, jpeg
 
+    def _cached_fingerprint(self, folder, path):
+        """The fingerprint of `path` when the index still matches the file (size, mtime) and its thumbnail is cached,
+        else None. Asked again by submit (under the queue lock) for a photo checked earlier (thumbnail-queue R2)."""
+        try:
+            fp = self.thumbs.lookup(folder, os.path.basename(path), os.stat(path))
+        except OSError:
+            return None
+        return fp if fp is not None and self.thumbs.exists(fp) else None
+
     def folder_thumbnails(self, folder, offset=0, limit=None):
         """The grid of a folder -> {folder, items: [{name, path, fingerprint, edited, cached}], total, next_offset}.
 
@@ -526,8 +543,8 @@ class PhotoLibraryService:
             if not cached:
                 todo.append(f["path"])
         self._queue.new_generation(folder)
-        for p in todo:
-            self._queue.submit(p, folder, 1)
+        for p in todo:                    # one checked earlier may have been made meanwhile: submit asks again (R2)
+            self._queue.submit(p, folder, 1, done=lambda p=p: self._cached_fingerprint(folder, p) is not None)
         total = len(items)
         end = total if limit is None else offset + limit
         page = items[offset:end]
@@ -547,7 +564,15 @@ class PhotoLibraryService:
         if fp is not None:
             jpeg = self.thumbs.read(fp)                      # warm: the photo file is not opened (PL16 b)
         if jpeg is None:
-            fp, jpeg = self._queue.submit(path, folder, 0).wait()
+            made = self._queue.submit(path, folder, 0,
+                                      done=lambda: self._cached_fingerprint(folder, path) is not None).wait()
+            if made is None:              # made by a background job after the look above: read it, do not remake
+                fp = self._cached_fingerprint(folder, path)
+                jpeg = self.thumbs.read(fp) if fp is not None else None
+                if jpeg is None:          # vanished in between (cache folder emptied): make it after all
+                    made = self._queue.submit(path, folder, 0).wait()
+            if made is not None:
+                fp, jpeg = made
         edited = self.edits.exists(fp)
         summary, geometry = self._edit_summary(fp) if edited else (None, None)
         if geometry is not None:                             # C18 (D7): the cached thumbnail is the original's

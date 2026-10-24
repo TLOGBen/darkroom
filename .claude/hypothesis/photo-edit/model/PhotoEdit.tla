@@ -37,25 +37,25 @@ Idle(a) == pc[a] = "idle"
 Go(a, s) == pc' = [pc EXCEPT ![a] = s]
 Release == holder' = None            \* 離開 with self.edits.locked(...)（edit_store.py:128-130）
 
-\* 設定編輯：拿鎖、重讀、決定、整檔原子替換、放鎖（photo_library.py:335-365，鎖在 :349，
-\* 寫入 :364 → edit_store.py:136）。鎖外的第一輪只檢查參數、不寫（:337-348），所以在鎖裡
-\* 是一步。貼上編輯對每張目標也是同一步（photo_library.py:432-437）。舊程式沒有鎖，一樣是一步。
+\* 設定編輯：拿鎖、重讀、決定、整檔原子替換、放鎖（photo_library.py:343-373，鎖在 :357，
+\* 寫入 :372 → edit_store.py:136）。鎖外的第一輪只檢查參數、不寫（:345-356），所以在鎖裡
+\* 是一步。貼上編輯對每張目標也是同一步（photo_library.py:440-445）。舊程式沒有鎖，一樣是一步。
 Set(a, e) ==
   /\ Idle(a) /\ holder = None
   /\ cur' = e
   /\ UNCHANGED <<prev, holder, pc, snapCur, snapPrev, overwrote, lost, restored>>
 
 \* ---- 清除編輯 ----
-\* 鎖外先看編輯檔在不在：不在就直接回答、什麼都不寫（photo_library.py:371-372，沒有狀態改變）
-ClearCheck(a) ==                    \* photo_library.py:371  if not self.edits.exists(fp)
+\* 鎖外先看編輯檔在不在：不在就直接回答、什麼都不寫（photo_library.py:379-380，沒有狀態改變）
+ClearCheck(a) ==                    \* photo_library.py:379  if not self.edits.exists(fp)
   /\ Locked /\ Idle(a) /\ cur /= None
   /\ Go(a, "c_check")
   /\ UNCHANGED <<cur, prev, holder, snapCur, snapPrev, overwrote, lost, restored>>
-ClearLock(a) ==                     \* photo_library.py:373 → edit_store.py:117-128  拿編輯鎖
+ClearLock(a) ==                     \* photo_library.py:381 → edit_store.py:117-128  拿編輯鎖
   /\ pc[a] = "c_check" /\ holder = None
   /\ holder' = a /\ Go(a, "c_locked")
   /\ UNCHANGED <<cur, prev, snapCur, snapPrev, overwrote, lost, restored>>
-ClearRead(a) ==                     \* photo_library.py:374  existing = self.edits.read(...)
+ClearRead(a) ==                     \* photo_library.py:382  existing = self.edits.read(...)
   /\ IF Locked THEN pc[a] = "c_locked" ELSE Idle(a)
   /\ snapCur' = [snapCur EXCEPT ![a] = cur] /\ Go(a, "c_read")
   /\ UNCHANGED <<cur, prev, holder, snapPrev, overwrote, lost, restored>>
@@ -75,25 +75,25 @@ ClearRemove(a) ==                   \* edit_store.py:147  self.folder.remove(p)�
   /\ UNCHANGED <<prev, snapCur, snapPrev, overwrote, restored>>
 
 \* ---- 取回上一份 ----
-\* 鎖外先看有沒有上一份：沒有就回 not_found、什麼都不寫（photo_library.py:382-384，沒有狀態改變）
-RestoreCheck(a) ==                  \* photo_library.py:382  if not self.edits.has_previous(fp)
+\* 鎖外先看有沒有上一份：沒有就回 not_found、什麼都不寫（photo_library.py:390-392，沒有狀態改變）
+RestoreCheck(a) ==                  \* photo_library.py:390  if not self.edits.has_previous(fp)
   /\ Locked /\ ~NoRestore /\ Idle(a) /\ prev /= None
   /\ Go(a, "r_check")
   /\ UNCHANGED <<cur, prev, holder, snapCur, snapPrev, overwrote, lost, restored>>
-RestoreLock(a) ==                   \* photo_library.py:385 → edit_store.py:117-128  拿編輯鎖
+RestoreLock(a) ==                   \* photo_library.py:393 → edit_store.py:117-128  拿編輯鎖
   /\ pc[a] = "r_check" /\ holder = None
   /\ holder' = a /\ Go(a, "r_locked")
   /\ UNCHANGED <<cur, prev, snapCur, snapPrev, overwrote, lost, restored>>
-RestoreRead(a) ==                   \* photo_library.py:386  current = self.edits.read(...)
+RestoreRead(a) ==                   \* photo_library.py:394  current = self.edits.read(...)
   /\ IF Locked THEN pc[a] = "r_locked" ELSE ~NoRestore /\ Idle(a)
   /\ snapCur' = [snapCur EXCEPT ![a] = cur] /\ Go(a, "r_read")
   /\ UNCHANGED <<cur, prev, holder, snapPrev, overwrote, lost, restored>>
-RestorePrev(a) ==                   \* photo_library.py:387-389  prev = read_previous；沒有就 not_found（放鎖）
+RestorePrev(a) ==                   \* photo_library.py:395-397  prev = read_previous；沒有就 not_found（放鎖）
   /\ pc[a] = "r_read"
   /\ snapPrev' = [snapPrev EXCEPT ![a] = prev]
   /\ IF prev = None THEN Go(a, "idle") /\ Release ELSE Go(a, "r_prev") /\ UNCHANGED holder
   /\ UNCHANGED <<cur, prev, snapCur, overwrote, lost, restored>>
-RestoreWrite(a) ==                  \* photo_library.py:393-396  比對讀到的目前編輯，不同就 conflict，否則寫入；放鎖
+RestoreWrite(a) ==                  \* photo_library.py:401-404  比對讀到的目前編輯，不同就 conflict，否則寫入；放鎖
   /\ pc[a] = "r_prev"
   /\ IF snapCur[a] /= None /\ snapCur[a] /= snapPrev[a]
        THEN /\ Go(a, "idle") /\ UNCHANGED <<cur, overwrote, restored>>
@@ -110,7 +110,7 @@ Next == \E a \in Actors :
 Spec == Init /\ [][Next]_vars
 
 -----------------------------------------------------------------------------
-\* R1（S4a，photo_library.py:391-395）取回上一份時，絕不蓋掉一份不同的編輯
+\* R1（S4a，photo_library.py:399-403）取回上一份時，絕不蓋掉一份不同的編輯
 NoRestoreOverDifferent == ~overwrote
 \* R2（S4，edit_store.py:139）被清掉的編輯，一定先留成上一份
 NoLostEdit == ~lost

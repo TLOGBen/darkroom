@@ -20,16 +20,16 @@
     ],
     "versions": {},
     "hash_algo": "sha256-lf",
-    "commit": "a35545f",
+    "commit": "cdf8f4f",
     "files": {
       "darkroom_app/adapters/http/server.py": "940d6a96139fe9eccfd4791297c949f03217204b4e499e0deff227fd4fe7a0d9",
       "darkroom_app/adapters/mcp_server/__init__.py": "321e1a36b864204aeb3ca7100aefd2cc2619eb6a526331618ccb050b62eb0219",
       "darkroom_app/adapters/persist/edit_store.py": "062d257aeccb78d376f5d41848419353da6819f7bca46b81ebed7b511217551d",
       "darkroom_app/adapters/persist/locks.py": "792eeb083b93d18008f49f9df07d6b54a044e1d4208e5506229c0bd6b110e5eb",
-      "darkroom_app/services/photo_library.py": "99dd6989f07359f58bbc71eeafe698f8b4a8e9fe32f8774fa5a47dd1026549e8"
+      "darkroom_app/services/photo_library.py": "b9a03f54cb9017162e2b1b62c4cb45d53191b59309993d3583e692fbce0bc2fc"
     },
     "artifact": {
-      "check.txt": "d95feb7e4244ad650d92c171a44d3e72671624ab24095eec723bef1fc62ad4f2",
+      "check.txt": "401a3170aa01a19cc13130608e15ef80e520467145b23b872df072269dddf9dc",
       "diagrams/d1-happy.html": "881af5e2630aeb14af527a622ef301c017bcfa74c88032763afc7c67d2efcb56",
       "diagrams/d2-two-parties.html": "c99408c2e155dfc1b43fdf6be7555a4ebd877d711be7427be930f605737958ef",
       "diagrams/d3-locked.html": "22185a57353e03ef46fbc90a27d2545d03f5d99b741b665f0f70ae93d6427a86",
@@ -38,8 +38,8 @@
       "model/check.ps1": "b6a817ef4f9a108e78ebb8cd14b5ccee781d25280911f3af906239e6669e4268",
       "model/Goal.cfg": "20a50531c0e7983aa78f37d0ae4aa08b0d726e225a09becce17298c7c3e6a607",
       "model/PhotoEdit.cfg": "52ea440efbd2d814fddda83248e5143efe93a53a06cdd9af22f831bfd399741a",
-      "model/PhotoEdit.tla": "90c5b1290309fe12f4147fda8eb3b1bfe503039e743efe258091d421bb2dcbe9",
-      "README.md": "271ae6cf0e837bd9f399e10b90962a5e640439b483269274baf158497d694bca",
+      "model/PhotoEdit.tla": "452741be2bbd5dc48cff5b23680667529b7c7e230ad659d7aa6f56950e634ab9",
+      "README.md": "263775ea2d73884f550cd3b76c9ce5db902917f84963e6841e593cd182c626a1",
       "variants/G1-NoRestore.cfg": "3d08e201e438f586314298eb3fb115609077437fe05554e4a42f2c4538065952",
       "variants/R1-Unlocked.cfg": "e88473653d55155163c9761b1600eca811bf3efa0f8e7aeee8bdc6c96fe1aca8",
       "variants/R2-Unlocked.cfg": "9a5f88e7882da1d9053a6084ada3d068e1e59ea5016d96983ef2c67ee00435bb"
@@ -89,22 +89,22 @@
     {
       "part": "Set",
       "cites": [
-        "darkroom_app/services/photo_library.py:335-365",
+        "darkroom_app/services/photo_library.py:343-373",
         "darkroom_app/adapters/persist/edit_store.py:136",
-        "darkroom_app/services/photo_library.py:432-437"
+        "darkroom_app/services/photo_library.py:440-445"
       ]
     },
     {
       "part": "ClearCheck",
       "cites": [
-        "darkroom_app/services/photo_library.py:371-372"
+        "darkroom_app/services/photo_library.py:379-380"
       ]
     },
     {
       "part": "ClearLock / RestoreLock",
       "cites": [
-        "darkroom_app/services/photo_library.py:373",
-        "darkroom_app/services/photo_library.py:385",
+        "darkroom_app/services/photo_library.py:381",
+        "darkroom_app/services/photo_library.py:393",
         "darkroom_app/adapters/persist/edit_store.py:112-130",
         "darkroom_app/adapters/persist/locks.py:76-102"
       ]
@@ -112,7 +112,7 @@
     {
       "part": "ClearRead",
       "cites": [
-        "darkroom_app/services/photo_library.py:374"
+        "darkroom_app/services/photo_library.py:382"
       ]
     },
     {
@@ -136,25 +136,25 @@
     {
       "part": "RestoreCheck",
       "cites": [
-        "darkroom_app/services/photo_library.py:382-384"
+        "darkroom_app/services/photo_library.py:390-392"
       ]
     },
     {
       "part": "RestoreRead",
       "cites": [
-        "darkroom_app/services/photo_library.py:386"
+        "darkroom_app/services/photo_library.py:394"
       ]
     },
     {
       "part": "RestorePrev",
       "cites": [
-        "darkroom_app/services/photo_library.py:387-389"
+        "darkroom_app/services/photo_library.py:395-397"
       ]
     },
     {
       "part": "RestoreWrite",
       "cites": [
-        "darkroom_app/services/photo_library.py:393-396"
+        "darkroom_app/services/photo_library.py:401-404"
       ]
     },
     {
@@ -178,7 +178,7 @@
       "name": "NoRestoreOverDifferent",
       "text": "取回上一份編輯時，絕不蓋掉一份不同的編輯。",
       "cites": [
-        "darkroom_app/services/photo_library.py:391-395"
+        "darkroom_app/services/photo_library.py:399-403"
       ],
       "verdict": "held",
       "paths": []
@@ -210,7 +210,7 @@
   "unformalized": [
     {
       "id": "U1",
-      "where": "darkroom_app/services/photo_library.py:400-441 貼上編輯",
+      "where": "darkroom_app/services/photo_library.py:408-449 貼上編輯",
       "class": "handed-off",
       "detail": "貼上會對多張照片逐張讀寫，屬於另一個流程，交給另一份假說 photo-edit-paste；每張目標的讀寫握著同一把編輯鎖，單張照片上等同設定。",
       "until": "寫出 photo-edit-paste",
@@ -247,11 +247,22 @@
         "diagrams",
         "README"
       ]
+    },
+    {
+      "generation": 6,
+      "from_commit": "a35545f",
+      "to_commit": "cdf8f4f",
+      "outcome": "no-effect",
+      "note": "縮圖佇列的修正（HUNT-2026-001）只改 _ThumbQueue.submit、folder_thumbnails、thumbnail 與新的 _cached_fingerprint；編輯相關程式（set/clear/restore/paste、EditStore）沒變，只是整段往後移 8 行。模型與變體不變，重跑結果相同；引用行號隨之更新。",
+      "areas_changed": [
+        "citations",
+        "README"
+      ]
     }
   ],
   "migrated_from": null,
   "schema": "baransu.hypothesis/1",
   "area": "photo-edit",
-  "generation": 5,
-  "published_at": "2026-10-24T12:46:25+08:00"
+  "generation": 6,
+  "published_at": "2026-10-24T15:50:59+08:00"
 }

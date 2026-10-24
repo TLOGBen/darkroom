@@ -1,12 +1,11 @@
-# before: the model as published at generation 4 (4afcc58, no edit lock), run unchanged on 2026-10-24
-model/PhotoEdit.cfg: states=208 steps=6 Error: Invariant NoLostEdit is violated.
-model/Goal.cfg: states=404 steps=8 Error: Invariant NeverRestored is violated.
-variants/G1-NoRestore.cfg: states=1344 steps=0 Model checking completed. No error has been found.
-variants/Locked.cfg: states=15 steps=0 Model checking completed. No error has been found.
-variants/R1-only.cfg: states=1174 steps=10 Error: Invariant NoRestoreOverDifferent is violated.
-variants/R2-only.cfg: states=208 steps=6 Error: Invariant NoLostEdit is violated.
+# before (generation 5, citations at a35545f), run unchanged on 2026-10-24 after the thumbnail-queue fix moved photo_library.py lines
+model/PhotoEdit.cfg: states=17837 steps=0 Model checking completed. No error has been found.
+model/Goal.cfg: states=358 steps=13 Error: Invariant NeverRestored is violated.
+variants/G1-NoRestore.cfg: states=351 steps=0 Model checking completed. No error has been found.
+variants/R1-Unlocked.cfg: states=1174 steps=10 Error: Invariant NoRestoreOverDifferent is violated.
+variants/R2-Unlocked.cfg: states=208 steps=6 Error: Invariant NoLostEdit is violated.
 
-# after: the model updated to the code at a35545f (edit lock held across read-compare-write); pwsh -File model/check.ps1
+# after: citations moved +8 lines in photo_library.py (no model change); pwsh -File model/check.ps1
 model/PhotoEdit.cfg: states=17837 steps=0 Model checking completed. No error has been found.
 model/Goal.cfg: states=358 steps=13 Error: Invariant NeverRestored is violated.
 variants/G1-NoRestore.cfg: states=351 steps=0 Model checking completed. No error has been found.
