@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>照片編輯｜假說圖組</title>
+  <style>
+    :root { --bg:#fbfaf7; --fg:#1f2328; --muted:#5d636b; --card:#fff; --line:#e3e0d8; --accent:#2f6f8f; --bad:#b42318; }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) { --bg:#15171a; --fg:#e6e6e6; --muted:#a0a6ad; --card:#1d2024; --line:#30343a; --accent:#7fb6d3; --bad:#ff8a80; }
+    }
+    :root[data-theme="dark"] { --bg:#15171a; --fg:#e6e6e6; --muted:#a0a6ad; --card:#1d2024; --line:#30343a; --accent:#7fb6d3; --bad:#ff8a80; }
+    * { box-sizing: border-box; }
+    body { margin:0; background:var(--bg); color:var(--fg);
+           font:16px/1.7 "Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif; }
+    main { max-width:1040px; margin:0 auto; padding:32px 16px 64px; }
+    h1 { font-size:1.6rem; margin:0 0 4px; } h2 { font-size:1.15rem; margin:32px 0 8px; }
+    .as-of, figcaption { color:var(--muted); }
+    figure { margin:16px 0 28px; background:var(--card); border:1px solid var(--line); border-radius:10px; padding:12px; }
+    figure iframe { width:100%; height:560px; border:0; }
+    .bad { color:var(--bad); font-weight:600; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>假說：一張照片的編輯、清除、取回上一份</h1>
+  <p class="as-of">這是第 5 版、依 darkroom a35545f 的程式畫出的假說。目前可不可信，以
+    <code>hypothesis-status.py --area photo-edit</code> 的輸出為準。</p>
+
+  <h2>規則</h2>
+  <ol>
+    <li>R1　取回上一份編輯時，絕不蓋掉一份不同的編輯。（守住）</li>
+    <li>R2　被清掉的編輯，一定先留成「上一份」。（守住）</li>
+    <li>G1　一張照片可以設定編輯、清除、再取回。（走得到）</li>
+  </ol>
+
+  <h2>圖組</h2>
+  <figure>
+    <figcaption>圖 1　正常流程：存一份編輯、清除時留下上一份、再取回。</figcaption>
+    <iframe src="diagrams/d1-happy.html" title="圖 1"></iframe>
+  </figure>
+  <figure>
+    <figcaption>圖 2　加上「另一方同時操作」：每個操作都是「先讀、再寫」，沒有鎖的話，中間另一方可以插進來。</figcaption>
+    <iframe src="diagrams/d2-two-parties.html" title="圖 2"></iframe>
+  </figure>
+  <figure>
+    <figcaption>圖 3　加上「編輯鎖」：從先讀到寫入都握著鎖，另一方要等鎖放開才能存，所以兩份編輯都還在。</figcaption>
+    <iframe src="diagrams/d3-locked.html" title="圖 3"></iframe>
+  </figure>
+
+  <h2>問題路徑</h2>
+  <p>目前沒有：兩條規則都守住。上一版找到的兩條（取回時蓋掉 AI 代理剛存的新編輯、清除時刪掉 AI 代理剛存的編輯又沒留上一份）已經在 a35545f 加上編輯鎖修好；拿掉鎖的舊程式仍會被檢查抓到，見 <a href="README.md">README</a>。</p>
+
+  <h2>範圍</h2>
+  <p>一張照片；App 和 AI 代理兩個同時操作的請求；兩份不同的編輯；每個請求可以做「設定、清除、取回」任意次。假設每次寫入編輯檔都是整檔原子替換、讀檔一次讀到整份、編輯鎖同一時間只有一方拿得到。窮舉的結論只在這個範圍內成立。</p>
+  <p>沒有形式化的部分：貼上編輯交給另一份假說（photo-edit-paste）；Windows 上改名遇到檔案被占用時的重試取決於作業系統，無法建模；編輯內容本身是否正確屬於跑一次就能確認的主張，不觸發假說，走紅綠測試。</p>
+</main>
+</body>
+</html>

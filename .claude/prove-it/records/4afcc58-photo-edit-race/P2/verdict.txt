@@ -1,0 +1,19 @@
+{
+  "path": "P2",
+  "rule": "R2",
+  "clear_response": [
+    200,
+    {
+      "fingerprint": "41cab698e84e2c9e10a717feb2033905e935b1f0be8e7a9ea30cac348c0411be",
+      "edit": null,
+      "preset_status": null,
+      "previous": false
+    }
+  ],
+  "agent_answered_while_app_paused": true,
+  "agent_saved_A": true,
+  "final_edit_http": null,
+  "final_edit_cli": null,
+  "previous_edit": null,
+  "edit_lost": true
+}

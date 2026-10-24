@@ -1,0 +1,17 @@
+$ hypothesis-status.py --files darkroom_app/services/photo_library.py darkroom_app/adapters/persist/edit_store.py
+photo-edit	established	2	a35545f	-
+exit=0
+$ hypothesis-status.py --rules photo-edit
+# photo-edit  state=established
+R1	safety	held	取回上一份編輯時，絕不蓋掉一份不同的編輯。
+R2	safety	held	被清掉的編輯，一定先留成「上一份」。
+G1	goal	reached	一張照片可以設定編輯、清除、再取回。
+exit=0
+$ hypothesis-status.py --check photo-edit
+# photo-edit  state=established
+tool: TLC
+version: 2.19
+command: pwsh -File model/check.ps1（每個設定檔：java -cp <tla2tools.jar> tlc2.TLC -deadlock -config <cfg> PhotoEdit.tla）
+dir: D:/Workspace/02_Project/code/darkroom/.claude/hypothesis/photo-edit
+note: 在暫存目錄裡重跑；結果寫進你自己的紀錄，不寫進這份假說
+exit=0

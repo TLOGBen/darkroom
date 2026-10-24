@@ -1,0 +1,257 @@
+{
+  "title": "一張照片的編輯、清除、取回上一份",
+  "source_kind": "code",
+  "sync": {
+    "watch": [
+      {
+        "state": "edit file",
+        "pattern": "self\\.edits\\.(write|remove)\\(",
+        "matched": [
+          "darkroom_app/services/photo_library.py"
+        ]
+      },
+      {
+        "state": "edit lock",
+        "pattern": "self\\.edits\\.locked\\(",
+        "matched": [
+          "darkroom_app/services/photo_library.py"
+        ]
+      }
+    ],
+    "versions": {},
+    "hash_algo": "sha256-lf",
+    "commit": "a35545f",
+    "files": {
+      "darkroom_app/adapters/http/server.py": "940d6a96139fe9eccfd4791297c949f03217204b4e499e0deff227fd4fe7a0d9",
+      "darkroom_app/adapters/mcp_server/__init__.py": "321e1a36b864204aeb3ca7100aefd2cc2619eb6a526331618ccb050b62eb0219",
+      "darkroom_app/adapters/persist/edit_store.py": "062d257aeccb78d376f5d41848419353da6819f7bca46b81ebed7b511217551d",
+      "darkroom_app/adapters/persist/locks.py": "792eeb083b93d18008f49f9df07d6b54a044e1d4208e5506229c0bd6b110e5eb",
+      "darkroom_app/services/photo_library.py": "99dd6989f07359f58bbc71eeafe698f8b4a8e9fe32f8774fa5a47dd1026549e8"
+    },
+    "artifact": {
+      "check.txt": "d95feb7e4244ad650d92c171a44d3e72671624ab24095eec723bef1fc62ad4f2",
+      "diagrams/d1-happy.html": "881af5e2630aeb14af527a622ef301c017bcfa74c88032763afc7c67d2efcb56",
+      "diagrams/d2-two-parties.html": "c99408c2e155dfc1b43fdf6be7555a4ebd877d711be7427be930f605737958ef",
+      "diagrams/d3-locked.html": "22185a57353e03ef46fbc90a27d2545d03f5d99b741b665f0f70ae93d6427a86",
+      "diagrams/docs/brief.md": "c905480d093a978a4e18e342d4b68b76d36bbc43c7f726c4663ee684ec092655",
+      "diagrams.html": "516e6e50a4c95a94f7629b43b52e02d8eb859a8eff4d10e429d65d2b02353dd1",
+      "model/check.ps1": "b6a817ef4f9a108e78ebb8cd14b5ccee781d25280911f3af906239e6669e4268",
+      "model/Goal.cfg": "20a50531c0e7983aa78f37d0ae4aa08b0d726e225a09becce17298c7c3e6a607",
+      "model/PhotoEdit.cfg": "52ea440efbd2d814fddda83248e5143efe93a53a06cdd9af22f831bfd399741a",
+      "model/PhotoEdit.tla": "90c5b1290309fe12f4147fda8eb3b1bfe503039e743efe258091d421bb2dcbe9",
+      "README.md": "271ae6cf0e837bd9f399e10b90962a5e640439b483269274baf158497d694bca",
+      "variants/G1-NoRestore.cfg": "3d08e201e438f586314298eb3fb115609077437fe05554e4a42f2c4538065952",
+      "variants/R1-Unlocked.cfg": "e88473653d55155163c9761b1600eca811bf3efa0f8e7aeee8bdc6c96fe1aca8",
+      "variants/R2-Unlocked.cfg": "9a5f88e7882da1d9053a6084ada3d068e1e59ea5016d96983ef2c67ee00435bb"
+    }
+  },
+  "check": {
+    "tool": "TLC",
+    "version": "2.19",
+    "command": "pwsh -File model/check.ps1（每個設定檔：java -cp <tla2tools.jar> tlc2.TLC -deadlock -config <cfg> PhotoEdit.tla）",
+    "bounds": "一張照片；兩個同時操作的請求（App、AI 代理）；兩份不同的編輯 A、B；設定、清除、取回次數不限",
+    "assumptions": [
+      "每一次寫入編輯檔都是整檔原子替換，不會寫到一半",
+      "讀檔一次讀到整份內容",
+      "編輯鎖同一時間只有一方拿得到（跨行程 edits/edits.lock＋行程內的鎖）",
+      "設定編輯在鎖外的第一輪只檢查參數、不寫，決定在鎖裡重讀之後才做"
+    ],
+    "left_out": [
+      "貼上編輯（U1）",
+      "Windows rename 重試（U2）",
+      "編輯內容本身是否正確（U3）"
+    ],
+    "states": 17837,
+    "verdict_at_sync": "held",
+    "seen_failing": [
+      {
+        "rule": "R1",
+        "variant": "variants/R1-Unlocked.cfg（拿掉編輯鎖＝4afcc58 的程式）",
+        "caught": true
+      },
+      {
+        "rule": "R2",
+        "variant": "variants/R2-Unlocked.cfg（拿掉編輯鎖＝4afcc58 的程式）",
+        "caught": true
+      }
+    ],
+    "seen_succeeding": [
+      {
+        "goal": "G1",
+        "reached": true,
+        "removed_transition": "Restore",
+        "unreachable_after": true,
+        "variant": "variants/G1-NoRestore.cfg"
+      }
+    ]
+  },
+  "model_map": [
+    {
+      "part": "Set",
+      "cites": [
+        "darkroom_app/services/photo_library.py:335-365",
+        "darkroom_app/adapters/persist/edit_store.py:136",
+        "darkroom_app/services/photo_library.py:432-437"
+      ]
+    },
+    {
+      "part": "ClearCheck",
+      "cites": [
+        "darkroom_app/services/photo_library.py:371-372"
+      ]
+    },
+    {
+      "part": "ClearLock / RestoreLock",
+      "cites": [
+        "darkroom_app/services/photo_library.py:373",
+        "darkroom_app/services/photo_library.py:385",
+        "darkroom_app/adapters/persist/edit_store.py:112-130",
+        "darkroom_app/adapters/persist/locks.py:76-102"
+      ]
+    },
+    {
+      "part": "ClearRead",
+      "cites": [
+        "darkroom_app/services/photo_library.py:374"
+      ]
+    },
+    {
+      "part": "ClearExists",
+      "cites": [
+        "darkroom_app/adapters/persist/edit_store.py:141"
+      ]
+    },
+    {
+      "part": "ClearKeep",
+      "cites": [
+        "darkroom_app/adapters/persist/edit_store.py:143-145"
+      ]
+    },
+    {
+      "part": "ClearRemove",
+      "cites": [
+        "darkroom_app/adapters/persist/edit_store.py:147"
+      ]
+    },
+    {
+      "part": "RestoreCheck",
+      "cites": [
+        "darkroom_app/services/photo_library.py:382-384"
+      ]
+    },
+    {
+      "part": "RestoreRead",
+      "cites": [
+        "darkroom_app/services/photo_library.py:386"
+      ]
+    },
+    {
+      "part": "RestorePrev",
+      "cites": [
+        "darkroom_app/services/photo_library.py:387-389"
+      ]
+    },
+    {
+      "part": "RestoreWrite",
+      "cites": [
+        "darkroom_app/services/photo_library.py:393-396"
+      ]
+    },
+    {
+      "part": "Release",
+      "cites": [
+        "darkroom_app/adapters/persist/edit_store.py:128-130"
+      ]
+    },
+    {
+      "part": "Actors（同時操作）",
+      "cites": [
+        "darkroom_app/adapters/http/server.py:130",
+        "darkroom_app/adapters/mcp_server/__init__.py:1"
+      ]
+    }
+  ],
+  "rules": [
+    {
+      "id": "R1",
+      "kind": "safety",
+      "name": "NoRestoreOverDifferent",
+      "text": "取回上一份編輯時，絕不蓋掉一份不同的編輯。",
+      "cites": [
+        "darkroom_app/services/photo_library.py:391-395"
+      ],
+      "verdict": "held",
+      "paths": []
+    },
+    {
+      "id": "R2",
+      "kind": "safety",
+      "name": "NoLostEdit",
+      "text": "被清掉的編輯，一定先留成「上一份」。",
+      "cites": [
+        "darkroom_app/adapters/persist/edit_store.py:139"
+      ],
+      "verdict": "held",
+      "paths": []
+    }
+  ],
+  "goals": [
+    {
+      "id": "G1",
+      "text": "一張照片可以設定編輯、清除、再取回。",
+      "guards": [
+        "R1",
+        "R2"
+      ]
+    }
+  ],
+  "paths": [],
+  "questions": [],
+  "unformalized": [
+    {
+      "id": "U1",
+      "where": "darkroom_app/services/photo_library.py:400-441 貼上編輯",
+      "class": "handed-off",
+      "detail": "貼上會對多張照片逐張讀寫，屬於另一個流程，交給另一份假說 photo-edit-paste；每張目標的讀寫握著同一把編輯鎖，單張照片上等同設定。",
+      "until": "寫出 photo-edit-paste",
+      "instead": "none"
+    },
+    {
+      "id": "U2",
+      "where": "darkroom_app/adapters/persist/locks.py:120-142 Windows rename 遇到 PermissionError 的重試",
+      "class": "cannot-model",
+      "detail": "取決於作業系統什麼時候放開檔案。",
+      "until": "無",
+      "instead": "red/green test"
+    },
+    {
+      "id": "U3",
+      "where": "編輯內容本身是否正確（preset、強度、幾何）",
+      "class": "non-trigger",
+      "detail": "formal.md 不觸發第 1 條：跑一次就能確認的主張。",
+      "until": "無",
+      "instead": "red/green test"
+    }
+  ],
+  "history": [
+    {
+      "generation": 5,
+      "from_commit": "4afcc58",
+      "to_commit": "a35545f",
+      "outcome": "model-update",
+      "note": "程式加上編輯鎖（a35545f）：設定、清除、取回、貼上的讀、比對、寫都握著 edits/edits.lock；清除與取回多了鎖外的「先看在不在」。模型照程式加上 holder 與 Check/Lock 步驟，舊程式留作 Locked = FALSE 的對照組；R1、R2 由被打破改為守住，P1、P2 移除（紅燈測試在 e4ebbb5，修正後轉綠）。",
+      "areas_changed": [
+        "model",
+        "variants",
+        "paths",
+        "diagrams",
+        "README"
+      ]
+    }
+  ],
+  "migrated_from": null,
+  "schema": "baransu.hypothesis/1",
+  "area": "photo-edit",
+  "generation": 5,
+  "published_at": "2026-10-24T12:46:25+08:00"
+}

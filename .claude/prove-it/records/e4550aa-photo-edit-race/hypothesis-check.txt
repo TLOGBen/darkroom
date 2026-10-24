@@ -1,0 +1,6 @@
+$ pwsh model/check.ps1   (scratch copy of generation 5)
+model/PhotoEdit.cfg: states=17837 steps=0 Model checking completed. No error has been found.
+model/Goal.cfg: states=358 steps=13 Error: Invariant NeverRestored is violated.
+variants/G1-NoRestore.cfg: states=351 steps=0 Model checking completed. No error has been found.
+variants/R1-Unlocked.cfg: states=1174 steps=10 Error: Invariant NoRestoreOverDifferent is violated.
+variants/R2-Unlocked.cfg: states=208 steps=6 Error: Invariant NoLostEdit is violated.

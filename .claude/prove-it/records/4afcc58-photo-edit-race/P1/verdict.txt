@@ -1,0 +1,38 @@
+{
+  "path": "P1",
+  "rule": "R1",
+  "restore_response": [
+    200,
+    {
+      "fingerprint": "41cab698e84e2c9e10a717feb2033905e935b1f0be8e7a9ea30cac348c0411be",
+      "edit": {
+        "schema": "darkroom-edit/1",
+        "fingerprint": "41cab698e84e2c9e10a717feb2033905e935b1f0be8e7a9ea30cac348c0411be",
+        "preset": {
+          "id": "p-expo",
+          "name": "曝光一",
+          "group": "測試",
+          "params": {
+            "schema": "darkroom-params/1",
+            "values": {
+              "Exposure2012": 1.0
+            },
+            "curves": {},
+            "masks": [],
+            "skipped": []
+          }
+        },
+        "strength": 130,
+        "overrides": {}
+      },
+      "preset_status": "current",
+      "previous": true
+    }
+  ],
+  "agent_answered_while_app_paused": true,
+  "agent_saved_B": true,
+  "final_edit_http": "p-expo@130",
+  "final_edit_cli": "p-expo@130",
+  "previous_edit": "p-expo@130",
+  "edit_lost": true
+}

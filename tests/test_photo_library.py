@@ -553,6 +553,78 @@ class TestEdits(PhotoLibCase):
 
 
 # ---------------------------------------------------------------- PL8, PLP4
+class TestConcurrentClearRestore(PhotoLibCase):
+    """Hypothesis photo-edit (P1, P2): the App and an AI agent (another process, here a second facade on the same
+    data_dir in a thread) work on one photo at the same time. The agent's save is started at the exact point of the
+    path script; if the App's operation holds the edit lock the save waits, otherwise it lands in the gap."""
+
+    def agent_saves_during(self, obj, method, edit_args, when=lambda result: True):
+        """Wrap obj.method so that, the first time it returns and when(result) holds, a second facade (the agent)
+        saves edit_args on the photo in a thread; the wrapper then gives that save up to 0.5 s before returning."""
+        from darkroom_app.composition import build_facade
+        agent = build_facade(self.presets, data_dir=self.data)
+        real = getattr(obj, method)
+        state = {"thread": None, "error": None}
+
+        def save():
+            try:
+                agent.set_edit(*edit_args)
+            except Exception as e:                       # noqa: BLE001 - reported by the test
+                state["error"] = e
+
+        def wrapped(*a, **k):
+            result = real(*a, **k)
+            if state["thread"] is None and when(result):
+                state["thread"] = threading.Thread(target=save)
+                state["thread"].start()
+                state["thread"].join(0.5)              # unlocked: the save lands here; locked: it waits
+            return result
+        patcher = mock.patch.object(obj, method, wrapped)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        return state
+
+    def finish(self, state):
+        self.assertIsNotNone(state["thread"], "the agent's save never started")
+        state["thread"].join(30)
+        self.assertFalse(state["thread"].is_alive())
+        self.assertIsNone(state["error"])
+
+    def test_p1_restore_never_overwrites_an_edit_saved_meanwhile(self):  # R1 (P1)
+        a = self.photo()
+        fp = sha(a)
+        self.f.set_edit(a, "p-expo", 130)                        # 1. edit A
+        self.f.clear_edit(a)                                     # 2. A kept as the previous edit
+        # 3-4. restore reads "no edit" and "previous = A"; 5. the agent saves B right then; 6. restore goes on
+        state = self.agent_saves_during(self.lib.edits, "read_previous", (a, "p-strong", 70))
+        try:
+            self.f.restore_edit(a)
+        except DarkroomError as e:                               # refusing to overwrite B is also keeping R1
+            self.assertEqual(e.kind, "conflict")
+        self.finish(state)
+        edit = self.f.get_edit(a)["edit"]
+        self.assertIsNotNone(edit)
+        self.assertEqual((edit["preset"]["id"], edit["strength"]), ("p-strong", 70),
+                         "the agent's edit B was overwritten by the restore")
+        prev = self.lib.edits.read_previous(fp)
+        self.assertEqual((prev["preset"]["id"], prev["strength"]), ("p-expo", 130))
+
+    def test_p2_clear_never_drops_an_edit_without_keeping_it(self):  # R2 (P2)
+        a = self.photo()
+        fp = sha(a)
+        # 1. no edit; 2. clear sees "no edit"; 3. the agent saves A right then; 4-6. clear goes on
+        state = self.agent_saves_during(self.lib.edits, "read", (a, "p-expo", 130), when=lambda r: r is None)
+        exists = self.agent_saves_during(self.lib.edits, "exists", (a, "p-expo", 130), when=lambda r: not r)
+        self.f.clear_edit(a)
+        started = [s for s in (state, exists) if s["thread"] is not None]
+        self.assertEqual(len(started), 1)
+        self.finish(started[0])
+        edit = self.f.get_edit(a)["edit"]
+        prev = self.lib.edits.read_previous(fp)
+        kept = [e for e in (edit, prev) if e is not None and (e["preset"]["id"], e["strength"]) == ("p-expo", 130)]
+        self.assertTrue(kept, "the agent's edit A was removed and not kept as the previous edit")
+
+
 class TestPaste(PhotoLibCase):
     def test_paste_rules(self):
         a, b, c = self.photo("a.jpg"), self.photo("b.jpg", seed=1), self.photo("c.jpg", seed=2)

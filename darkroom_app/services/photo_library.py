@@ -35,6 +35,7 @@ cleared edit, never over a different one; S8 / S8b = the edit summary shown on a
 CONTRACT-s3-crop C12 / C13 / C14 / C17 / C18 / C19 = the geometry in edits, set, paste, preview, thumbnails, export.
 CONTRACT-s2-export-detect E12 / E15 / E23 = export presets in data_dir, exporting the saved edit, availability.
 """
+import contextlib
 import heapq
 import os
 import sys
@@ -328,53 +329,72 @@ class PhotoLibraryService:
         not_found / conflict / unavailable in the PL7 order. Writes data_dir/edits/ only."""
         path = checked_photo_path(path)
         fp = self._fingerprint(path)
-        existing = self.edits.read(fp, os.path.basename(path))
-        self._resolve(existing, preset_id)                                   # not_found before validate_* (PL7)
-        adj = Adjustment.from_request(strength, overrides)                   # VO -> BO (invalid: the same sentences)
-        if geometry is KEEP:                                       # C13 (D4): left out = the saved one
-            g = edit_geometry(existing)
-        else:
-            g = validate_geometry(geometry)
-            g = None if g is None else g.to_dict()
-        if preset_id is None and adj.is_empty and g is None:                 # PL3': no edit at all (C12)
-            self.edits.remove(path, fp, keep=existing)
-            return self._answer(fp, None)
-        preset = None
-        if preset_id is not None:
-            if existing is not None and existing["preset"] is not None and existing["preset"]["id"] == preset_id:
-                preset = existing["preset"]                                  # PL4: the snapshot is kept
-            else:
-                row = self.library.by_id[preset_id]
-                preset = {"id": preset_id, "name": row["name"], "group": row["group"],
-                          "params": self.library.get(preset_id).to_dict()}
-        edit = canonical_edit(fp, preset, strength, adj.overrides, g)
-        self.edits.write(path, edit)
-        return self._answer(fp, edit)
+        name = os.path.basename(path)
+        # R1 / R2: the first pass only checks the request (PL7 errors, nothing written, no lock taken); the second
+        # pass reads the edit again and decides while holding the edit lock, so what it replaces is what it read.
+        with contextlib.ExitStack() as held:
+            for locked in (False, True):
+                existing = self.edits.read(fp, name)
+                self._resolve(existing, preset_id)                           # not_found before validate_* (PL7)
+                adj = Adjustment.from_request(strength, overrides)           # VO -> BO (invalid: the same sentences)
+                if geometry is KEEP:                               # C13 (D4): left out = the saved one
+                    g = edit_geometry(existing)
+                else:
+                    g = validate_geometry(geometry)
+                    g = None if g is None else g.to_dict()
+                remove = preset_id is None and adj.is_empty and g is None    # PL3': no edit at all (C12)
+                if not locked:
+                    if remove and existing is None:                          # nothing to remove: no write, no lock
+                        return self._answer(fp, None)
+                    held.enter_context(self.edits.locked(path))
+                    continue
+                if remove:
+                    self.edits.remove(path, fp, keep=existing)
+                    return self._answer(fp, None)
+                preset = None
+                if preset_id is not None:
+                    if (existing is not None and existing["preset"] is not None
+                            and existing["preset"]["id"] == preset_id):
+                        preset = existing["preset"]                          # PL4: the snapshot is kept
+                    else:
+                        row = self.library.by_id[preset_id]
+                        preset = {"id": preset_id, "name": row["name"], "group": row["group"],
+                                  "params": self.library.get(preset_id).to_dict()}
+                edit = canonical_edit(fp, preset, strength, adj.overrides, g)
+                self.edits.write(path, edit)
+                return self._answer(fp, edit)
 
     def clear_edit(self, path):
         """Remove the photo's edit (kept as "previous" for restore_edit); conflict for a foreign schema version."""
         path = checked_photo_path(path)
         fp = self._fingerprint(path)
-        existing = self.edits.read(fp, os.path.basename(path))               # PL9: a foreign version is not deleted
-        self.edits.remove(path, fp, keep=existing)
-        return self._answer(fp, None)
+        if not self.edits.exists(fp):                                        # nothing to clear: no write, no lock
+            return self._answer(fp, None)
+        with self.edits.locked(path):                                        # R2: what is removed is what is kept
+            existing = self.edits.read(fp, os.path.basename(path))           # PL9: a foreign version is not deleted
+            self.edits.remove(path, fp, keep=existing)
+            return self._answer(fp, None)
 
     def restore_edit(self, path):
         """S4: the edit kept when this photo's edit was last cleared goes back as its edit (the kept copy stays)."""
         path = checked_photo_path(path)
         fp = self._fingerprint(path)
-        current = self.edits.read(fp, os.path.basename(path))                # conflict / unavailable first (PL9)
-        prev = self.edits.read_previous(fp)
-        if prev is None:
+        if not self.edits.has_previous(fp):                                  # nothing to restore: no write, no lock
+            self.edits.read(fp, os.path.basename(path))                      # conflict / unavailable first (PL9)
             raise DarkroomError("not_found", M.PL_NO_PREVIOUS.format(file_name=os.path.basename(path)))
-        edit = canonical_edit(fp, prev["preset"], prev["strength"], prev["overrides"], edit_geometry(prev))
-        # S4a / S4a': never over a different edit (it has no copy anywhere; the geometry counts too); the same edit
-        # again is a no-op success
-        if current is not None and canonical_edit(fp, current["preset"], current["strength"],
-                                                  current["overrides"], edit_geometry(current)) != edit:
-            raise DarkroomError("conflict", M.PL_RESTORE_OVER_EDIT.format(file_name=os.path.basename(path)))
-        self.edits.write(path, edit)
-        return self._answer(fp, edit)
+        with self.edits.locked(path):                                        # R1: compare and write as one step
+            current = self.edits.read(fp, os.path.basename(path))            # conflict / unavailable first (PL9)
+            prev = self.edits.read_previous(fp)
+            if prev is None:
+                raise DarkroomError("not_found", M.PL_NO_PREVIOUS.format(file_name=os.path.basename(path)))
+            edit = canonical_edit(fp, prev["preset"], prev["strength"], prev["overrides"], edit_geometry(prev))
+            # S4a / S4a': never over a different edit (it has no copy anywhere; the geometry counts too); the same
+            # edit again is a no-op success
+            if current is not None and canonical_edit(fp, current["preset"], current["strength"],
+                                                      current["overrides"], edit_geometry(current)) != edit:
+                raise DarkroomError("conflict", M.PL_RESTORE_OVER_EDIT.format(file_name=os.path.basename(path)))
+            self.edits.write(path, edit)
+            return self._answer(fp, edit)
 
     # ------------------------------------------------------------------ paste (PL8, PLP4)
     def paste_edit(self, targets, source=None, edit=None, *, with_geometry=False):
@@ -409,10 +429,12 @@ class PhotoLibraryService:
                 tp = checked_photo_path(t)
                 name = os.path.basename(tp)
                 tfp = self._fingerprint(tp)
-                current = self.edits.read(tfp, name)                         # conflict / unavailable: this item
-                # C14: the colours of the source; its geometry only with with_geometry, else the target keeps its own
-                g = edit_geometry(src) if with_geometry else edit_geometry(current)
-                self.edits.write(tp, canonical_edit(tfp, src["preset"], src["strength"], src["overrides"], g))
+                with self.edits.locked(tp):                                  # R1 / R2: per target, read and write
+                    current = self.edits.read(tfp, name)                     # conflict / unavailable: this item
+                    # C14: the colours of the source; its geometry only with with_geometry, else the target keeps
+                    # its own
+                    g = edit_geometry(src) if with_geometry else edit_geometry(current)
+                    self.edits.write(tp, canonical_edit(tfp, src["preset"], src["strength"], src["overrides"], g))
                 results.append({"ok": True, "target": name})
             except DarkroomError as e:
                 results.append({"ok": False, "target": name, "error": e.message})
