@@ -1,0 +1,283 @@
+{
+  "title": "縮圖格的背景縮圖佇列",
+  "source_kind": "code",
+  "sync": {
+    "watch": [
+      {
+        "state": "thumbnail queue",
+        "pattern": "self\\._queue\\.(submit|new_generation)\\(",
+        "paths": [
+          "darkroom_app"
+        ],
+        "matched": [
+          "darkroom_app/services/photo_library.py"
+        ]
+      },
+      {
+        "state": "thumbnail index",
+        "pattern": "self\\.thumbs\\.(remember|lookup)\\(",
+        "paths": [
+          "darkroom_app"
+        ],
+        "matched": [
+          "darkroom_app/services/photo_library.py"
+        ]
+      }
+    ],
+    "versions": {},
+    "hash_algo": "sha256-lf",
+    "commit": "17f91bc",
+    "files": {
+      "darkroom_app/adapters/persist/thumb_store.py": "8127d1750d9199d7a3d0dd3412fa8b079cd186616f7a0330d5f277383fdf163f",
+      "darkroom_app/services/photo_library.py": "99dd6989f07359f58bbc71eeafe698f8b4a8e9fe32f8774fa5a47dd1026549e8",
+      "tests/test_photo_library.py": "1775822566588eea873190af12f1589e2556cde0d6097d05b83173d54ec82da1"
+    },
+    "artifact": {
+      "check.txt": "af544c76fce42cc9277c304008d851ec2407715449cab842452222c48714f94c",
+      "diagrams/d1-happy.html": "eae534125a02800ec180107c26ce478dfa0b04878173420395f1df1f958ebaa2",
+      "diagrams/d2-two-steps.html": "9e32de70cdd8108a033356aa9d092c664da54da2173d781de16d81b2b28016ca",
+      "diagrams/d3-paths.html": "4b23a321b5b88ce28f288e48221a7e18edecc9595ad6eed6ae8f8a7b0e0c925a",
+      "diagrams/docs/brief.md": "67c1fbdc69cdcd6072e64ac7a01c50fddc8d40c7897c5c9ae6983d4370abd00c",
+      "diagrams.html": "7274ddfb1346aa93f232cec0ea0bb167107c361e00000b6a8441c3ecdcfa98a4",
+      "model/check.ps1": "7b69435b560862d52e7fd89e4ceb0d92b5726ee6964952cfc98a3be8364ba776",
+      "model/Goal.cfg": "cbde773e8322f6c56c86f6b874a277a12a2587d5d86abc201fd68a5a23833351",
+      "model/R1.cfg": "a793ce2e4012a05ad6097172f9814e3868d781ac0aa0dc5a01da181216de2d87",
+      "model/R2.cfg": "b127ea25aa0ccd6acc7c67b64b79a9bb252765637de6961d8efc298df99f23e4",
+      "model/R3.cfg": "6b78428d3815a4b8c9e90c3a9c96a9604f7ce50c47bd184eeffd39bd481b018b",
+      "model/ThumbQueue.tla": "8063b0ace86d4ec5e352a05309bf84ab70bbbe45496519a8f49129c2e54ae911",
+      "paths/P1.md": "8ea5a1112074ba5a446491bdb47f10811bb5ccd4ff7516393a17c00faf90cc09",
+      "paths/P2.md": "bfce5fedddede57a999772bbad912953746116411905dc981c0b93a1c53a1bca",
+      "README.md": "bd3a28380dd21693b5b6eadf34fb04437f02026da30d7a954adb34b69af3bbb6",
+      "variants/Fix-RecheckInSubmit.cfg": "d58d304d186f21fad99e00d0cd1e657533df8361aecfc3d0a5705e150315efaa",
+      "variants/G1-NoMake.cfg": "85128db887c1da51e87e8af3d2cb55edc0a73fc2c15f743a0dd8651da2cd3f09",
+      "variants/R1-NoInflightCheck.cfg": "9300f689162023707ae7a55a9c126c6b823a8de0296bd0e34671a088cf340edd"
+    }
+  },
+  "check": {
+    "tool": "TLC",
+    "version": "2.19",
+    "command": "pwsh -File model/check.ps1（每個設定檔：java -cp <tla2tools.jar> tlc2.TLC -deadlock -config <cfg> ThumbQueue.tla）",
+    "bounds": "一個資料夾；3 張照片（R3 與修法對照 4 張）；2 個工作執行緒；主執行緒：列一次資料夾 → 直接要最後一張 → 再列一次；R1、R2 每張照片最多被改一次",
+    "assumptions": [
+      "佇列的每個操作握著 self.cv，一步做完",
+      "查一張照片有沒有縮圖（lookup＋exists）是一步；記進索引與離開處理中是分開的兩步",
+      "工作執行緒讀檔時的版本就是記進索引的版本"
+    ],
+    "left_out": [
+      "縮圖內容（U1）",
+      "索引寫回磁碟（U2）",
+      "換資料夾作廢舊工作（U3）",
+      "工作失敗（U4）"
+    ],
+    "states": 35822,
+    "verdict_at_sync": "violated",
+    "seen_failing": [
+      {
+        "rule": "R1",
+        "variant": "variants/R1-NoInflightCheck.cfg（送進佇列不看處理中）",
+        "caught": true
+      },
+      {
+        "rule": "R2",
+        "variant": "model/R2.cfg（現行程式本身）",
+        "caught": true
+      },
+      {
+        "rule": "R3",
+        "variant": "model/R3.cfg（現行程式本身，4 張照片）",
+        "caught": true
+      }
+    ],
+    "seen_succeeding": [
+      {
+        "goal": "G1",
+        "reached": true,
+        "removed_transition": "WorkDone",
+        "unreachable_after": true,
+        "variant": "variants/G1-NoMake.cfg"
+      }
+    ],
+    "fixed_reference": {
+      "variant": "variants/Fix-RecheckInSubmit.cfg",
+      "result": "R1、R2、R3 都守住（4 張照片，222,006 個狀態）",
+      "note": "修法參考，不是本假說的結論"
+    }
+  },
+  "model_map": [
+    {
+      "part": "ver / Cached / Update",
+      "cites": [
+        "darkroom_app/adapters/persist/thumb_store.py:104-111"
+      ]
+    },
+    {
+      "part": "idx / WorkDone",
+      "cites": [
+        "darkroom_app/services/photo_library.py:493",
+        "darkroom_app/adapters/persist/thumb_store.py:113-118"
+      ]
+    },
+    {
+      "part": "SubmitQ",
+      "cites": [
+        "darkroom_app/services/photo_library.py:136-158"
+      ]
+    },
+    {
+      "part": "ListLookup",
+      "cites": [
+        "darkroom_app/services/photo_library.py:516-527"
+      ]
+    },
+    {
+      "part": "ListGen",
+      "cites": [
+        "darkroom_app/services/photo_library.py:528",
+        "darkroom_app/services/photo_library.py:160-164"
+      ]
+    },
+    {
+      "part": "ListSubmit",
+      "cites": [
+        "darkroom_app/services/photo_library.py:529-530"
+      ]
+    },
+    {
+      "part": "DirectLook / DirectSubmit / DirectWait",
+      "cites": [
+        "darkroom_app/services/photo_library.py:543-548",
+        "darkroom_app/services/photo_library.py:550"
+      ]
+    },
+    {
+      "part": "Take",
+      "cites": [
+        "darkroom_app/services/photo_library.py:186-198",
+        "darkroom_app/services/photo_library.py:478-480"
+      ]
+    },
+    {
+      "part": "Release",
+      "cites": [
+        "darkroom_app/services/photo_library.py:203-206"
+      ]
+    },
+    {
+      "part": "主執行緒的情境",
+      "cites": [
+        "tests/test_photo_library.py:1113-1137"
+      ]
+    }
+  ],
+  "rules": [
+    {
+      "id": "R1",
+      "kind": "safety",
+      "name": "OneJobPerPhoto",
+      "text": "同一張照片同時只會有一個縮圖工作。",
+      "cites": [
+        "darkroom_app/services/photo_library.py:143-150"
+      ],
+      "verdict": "held",
+      "paths": []
+    },
+    {
+      "id": "R2",
+      "kind": "safety",
+      "name": "NoRedoUnlessUpdated",
+      "text": "一張照片的縮圖做好之後，只有照片本身更新過，才會重新縮一次。",
+      "cites": [
+        "darkroom_app/services/photo_library.py:516-530"
+      ],
+      "verdict": "violated",
+      "paths": [
+        "P1",
+        "P2"
+      ]
+    },
+    {
+      "id": "R3",
+      "kind": "safety",
+      "name": "RedoAtMostWorkers",
+      "text": "重新列一次資料夾，被重做的照片不會超過工作執行緒數。",
+      "cites": [
+        "tests/test_photo_library.py:1141"
+      ],
+      "verdict": "violated",
+      "paths": [
+        "P1"
+      ]
+    }
+  ],
+  "goals": [
+    {
+      "id": "G1",
+      "text": "列一次資料夾之後，每張照片終究都有縮圖。",
+      "guards": [
+        "R1",
+        "R2",
+        "R3"
+      ]
+    }
+  ],
+  "paths": [
+    {
+      "id": "P1",
+      "rule": "R3",
+      "finding": "bug",
+      "summary": "重新整理資料夾時，排在後面、還沒開始的縮圖也會被重做，重做的張數可以超過工作執行緒數。",
+      "script": "paths/P1.md",
+      "steps": 38
+    },
+    {
+      "id": "P2",
+      "rule": "R2",
+      "finding": "bug",
+      "summary": "直接要一張縮圖時，背景剛好把它做完，結果又被做一次。",
+      "script": "paths/P2.md",
+      "steps": 18
+    }
+  ],
+  "questions": [],
+  "unformalized": [
+    {
+      "id": "U1",
+      "where": "darkroom_app/services/photo_library.py:484-492 與 utils/imaging 的縮圖內容",
+      "class": "non-trigger",
+      "detail": "formal.md 不觸發第 1 條：跑一次就能確認的主張。",
+      "until": "無",
+      "instead": "red/green test"
+    },
+    {
+      "id": "U2",
+      "where": "darkroom_app/services/photo_library.py:494-495、darkroom_app/adapters/persist/thumb_store.py:120- 索引寫回磁碟",
+      "class": "non-trigger",
+      "detail": "formal.md 不觸發第 1 條：寫回時機不影響會不會重做，跑一次就能確認。",
+      "until": "無",
+      "instead": "red/green test"
+    },
+    {
+      "id": "U3",
+      "where": "darkroom_app/services/photo_library.py:190 換到另一個資料夾時作廢舊工作",
+      "class": "handed-off",
+      "detail": "這次的失敗在同一個資料夾；跨資料夾的作廢交給另一份假說 thumbnail-queue-folders。",
+      "until": "寫出 thumbnail-queue-folders",
+      "instead": "none"
+    },
+    {
+      "id": "U4",
+      "where": "darkroom_app/services/photo_library.py:199-202 工作失敗",
+      "class": "non-trigger",
+      "detail": "formal.md 不觸發第 1 條：例外的傳遞跑一次就能確認。",
+      "until": "無",
+      "instead": "red/green test"
+    }
+  ],
+  "history": [],
+  "migrated_from": null,
+  "origin": "HUNT-2026-001",
+  "schema": "baransu.hypothesis/1",
+  "area": "thumbnail-queue",
+  "generation": 1,
+  "published_at": "2026-10-24T15:30:49+08:00"
+}
