@@ -1,0 +1,6 @@
+model/Goal.cfg: states=404 steps=8 Error: Invariant NeverRestored is violated.
+model/PhotoEdit.cfg: states=208 steps=6 Error: Invariant NoLostEdit is violated.
+variants/G1-NoRestore.cfg: states=1344 steps=0 Model checking completed. No error has been found.
+variants/Locked.cfg: states=15 steps=0 Model checking completed. No error has been found.
+variants/R1-only.cfg: states=1174 steps=10 Error: Invariant NoRestoreOverDifferent is violated.
+variants/R2-only.cfg: states=208 steps=6 Error: Invariant NoLostEdit is violated.

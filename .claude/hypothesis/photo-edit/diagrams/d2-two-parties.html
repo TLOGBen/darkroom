@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>另一方同時操作 · 照片編輯狀態機</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Noto+Sans+TC:wght@400;500;600&family=Noto+Serif+TC:wght@400&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      color-scheme: light dark;
+      --paper: #f5f5f5; --node: #ffffff; --ink: #2d3142; --muted: #4f5d75; --soft: #5a6580;
+      --rule: rgba(45,49,66,0.12); --zone: rgba(45,49,66,0.04);
+      --accent: #bf4520; --accent-tint: rgba(191,69,32,0.08); --link: #2e5aa8;
+      --font-sans: 'Geist', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', system-ui, sans-serif;
+      --font-serif: 'Instrument Serif', 'Noto Serif TC', serif;
+      --font-mono: 'Geist Mono', ui-monospace, monospace;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --paper: #2d3142; --node: #393e53; --ink: #f5f5f5; --muted: #bfc0c0; --soft: #949eb2;
+        --rule: rgba(245,245,245,0.12); --zone: rgba(245,245,245,0.04);
+        --accent: #f08a59; --accent-tint: rgba(240,138,89,0.10); --link: #739fdf;
+      }
+    }
+    body { font-family: var(--font-sans); background: var(--paper); color: var(--ink); min-height: 100vh;
+           display: flex; align-items: center; justify-content: center; padding: 3rem 2rem; }
+    @media (max-width: 600px) { body { padding: 1.5rem 16px; } }
+    .frame { max-width: 1200px; width: 100%; min-width: 0; }
+    .diagram-container { width: 100%; overflow-x: auto; }
+    .eyebrow { font-size: 0.75rem; font-weight: 500; letter-spacing: 0.06em; color: var(--muted); margin-bottom: 0.5rem; }
+    h1 { font-family: var(--font-serif); font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2rem); font-weight: 400;
+         letter-spacing: -0.01em; line-height: 1.15; color: var(--ink); margin-bottom: 1.5rem; }
+    svg { width: 100%; min-width: 1024px; display: block; }
+    @media print { .diagram-container { overflow-x: visible; } svg { min-width: 0; } }
+    /* SVG roles */
+    .bg { fill: var(--paper); }
+    .zone { fill: var(--zone); stroke: var(--rule); stroke-width: 1; stroke-dasharray: 4 3; }
+    .state { fill: var(--node); stroke: var(--ink); stroke-width: 1; }
+    .state-focal { fill: var(--accent-tint); stroke: var(--accent); stroke-width: 1.2; }
+    .edge { fill: none; stroke: var(--muted); stroke-width: 1.2; }
+    .mk { fill: var(--muted); }
+    .dot { fill: var(--ink); }
+    .mask { fill: var(--paper); }
+    .name { fill: var(--ink); font-family: var(--font-sans); font-size: 14px; font-weight: 600; }
+    .lbl { fill: var(--soft); font-family: var(--font-sans); font-size: 12px; font-weight: 500; }
+    .zone-lbl { fill: var(--muted); font-family: var(--font-sans); font-size: 12px; font-weight: 600; }
+    .cap { fill: var(--ink); font-family: var(--font-sans); font-size: 14px; font-weight: 500; }
+    .cap-2 { fill: var(--soft); font-family: var(--font-sans); font-size: 12px; font-weight: 400; }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">darkroom 的一張照片 · 狀態機</p>
+    <h1>另一方同時操作：先讀、再寫</h1>
+    <div class="diagram-container">
+      <svg viewBox="0 0 1024 496" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="d2-two-parties-title d2-two-parties-desc">
+        <title id="d2-two-parties-title">另一方同時操作時的中間狀態</title>
+        <desc id="d2-two-parties-desc">App 和 AI 代理（透過 MCP）可能同時對同一張照片操作；清除和取回都要先讀、再寫，中間多了「清除中：已讀到目前的編輯」和「取回中：已讀到目前沒有編輯」兩個狀態，另一方可以在這時插進來。</desc>
+        <defs>
+          <marker id="d2-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon class="mk" points="0 0, 8 3, 0 6"/></marker>
+        </defs>
+        <rect class="bg" width="1024" height="496"/>
+
+        <!-- new part: zone painted first -->
+        <rect class="zone" x="500" y="44" width="260" height="348" rx="8"/>
+        <text class="zone-lbl" x="516" y="64">另一方同時操作</text>
+
+        <!-- transitions -->
+        <line class="edge" x1="66" y1="228" x2="96" y2="228" marker-end="url(#d2-arrow)"/>
+        <line class="edge" x1="236" y1="228" x2="344" y2="228" marker-end="url(#d2-arrow)"/>
+        <path class="edge" d="M 374 200 V 164 A 8 8 0 0 1 382 156 H 446 A 8 8 0 0 1 454 164 V 200" marker-end="url(#d2-arrow)"/>
+        <!-- 有編輯 → 清除中 -->
+        <path class="edge" d="M 484 216 H 506 A 8 8 0 0 0 514 208 V 116 A 8 8 0 0 1 522 108 H 544" marker-end="url(#d2-arrow)"/>
+        <!-- 清除中 → 沒有編輯，上一份留著 -->
+        <path class="edge" d="M 744 108 H 886 A 8 8 0 0 1 894 116 V 200" marker-end="url(#d2-arrow)"/>
+        <!-- 沒有編輯，上一份留著 → 取回中 -->
+        <path class="edge" d="M 894 256 V 340 A 8 8 0 0 1 886 348 H 744" marker-end="url(#d2-arrow)"/>
+        <!-- 取回中 → 有編輯 -->
+        <path class="edge" d="M 544 348 H 522 A 8 8 0 0 1 514 340 V 248 A 8 8 0 0 0 506 240 H 484" marker-end="url(#d2-arrow)"/>
+
+        <!-- transition labels -->
+        <rect class="mask" x="256" y="206" width="68" height="16" rx="2"/>
+        <text class="lbl" x="290" y="218" text-anchor="middle">存一份編輯</text>
+        <rect class="mask" x="368" y="134" width="92" height="16" rx="2"/>
+        <text class="lbl" x="414" y="146" text-anchor="middle">改成另一份編輯</text>
+        <rect class="mask" x="522" y="152" width="68" height="16" rx="2"/>
+        <text class="lbl" x="556" y="164" text-anchor="middle">清除：先讀</text>
+        <rect class="mask" x="752" y="86" width="128" height="16" rx="2"/>
+        <text class="lbl" x="816" y="98" text-anchor="middle">清除：留上一份、刪檔</text>
+        <rect class="mask" x="782" y="354" width="68" height="16" rx="2"/>
+        <text class="lbl" x="816" y="366" text-anchor="middle">取回：先讀</text>
+        <rect class="mask" x="522" y="288" width="68" height="16" rx="2"/>
+        <text class="lbl" x="556" y="300" text-anchor="middle">取回：寫入</text>
+
+        <!-- states -->
+        <circle class="dot" cx="60" cy="228" r="6"/>
+        <rect class="state" x="96" y="200" width="140" height="56" rx="8"/>
+        <text class="name" x="166" y="233" text-anchor="middle">沒有編輯</text>
+        <rect class="state" x="344" y="200" width="140" height="56" rx="8"/>
+        <text class="name" x="414" y="233" text-anchor="middle">有編輯</text>
+        <rect class="state-focal" x="544" y="80" width="200" height="56" rx="8"/>
+        <text class="name" x="644" y="113" text-anchor="middle">清除中：已讀到目前的編輯</text>
+        <rect class="state-focal" x="544" y="320" width="200" height="56" rx="8"/>
+        <text class="name" x="644" y="353" text-anchor="middle">取回中：已讀到目前沒有編輯</text>
+        <rect class="state" x="804" y="200" width="180" height="56" rx="8"/>
+        <text class="name" x="894" y="233" text-anchor="middle">沒有編輯，上一份留著</text>
+
+        <!-- caption -->
+        <text class="cap" x="96" y="436">每個操作都是「先讀、再寫」，中間另一方可以插進來。</text>
+        <text class="cap-2" x="96" y="460">App 和 AI 代理（透過 MCP）可能同時對同一張照片操作。</text>
+      </svg>
+    </div>
+  </div>
+</body>
+</html>
