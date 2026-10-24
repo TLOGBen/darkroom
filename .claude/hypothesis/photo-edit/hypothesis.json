@@ -9,61 +9,69 @@
         "matched": [
           "darkroom_app/services/photo_library.py"
         ]
+      },
+      {
+        "state": "edit lock",
+        "pattern": "self\\.edits\\.locked\\(",
+        "matched": [
+          "darkroom_app/services/photo_library.py"
+        ]
       }
     ],
     "versions": {},
     "hash_algo": "sha256-lf",
-    "commit": "4afcc58",
+    "commit": "a35545f",
     "files": {
       "darkroom_app/adapters/http/server.py": "940d6a96139fe9eccfd4791297c949f03217204b4e499e0deff227fd4fe7a0d9",
       "darkroom_app/adapters/mcp_server/__init__.py": "321e1a36b864204aeb3ca7100aefd2cc2619eb6a526331618ccb050b62eb0219",
-      "darkroom_app/adapters/persist/edit_store.py": "0ca369542860baf2c2272888a17c299b82eaa3cea0aaf64997b4a0cdc044346e",
-      "darkroom_app/services/photo_library.py": "9c1d84d42bec72698971739ac3b109abbb115b7f920087d47a8cfde6546ccc84"
+      "darkroom_app/adapters/persist/edit_store.py": "062d257aeccb78d376f5d41848419353da6819f7bca46b81ebed7b511217551d",
+      "darkroom_app/adapters/persist/locks.py": "792eeb083b93d18008f49f9df07d6b54a044e1d4208e5506229c0bd6b110e5eb",
+      "darkroom_app/services/photo_library.py": "99dd6989f07359f58bbc71eeafe698f8b4a8e9fe32f8774fa5a47dd1026549e8"
     },
     "artifact": {
-      "check.txt": "aeadd8a1952e5ea383ebede37d3c2b321c840df69acb024574417608d49d22da",
+      "check.txt": "d95feb7e4244ad650d92c171a44d3e72671624ab24095eec723bef1fc62ad4f2",
       "diagrams/d1-happy.html": "881af5e2630aeb14af527a622ef301c017bcfa74c88032763afc7c67d2efcb56",
       "diagrams/d2-two-parties.html": "c99408c2e155dfc1b43fdf6be7555a4ebd877d711be7427be930f605737958ef",
-      "diagrams/d3-paths.html": "748e7218a277595ce987b7b2283d6a6663d42812ada4605f97c78fa41af5d9d6",
-      "diagrams/docs/brief.md": "4caf47972b5bf17b32ac9825b7a02c5500a802e94f1d9bd73f41bb420875efe0",
-      "diagrams.html": "672ec244aff5da649b2dffc981ecc96bbecc329d5db01784d6b181dcc2df56a0",
-      "model/Goal.cfg": "1b0372000f3e19e8d6400bf20915b41c568085b043c097e14a1f3a8026d8292b",
-      "model/PhotoEdit.cfg": "3a9c004795088c65a3feb2915457464da2f610c4b9f245cf522fd6536777a8ca",
-      "model/PhotoEdit.tla": "610d19b5eea160431797190294a0e842a599be2586334bf64a8007f3aa82d3e2",
-      "paths/P1.md": "308f6f90c0530d38aaa69c1ac1bed51da483fc630609eb1027d6c60fa276e2ae",
-      "paths/P2.md": "cb56cd7f105ce93c9f6a96b42df6915984d314f451145f03e4aefa219ecbaefd",
-      "README.md": "f4ab1923a676406b95a45cb1d45a89f88cf497afa6e31d21c15d49eb6f056e57",
-      "variants/G1-NoRestore.cfg": "32bccb73ddd8ae6add020cf257d0981849441809625857efaad8a251ece45454",
-      "variants/Locked.cfg": "52ea440efbd2d814fddda83248e5143efe93a53a06cdd9af22f831bfd399741a",
-      "variants/R1-only.cfg": "e88473653d55155163c9761b1600eca811bf3efa0f8e7aeee8bdc6c96fe1aca8",
-      "variants/R2-only.cfg": "9a5f88e7882da1d9053a6084ada3d068e1e59ea5016d96983ef2c67ee00435bb"
+      "diagrams/d3-locked.html": "22185a57353e03ef46fbc90a27d2545d03f5d99b741b665f0f70ae93d6427a86",
+      "diagrams/docs/brief.md": "c905480d093a978a4e18e342d4b68b76d36bbc43c7f726c4663ee684ec092655",
+      "diagrams.html": "516e6e50a4c95a94f7629b43b52e02d8eb859a8eff4d10e429d65d2b02353dd1",
+      "model/check.ps1": "b6a817ef4f9a108e78ebb8cd14b5ccee781d25280911f3af906239e6669e4268",
+      "model/Goal.cfg": "20a50531c0e7983aa78f37d0ae4aa08b0d726e225a09becce17298c7c3e6a607",
+      "model/PhotoEdit.cfg": "52ea440efbd2d814fddda83248e5143efe93a53a06cdd9af22f831bfd399741a",
+      "model/PhotoEdit.tla": "90c5b1290309fe12f4147fda8eb3b1bfe503039e743efe258091d421bb2dcbe9",
+      "README.md": "271ae6cf0e837bd9f399e10b90962a5e640439b483269274baf158497d694bca",
+      "variants/G1-NoRestore.cfg": "3d08e201e438f586314298eb3fb115609077437fe05554e4a42f2c4538065952",
+      "variants/R1-Unlocked.cfg": "e88473653d55155163c9761b1600eca811bf3efa0f8e7aeee8bdc6c96fe1aca8",
+      "variants/R2-Unlocked.cfg": "9a5f88e7882da1d9053a6084ada3d068e1e59ea5016d96983ef2c67ee00435bb"
     }
   },
   "check": {
     "tool": "TLC",
     "version": "2.19",
-    "command": "java -cp <tla2tools.jar> tlc2.TLC -config model/PhotoEdit.cfg -deadlock -metadir <暫存目錄> model/PhotoEdit.tla",
+    "command": "pwsh -File model/check.ps1（每個設定檔：java -cp <tla2tools.jar> tlc2.TLC -deadlock -config <cfg> PhotoEdit.tla）",
     "bounds": "一張照片；兩個同時操作的請求（App、AI 代理）；兩份不同的編輯 A、B；設定、清除、取回次數不限",
     "assumptions": [
       "每一次寫入編輯檔都是整檔原子替換，不會寫到一半",
-      "讀檔一次讀到整份內容"
+      "讀檔一次讀到整份內容",
+      "編輯鎖同一時間只有一方拿得到（跨行程 edits/edits.lock＋行程內的鎖）",
+      "設定編輯在鎖外的第一輪只檢查參數、不寫，決定在鎖裡重讀之後才做"
     ],
     "left_out": [
       "貼上編輯（U1）",
       "Windows rename 重試（U2）",
       "編輯內容本身是否正確（U3）"
     ],
-    "states": 1174,
-    "verdict_at_sync": "violated",
+    "states": 17837,
+    "verdict_at_sync": "held",
     "seen_failing": [
       {
         "rule": "R1",
-        "variant": "variants/R1-only.cfg（現行程式本身）",
+        "variant": "variants/R1-Unlocked.cfg（拿掉編輯鎖＝4afcc58 的程式）",
         "caught": true
       },
       {
         "rule": "R2",
-        "variant": "variants/R2-only.cfg（現行程式本身）",
+        "variant": "variants/R2-Unlocked.cfg（拿掉編輯鎖＝4afcc58 的程式）",
         "caught": true
       }
     ],
@@ -75,61 +83,84 @@
         "unreachable_after": true,
         "variant": "variants/G1-NoRestore.cfg"
       }
-    ],
-    "fixed_reference": {
-      "variant": "variants/Locked.cfg",
-      "result": "R1、R2 都成立（15 個狀態）",
-      "note": "修法參考，不是本假說的結論"
-    }
+    ]
   },
   "model_map": [
     {
       "part": "Set",
       "cites": [
-        "darkroom_app/services/photo_library.py:351",
-        "darkroom_app/adapters/persist/edit_store.py:94"
+        "darkroom_app/services/photo_library.py:335-365",
+        "darkroom_app/adapters/persist/edit_store.py:136",
+        "darkroom_app/services/photo_library.py:432-437"
+      ]
+    },
+    {
+      "part": "ClearCheck",
+      "cites": [
+        "darkroom_app/services/photo_library.py:371-372"
+      ]
+    },
+    {
+      "part": "ClearLock / RestoreLock",
+      "cites": [
+        "darkroom_app/services/photo_library.py:373",
+        "darkroom_app/services/photo_library.py:385",
+        "darkroom_app/adapters/persist/edit_store.py:112-130",
+        "darkroom_app/adapters/persist/locks.py:76-102"
       ]
     },
     {
       "part": "ClearRead",
       "cites": [
-        "darkroom_app/services/photo_library.py:358"
+        "darkroom_app/services/photo_library.py:374"
       ]
     },
     {
       "part": "ClearExists",
       "cites": [
-        "darkroom_app/adapters/persist/edit_store.py:99"
+        "darkroom_app/adapters/persist/edit_store.py:141"
       ]
     },
     {
       "part": "ClearKeep",
       "cites": [
-        "darkroom_app/adapters/persist/edit_store.py:101-103"
+        "darkroom_app/adapters/persist/edit_store.py:143-145"
       ]
     },
     {
       "part": "ClearRemove",
       "cites": [
-        "darkroom_app/adapters/persist/edit_store.py:105"
+        "darkroom_app/adapters/persist/edit_store.py:147"
+      ]
+    },
+    {
+      "part": "RestoreCheck",
+      "cites": [
+        "darkroom_app/services/photo_library.py:382-384"
       ]
     },
     {
       "part": "RestoreRead",
       "cites": [
-        "darkroom_app/services/photo_library.py:366"
+        "darkroom_app/services/photo_library.py:386"
       ]
     },
     {
       "part": "RestorePrev",
       "cites": [
-        "darkroom_app/services/photo_library.py:367-369"
+        "darkroom_app/services/photo_library.py:387-389"
       ]
     },
     {
       "part": "RestoreWrite",
       "cites": [
-        "darkroom_app/services/photo_library.py:373-376"
+        "darkroom_app/services/photo_library.py:393-396"
+      ]
+    },
+    {
+      "part": "Release",
+      "cites": [
+        "darkroom_app/adapters/persist/edit_store.py:128-130"
       ]
     },
     {
@@ -147,12 +178,10 @@
       "name": "NoRestoreOverDifferent",
       "text": "取回上一份編輯時，絕不蓋掉一份不同的編輯。",
       "cites": [
-        "darkroom_app/services/photo_library.py:371-372"
+        "darkroom_app/services/photo_library.py:391-395"
       ],
-      "verdict": "violated",
-      "paths": [
-        "P1"
-      ]
+      "verdict": "held",
+      "paths": []
     },
     {
       "id": "R2",
@@ -160,12 +189,10 @@
       "name": "NoLostEdit",
       "text": "被清掉的編輯，一定先留成「上一份」。",
       "cites": [
-        "darkroom_app/adapters/persist/edit_store.py:97"
+        "darkroom_app/adapters/persist/edit_store.py:139"
       ],
-      "verdict": "violated",
-      "paths": [
-        "P2"
-      ]
+      "verdict": "held",
+      "paths": []
     }
   ],
   "goals": [
@@ -178,31 +205,14 @@
       ]
     }
   ],
-  "paths": [
-    {
-      "id": "P1",
-      "rule": "R1",
-      "finding": "bug",
-      "summary": "取回上一份時，蓋掉了 AI 代理剛存的新編輯，而它哪裡都沒有備份。",
-      "script": "paths/P1.md",
-      "steps": 10
-    },
-    {
-      "id": "P2",
-      "rule": "R2",
-      "finding": "bug",
-      "summary": "清除編輯時，把 AI 代理剛存的編輯刪掉，連「上一份」都沒留。",
-      "script": "paths/P2.md",
-      "steps": 6
-    }
-  ],
+  "paths": [],
   "questions": [],
   "unformalized": [
     {
       "id": "U1",
-      "where": "darkroom_app/services/photo_library.py:380-421 貼上編輯",
+      "where": "darkroom_app/services/photo_library.py:400-441 貼上編輯",
       "class": "handed-off",
-      "detail": "貼上會對多張照片逐張讀寫，屬於另一個流程，交給另一份假說 photo-edit-paste。",
+      "detail": "貼上會對多張照片逐張讀寫，屬於另一個流程，交給另一份假說 photo-edit-paste；每張目標的讀寫握著同一把編輯鎖，單張照片上等同設定。",
       "until": "寫出 photo-edit-paste",
       "instead": "none"
     },
@@ -223,10 +233,25 @@
       "instead": "red/green test"
     }
   ],
-  "history": [],
+  "history": [
+    {
+      "generation": 5,
+      "from_commit": "4afcc58",
+      "to_commit": "a35545f",
+      "outcome": "model-update",
+      "note": "程式加上編輯鎖（a35545f）：設定、清除、取回、貼上的讀、比對、寫都握著 edits/edits.lock；清除與取回多了鎖外的「先看在不在」。模型照程式加上 holder 與 Check/Lock 步驟，舊程式留作 Locked = FALSE 的對照組；R1、R2 由被打破改為守住，P1、P2 移除（紅燈測試在 e4ebbb5，修正後轉綠）。",
+      "areas_changed": [
+        "model",
+        "variants",
+        "paths",
+        "diagrams",
+        "README"
+      ]
+    }
+  ],
   "migrated_from": null,
   "schema": "baransu.hypothesis/1",
   "area": "photo-edit",
-  "generation": 4,
-  "published_at": "2026-10-24T12:23:19+08:00"
+  "generation": 5,
+  "published_at": "2026-10-24T12:46:25+08:00"
 }
